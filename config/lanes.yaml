@@ -17,19 +17,23 @@ lanes:
 
   SIMPLE:
     - openrouter/poolside/laguna-xs-2.1:free
-    - nvidia/z-ai/glm-5.2
+    - nvidia/nvidia/llama-3.3-nemotron-super-49b-v1
     - google/gemini-3.5-flash-lite
 
+  # kimi-k2.6 removed 2026-07-23: listed in /v1/models but invocation 404s
+  # ("Function not found for account") on this key. Gemini tail keeps the lane
+  # alive when OpenRouter RPD is exhausted and NVIDIA free workers are congested.
   AGENTIC:
     - openrouter/poolside/laguna-s-2.1:free
-    - nvidia/moonshotai/kimi-k2.6
-    - openrouter/poolside/laguna-xs-2.1:free
     - nvidia/z-ai/glm-5.2
+    - openrouter/poolside/laguna-xs-2.1:free
+    - google/gemini-3.6-flash
 
   HARD:
     - nvidia/deepseek-ai/deepseek-v4-pro
     - google/gemini-3.1-pro-preview
     - openrouter/poolside/laguna-s-2.1:free
+    - nvidia/deepseek-ai/deepseek-v4-flash
 
   LONGCTX:
     - google/gemini-3.6-flash

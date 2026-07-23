@@ -13,10 +13,18 @@ import type {
 export interface GeminiPart {
   text?: string;
   thought?: boolean;
+  thoughtSignature?: string;
   inlineData?: { mimeType: string; data: string };
   functionCall?: { name: string; args?: Record<string, unknown> };
   functionResponse?: { name: string; response: Record<string, unknown> };
 }
+
+// Gemini 3+ hard-rejects replayed functionCall parts without a thoughtSignature.
+// Kompass history may come from *other* models (that's the whole point of lane
+// routing), so the original signature usually doesn't exist. This placeholder is
+// Google's documented escape hatch for translated/injected function calls;
+// verified empirically against gemini-3.5-flash-lite on 2026-07-23.
+const DUMMY_THOUGHT_SIGNATURE = 'context_engineering_is_the_way_to_go';
 
 export interface GeminiContent {
   role?: 'user' | 'model';
@@ -163,7 +171,10 @@ export function anthropicToGemini(req: AnthropicRequest): GeminiRequest {
             parts.push({ text: b.text });
             break;
           case 'tool_use':
-            parts.push({ functionCall: { name: b.name, args: b.input ?? {} } });
+            parts.push({
+              functionCall: { name: b.name, args: b.input ?? {} },
+              thoughtSignature: DUMMY_THOUGHT_SIGNATURE,
+            });
             break;
           case 'tool_result': {
             const name = toolNameById.get(b.tool_use_id) ?? 'unknown_tool';

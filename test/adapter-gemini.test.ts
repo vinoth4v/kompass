@@ -74,7 +74,12 @@ describe('anthropicToGemini', () => {
     expect(out.contents[0]).toEqual({ role: 'user', parts: [{ text: 'weather in Berlin?' }] });
     expect(out.contents[1]).toEqual({
       role: 'model',
-      parts: [{ functionCall: { name: 'get_weather', args: { city: 'Berlin' } } }],
+      parts: [
+        {
+          functionCall: { name: 'get_weather', args: { city: 'Berlin' } },
+          thoughtSignature: 'context_engineering_is_the_way_to_go',
+        },
+      ],
     });
     expect(out.contents[2]).toEqual({
       role: 'user',
