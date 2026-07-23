@@ -41,11 +41,11 @@ privacy:
 # nemotron-3-embed-1b excluded: embeddings model, Claude Code sends chat traffic only.
 lanes:
   # Groq (enabled 2026-07-23, tool-calling probed ✓): ultra-fast but free-tier TPM
-  # is 6-12k, so it leads FAST (heuristic-small requests) and tails SIMPLE only —
+  # is 6-12k, so it backs up FAST (quality-first: flash-lite leads; 8b answers vaguely as primary) and tails SIMPLE —
   # big contexts get rejected upstream and fall through the chain.
   FAST:
-    - groq/llama-3.1-8b-instant
     - google/gemini-3.5-flash-lite
+    - groq/llama-3.1-8b-instant
     - nvidia/stepfun-ai/step-3.7-flash
     - openrouter/poolside/laguna-xs-2.1:free
     - nvidia/nvidia/llama-3.3-nemotron-super-49b-v1
