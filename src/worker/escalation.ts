@@ -1,7 +1,8 @@
 // M5 failure escalation (SPEC §4): ≥3 consecutive failed tool iterations on a lane
 // → escalate one lane up; when HARD is exhausted, a synthetic assistant notice tells
 // the user to switch back to native claude.
-import type { AnthropicRequest } from '../adapters/types';
+import type { AnthropicRequest, AnthropicResponse } from '../adapters/types';
+import { messageToAnthropicSSE } from './router';
 
 const ESCALATION_ORDER = ['FAST', 'SIMPLE', 'AGENTIC', 'HARD'] as const;
 export const ESCALATION_THRESHOLD = 3;
@@ -25,12 +26,12 @@ export function lastTurnHadToolError(body: AnthropicRequest): boolean {
 }
 
 export const HARD_EXHAUSTED_NOTICE =
-  'Free lanes are exhausted for this task — the HARD chain has no model left to try. ' +
+  'Free lanes are exhausted for this task — every model in every lane failed. ' +
   'Consider switching to native Claude (`claude`) for this one, or check `kompass status` ' +
   'for provider quota/cooldown state.';
 
 /** Anthropic-format synthetic assistant reply (non-streaming). */
-export function syntheticNotice(model: string): Record<string, unknown> {
+export function syntheticNotice(model: string): AnthropicResponse {
   return {
     id: `msg_${crypto.randomUUID().replaceAll('-', '').slice(0, 24)}`,
     type: 'message',
@@ -45,29 +46,5 @@ export function syntheticNotice(model: string): Record<string, unknown> {
 
 /** Same notice as a well-formed Anthropic SSE stream. */
 export function syntheticNoticeStream(model: string): string {
-  const msg = syntheticNotice(model);
-  const ev = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  return (
-    ev('message_start', {
-      type: 'message_start',
-      message: { ...msg, content: [], stop_reason: null },
-    }) +
-    ev('content_block_start', {
-      type: 'content_block_start',
-      index: 0,
-      content_block: { type: 'text', text: '' },
-    }) +
-    ev('content_block_delta', {
-      type: 'content_block_delta',
-      index: 0,
-      delta: { type: 'text_delta', text: HARD_EXHAUSTED_NOTICE },
-    }) +
-    ev('content_block_stop', { type: 'content_block_stop', index: 0 }) +
-    ev('message_delta', {
-      type: 'message_delta',
-      delta: { stop_reason: 'end_turn', stop_sequence: null },
-      usage: { output_tokens: 0 },
-    }) +
-    ev('message_stop', { type: 'message_stop' })
-  );
+  return messageToAnthropicSSE(syntheticNotice(model));
 }

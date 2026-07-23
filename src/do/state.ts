@@ -284,27 +284,6 @@ export class KompassState extends DurableObject {
     }
   }
 
-  /**
-   * Streaming responses only learn their token usage at stream end — attach it to
-   * the most recent matching route record after the fact.
-   */
-  async attachUsage(
-    entry: string,
-    usage: { input_tokens: number; output_tokens: number },
-  ): Promise<void> {
-    const routes = (await this.ctx.storage.get<RouteRecord[]>('routes')) ?? [];
-    for (let i = routes.length - 1; i >= 0; i--) {
-      const r = routes[i]!;
-      if (r.entry === entry && r.ok && r.tin === undefined) {
-        r.tin = usage.input_tokens;
-        r.tout = usage.output_tokens;
-        await this.ctx.storage.put('routes', routes);
-        break;
-      }
-    }
-    await this.bumpTokens(entry.split('/')[0] ?? '', usage.input_tokens, usage.output_tokens);
-  }
-
   /** M3 verdict cache: classifier verdicts keyed by task-digest hash, TTL-bound. */
   async getVerdict(key: string): Promise<{ lane: string; confidence: number } | null> {
     const cell = await this.ctx.storage.get<{ lane: string; confidence: number; exp: number }>(

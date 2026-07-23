@@ -1,28 +1,26 @@
 // Chain resolution + provider dispatch, consulting the Durable Object for
 // quota pre-skip, per-attempt reservation, health cooldowns and stickiness (M2).
-import type { AnthropicRequest, OpenAIResponse } from '../adapters/types';
-import {
-  anthropicToOpenAI,
-  openAIStreamToAnthropicStream,
-  openAIToAnthropic,
-} from '../adapters/openai';
-import {
-  anthropicToGemini,
-  geminiStreamToAnthropicStream,
-  geminiToAnthropic,
-  type GeminiResponse,
-} from '../adapters/gemini';
+//
+// Streaming design (rewritten 2026-07-23): Kompass ALWAYS calls upstream
+// providers non-streaming and buffers the complete answer server-side before
+// ever writing a byte to the client. Once bytes are forwarded to Claude Code
+// they can't be un-sent — a provider dying mid-generation used to become a
+// client-visible in-stream error, and Claude Code does not reliably auto-retry
+// that (observed live: sessions stopped and needed a manual "continue"). By
+// resolving the full answer first, ANY failure (immediate or mid-generation)
+// is invisible to the client and simply falls through to the next chain entry.
+// The client-facing SSE stream (when the caller asked to stream) is synthesized
+// from the complete, already-successful response via messageToAnthropicSSE.
+import type { AnthropicRequest, AnthropicResponse, OpenAIResponse } from '../adapters/types';
+import { anthropicToOpenAI, openAIToAnthropic } from '../adapters/openai';
+import { anthropicToGemini, geminiToAnthropic, type GeminiResponse } from '../adapters/gemini';
 import type { KompassState, FailureKind, ReserveLimits } from '../do/state';
 import type { ProviderConfig, RouterConfig } from './config';
 import { limitsFor, parseChainEntry, resolveLaneChain, resolveLaneSpreadTop } from './config';
 import type { Env } from './env';
 
-// First-byte timeout: NVIDIA free-tier cold starts run past 60s, so 75s for streams
-// (headers) and 90s total for non-streaming bodies. After first byte, no timeout —
-// long agentic streams are legitimate.
-const HEADERS_TIMEOUT_MS = 75_000;
-const FIRST_CHUNK_TIMEOUT_MS = 60_000;
-const NONSTREAM_TIMEOUT_MS = 90_000;
+// Free-tier cold starts (NVIDIA especially) run past 60s — 90s covers that with room.
+const TIMEOUT_MS = 90_000;
 
 export interface RouteAttempt {
   entry: string;
@@ -55,6 +53,7 @@ export function counterKey(provider: string, model: string, p: ProviderConfig): 
   return p.model_limits?.[model] ? `${provider}:${model}` : provider;
 }
 
+/** Always requests a plain (non-streaming) upstream response — see file header. */
 function callUpstream(
   p: ProviderConfig,
   key: string,
@@ -62,12 +61,12 @@ function callUpstream(
   model: string,
   signal: AbortSignal,
 ): Promise<Response> {
+  const nonStreamBody: AnthropicRequest = { ...body, stream: false };
   if (p.kind === 'gemini') {
-    const verb = body.stream ? 'streamGenerateContent?alt=sse' : 'generateContent';
-    return fetch(`${p.base_url}/models/${model}:${verb}`, {
+    return fetch(`${p.base_url}/models/${model}:generateContent`, {
       method: 'POST',
       headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
-      body: JSON.stringify(anthropicToGemini(body)),
+      body: JSON.stringify(anthropicToGemini(nonStreamBody)),
       signal,
     });
   }
@@ -79,112 +78,47 @@ function callUpstream(
       'http-referer': 'https://github.com/vinoth4v/kompass',
       'x-title': 'Kompass',
     },
-    body: JSON.stringify(anthropicToOpenAI(body, model)),
+    body: JSON.stringify(anthropicToOpenAI(nonStreamBody, model)),
     signal,
   });
 }
 
-/** Does this SSE data payload carry actual model output? */
-function frameHasContent(payload: string, kind: 'openai' | 'gemini'): boolean | 'error' {
-  try {
-    const j = JSON.parse(payload);
-    if (j.error) return 'error';
-    if (kind === 'gemini') {
-      const parts = j.candidates?.[0]?.content?.parts;
-      return Array.isArray(parts) && parts.length > 0;
-    }
-    const d = j.choices?.[0]?.delta;
-    return Boolean(
-      d && (d.content || d.reasoning || d.reasoning_content || (d.tool_calls?.length ?? 0) > 0),
-    );
-  } catch {
-    return false;
-  }
+function sseEvent(event: string, data: unknown): string {
+  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
 /**
- * Commit to a provider's stream only once it produces a *content* frame — a 200
- * whose stream dies, errors, or ends empty before any content falls through to the
- * next model instead of reaching the client as a "finished" empty assistant turn
- * (observed live: Claude Code sessions silently stopping on 0-token responses).
- * After content starts, mid-stream death closes gracefully (the SSE transform's
- * flush emits message_delta/message_stop) and `onMidStreamError` lets the caller
- * cool the model down + break stickiness so the next turn re-routes.
+ * Synthesize a well-formed Anthropic SSE stream from a COMPLETE message. Used
+ * both for real routed responses (when the client asked to stream) and for
+ * synthetic notices (escalation.ts). One content_block per block, emitted
+ * whole — no incremental pacing, since by construction the answer is already
+ * fully known; the client sees it arrive as fast as one response body allows.
  */
-export async function gateStreamOnContent(
-  body: ReadableStream<Uint8Array>,
-  kind: 'openai' | 'gemini',
-  timeoutMs = FIRST_CHUNK_TIMEOUT_MS,
-  onMidStreamError?: () => void,
-): Promise<ReadableStream<Uint8Array> | null> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  const buffered: Uint8Array[] = [];
-  let text = '';
-  let lineStart = 0;
-  const deadline = Date.now() + timeoutMs;
-
-  try {
-    scan: for (;;) {
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) throw new Error('no content before timeout');
-      const next = await Promise.race([
-        reader.read(),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('no content before timeout')), remaining),
-        ),
-      ]);
-      if (next.done) {
-        console.log('upstream stream ended with no content — failing over');
-        return null;
-      }
-      buffered.push(next.value);
-      text += decoder.decode(next.value, { stream: true });
-      let idx: number;
-      while ((idx = text.indexOf('\n', lineStart)) !== -1) {
-        const line = text.slice(lineStart, idx).replace(/\r$/, '');
-        lineStart = idx + 1;
-        if (!line.startsWith('data:')) continue;
-        const payload = line.slice(5).trim();
-        if (payload === '[DONE]') {
-          console.log('upstream sent [DONE] before any content — failing over');
-          return null;
-        }
-        const has = frameHasContent(payload, kind);
-        if (has === 'error') {
-          console.log(`upstream in-stream error frame: ${payload.slice(0, 200)} — failing over`);
-          return null;
-        }
-        if (has) break scan;
-      }
-    }
-  } catch (e) {
-    console.log(`upstream content-gate failure: ${String(e)}`);
-    reader.cancel().catch(() => {});
-    return null;
-  }
-
-  let i = 0;
-  return new ReadableStream<Uint8Array>({
-    pull: async (c) => {
-      if (i < buffered.length) {
-        c.enqueue(buffered[i++]!);
-        return;
-      }
-      try {
-        const { done, value } = await reader.read();
-        if (done) c.close();
-        else c.enqueue(value);
-      } catch (e) {
-        console.log(`upstream mid-stream error (graceful close): ${String(e)}`);
-        onMidStreamError?.();
-        c.close();
-      }
-    },
-    cancel(reason) {
-      reader.cancel(reason).catch(() => {});
-    },
+export function messageToAnthropicSSE(msg: AnthropicResponse): string {
+  let out = sseEvent('message_start', {
+    type: 'message_start',
+    message: { ...msg, content: [], stop_reason: null },
   });
+  msg.content.forEach((block, index) => {
+    const content_block =
+      block.type === 'text'
+        ? { type: 'text', text: '' }
+        : { type: 'tool_use', id: block.id, name: block.name, input: {} };
+    out += sseEvent('content_block_start', { type: 'content_block_start', index, content_block });
+    const delta =
+      block.type === 'text'
+        ? { type: 'text_delta', text: block.text }
+        : { type: 'input_json_delta', partial_json: JSON.stringify(block.input ?? {}) };
+    out += sseEvent('content_block_delta', { type: 'content_block_delta', index, delta });
+    out += sseEvent('content_block_stop', { type: 'content_block_stop', index });
+  });
+  out += sseEvent('message_delta', {
+    type: 'message_delta',
+    delta: { stop_reason: msg.stop_reason, stop_sequence: msg.stop_sequence },
+    usage: { output_tokens: msg.usage.output_tokens },
+  });
+  out += sseEvent('message_stop', { type: 'message_stop' });
+  return out;
 }
 
 const SSE_HEADERS = {
@@ -194,7 +128,7 @@ const SSE_HEADERS = {
 
 function failureKind(status: number | string): FailureKind {
   if (status === 429) return '429';
-  if (status === 'timeout' || status === 'first-chunk') return 'timeout';
+  if (status === 'timeout') return 'timeout';
   if (typeof status === 'number') return '5xx';
   return 'stream-error';
 }
@@ -206,8 +140,6 @@ async function tryChainEntry(
   body: AnthropicRequest,
   attempts: RouteAttempt[],
   privacySensitive = false,
-  onStreamUsage?: (usage: { input_tokens: number; output_tokens: number }) => void,
-  onMidStreamError?: () => void,
 ): Promise<Response | null> {
   const { provider, model } = parseChainEntry(entry);
   const p = cfg.providers[provider];
@@ -236,7 +168,7 @@ async function tryChainEntry(
   }
 
   try {
-    const signal = AbortSignal.timeout(body.stream ? HEADERS_TIMEOUT_MS : NONSTREAM_TIMEOUT_MS);
+    const signal = AbortSignal.timeout(TIMEOUT_MS);
     const upstream = await callUpstream(p, key, body, model, signal);
 
     if (!upstream.ok) {
@@ -245,35 +177,26 @@ async function tryChainEntry(
       return null;
     }
 
-    if (body.stream) {
-      if (!upstream.body) {
-        attempts.push({ entry, status: 'error', detail: 'no body' });
-        return null;
-      }
-      const gated = await gateStreamOnContent(
-        upstream.body,
-        p.kind,
-        FIRST_CHUNK_TIMEOUT_MS,
-        onMidStreamError,
-      );
-      if (!gated) {
-        attempts.push({ entry, status: 'first-chunk', detail: 'no content before timeout/EOF' });
-        return null;
-      }
-      const stream =
-        p.kind === 'gemini'
-          ? geminiStreamToAnthropicStream(gated, body.model, onStreamUsage, onMidStreamError)
-          : openAIStreamToAnthropicStream(gated, body.model, onStreamUsage, onMidStreamError);
-      attempts.push({ entry, status: 200 });
-      return new Response(stream, { headers: SSE_HEADERS });
-    }
-
     const json = await upstream.json();
     const translated =
       p.kind === 'gemini'
         ? geminiToAnthropic(json as GeminiResponse, body.model)
         : openAIToAnthropic(json as OpenAIResponse, body.model);
+
+    // The original dataforge-local bug: a provider can return 200 with a
+    // technically-valid but empty completion (no text, no tool_use). Treat
+    // that as a failure too — fall through to the next entry — instead of
+    // handing Claude Code a finished-looking turn with nothing in it.
+    if (translated.content.length === 0) {
+      attempts.push({ entry, status: 'error', detail: 'empty response (no content blocks)' });
+      return null;
+    }
+
     attempts.push({ entry, status: 200, usage: translated.usage });
+
+    if (body.stream) {
+      return new Response(messageToAnthropicSSE(translated), { headers: SSE_HEADERS });
+    }
     return Response.json(translated);
   } catch (e) {
     const timedOut = e instanceof DOMException && e.name === 'TimeoutError';
@@ -335,44 +258,7 @@ export async function routeRequest(
         console.log(`DO reserve failed, proceeding unmetered: ${String(e)}`);
       }
     }
-    // Streamed responses learn token usage only at stream end (after this handler
-    // returned) — attach it to the route record then; waitUntil keeps us alive.
-    const onStreamUsage = ctx.stub
-      ? (usage: { input_tokens: number; output_tokens: number }) => {
-          ctx.waitUntil(
-            ctx
-              .stub!.attachUsage(entry, usage)
-              .catch((e) => console.log(`usage attach failed: ${String(e)}`)),
-          );
-        }
-      : undefined;
-    // A stream dying AFTER content started can't be re-routed (Anthropic bytes are
-    // already flushed) — but cool the model down and break stickiness so the very
-    // next turn routes elsewhere instead of looping on a broken provider.
-    const onMidStreamError = ctx.stub
-      ? () => {
-          ctx.waitUntil(
-            ctx
-              .stub!.reportOutcome(entry, false, {
-                kind: 'stream-error',
-                sessionId: ctx.sessionId,
-                lane,
-                detail: 'died mid-stream after content started',
-              })
-              .catch((e) => console.log(`mid-stream report failed: ${String(e)}`)),
-          );
-        }
-      : undefined;
-    const res = await tryChainEntry(
-      env,
-      cfg,
-      entry,
-      body,
-      attempts,
-      ctx.privacySensitive,
-      onStreamUsage,
-      onMidStreamError,
-    );
+    const res = await tryChainEntry(env, cfg, entry, body, attempts, ctx.privacySensitive);
     const last = attempts[attempts.length - 1];
     if (ctx.stub) {
       // Awaited (not waitUntil): a same-colo DO roundtrip is ~1ms and keeps

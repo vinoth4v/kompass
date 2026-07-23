@@ -95,13 +95,29 @@ app.post('/v1/messages', async (c) => {
   const guard = anyTrainingProvider ? compilePrivacyGuard(cfg) : null;
   const privacySensitive = guard ? privacyMatch(guard, raw) : false;
 
-  const outcome = await routeRequest(c.env, cfg, lane, body, {
-    stub,
-    sessionId,
-    forced: c.req.header('x-kompass-model') ?? undefined,
-    privacySensitive,
-    waitUntil: (p) => c.executionCtx.waitUntil(p),
-  });
+  const forcedModel = c.req.header('x-kompass-model') ?? undefined;
+  const routeOnce = (l: string) =>
+    routeRequest(c.env, cfg, l, body, {
+      stub,
+      sessionId,
+      forced: forcedModel,
+      privacySensitive,
+      waitUntil: (p) => c.executionCtx.waitUntil(p),
+    });
+
+  let outcome = await routeOnce(lane);
+  // Total exhaustion of one lane's chain doesn't mean every free model is down —
+  // squeeze every remaining lane before ever giving up (skip when a specific
+  // model was forced via x-kompass-model, e.g. smoke tests expecting exactly one).
+  let escalatedOnExhaustion = false;
+  while (!outcome.response && !forcedModel) {
+    const up = laneUp(lane);
+    if (!up || !cfg.lanes[up]) break;
+    console.log(JSON.stringify({ escalate_on_exhaustion: { from: lane, to: up } }));
+    lane = up;
+    escalatedOnExhaustion = true;
+    outcome = await routeOnce(lane);
+  }
 
   if (outcome.response) {
     console.log(
@@ -111,26 +127,23 @@ app.post('/v1/messages', async (c) => {
         dispatch: verdict.source,
         dispatch_ms: verdict.ms,
         attempts: outcome.attempts.length,
+        escalated_on_tool_errors: escalated || undefined,
+        escalated_on_exhaustion: escalatedOnExhaustion || undefined,
       }),
     );
     return outcome.response;
   }
   console.log(JSON.stringify({ route: null, lane, attempts: outcome.attempts }));
 
-  // HARD exhausted → synthetic in-chat notice instead of an opaque 529 (SPEC §4).
-  if (lane === 'HARD' || (escalated && !laneUp(lane))) {
-    if (body.stream) {
-      return new Response(syntheticNoticeStream(body.model), {
-        headers: { 'content-type': 'text/event-stream; charset=utf-8' },
-      });
-    }
-    return c.json(syntheticNotice(body.model));
+  // Every lane's entire chain failed. Always a friendly in-chat notice, never a
+  // raw protocol error — Claude Code treats this as a normal completed turn, so
+  // no manual retry/--continue is ever needed on Kompass's account (SPEC §4).
+  if (body.stream) {
+    return new Response(syntheticNoticeStream(body.model), {
+      headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+    });
   }
-  return anthropicError(
-    'overloaded_error',
-    `all chain entries failed: ${outcome.attempts.map((a) => `${a.entry}→${a.status}`).join(', ')}`,
-    529,
-  );
+  return c.json(syntheticNotice(body.model));
 });
 
 app.post('/v1/messages/count_tokens', async (c) => {

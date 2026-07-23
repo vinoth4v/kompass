@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   anthropicToGemini,
-  geminiStreamToAnthropicStream,
   geminiToAnthropic,
   sanitizeSchemaForGemini,
   type GeminiResponse,
@@ -118,71 +117,5 @@ describe('geminiToAnthropic', () => {
     expect((out.content[1] as any).input).toEqual({ city: 'Berlin' });
     expect(out.stop_reason).toBe('tool_use');
     expect(out.usage).toEqual({ input_tokens: 12, output_tokens: 10 });
-  });
-});
-
-function geminiSSE(chunks: unknown[]): ReadableStream<Uint8Array> {
-  const enc = new TextEncoder();
-  return new ReadableStream({
-    start(controller) {
-      for (const c of chunks) controller.enqueue(enc.encode(`data: ${JSON.stringify(c)}\r\n\r\n`));
-      controller.close();
-    },
-  });
-}
-
-async function collectSSE(stream: ReadableStream<Uint8Array>) {
-  const text = await new Response(stream).text();
-  const events: Array<{ event: string; data: any }> = [];
-  let current = '';
-  for (const line of text.split('\n')) {
-    if (line.startsWith('event:')) current = line.slice(6).trim();
-    else if (line.startsWith('data:'))
-      events.push({ event: current, data: JSON.parse(line.slice(5)) });
-  }
-  return events;
-}
-
-describe('geminiStreamToAnthropicStream', () => {
-  it('translates thought, text and functionCall parts into Anthropic events', async () => {
-    const events = await collectSSE(
-      geminiStreamToAnthropicStream(
-        geminiSSE([
-          { candidates: [{ content: { parts: [{ text: 'hmm', thought: true }] } }] },
-          { candidates: [{ content: { parts: [{ text: 'Check' }] } }] },
-          { candidates: [{ content: { parts: [{ text: 'ing.' }] } }] },
-          {
-            candidates: [
-              {
-                content: {
-                  parts: [{ functionCall: { name: 'get_weather', args: { city: 'Berlin' } } }],
-                },
-                finishReason: 'STOP',
-              },
-            ],
-            usageMetadata: { promptTokenCount: 5, candidatesTokenCount: 9 },
-          },
-        ]),
-        'claude-sonnet-4-5',
-      ),
-    );
-    const kinds = events.map((e) => e.event);
-    expect(kinds[0]).toBe('message_start');
-    expect(kinds[kinds.length - 1]).toBe('message_stop');
-    const starts = events.filter((e) => e.event === 'content_block_start');
-    expect(starts.map((s) => s.data.content_block.type)).toEqual(['thinking', 'text', 'tool_use']);
-    const text = events
-      .filter((e) => e.data.delta?.type === 'text_delta')
-      .map((e) => e.data.delta.text)
-      .join('');
-    expect(text).toBe('Checking.');
-    const json = events
-      .filter((e) => e.data.delta?.type === 'input_json_delta')
-      .map((e) => e.data.delta.partial_json)
-      .join('');
-    expect(JSON.parse(json)).toEqual({ city: 'Berlin' });
-    const md = events.find((e) => e.event === 'message_delta')!;
-    expect(md.data.delta.stop_reason).toBe('tool_use');
-    expect(md.data.usage.output_tokens).toBe(9);
   });
 });

@@ -52,23 +52,11 @@ const OK_OPENAI = {
   usage: { prompt_tokens: 1, completion_tokens: 1 },
 };
 
-function openaiSSE(text: string): string {
-  return (
-    `data: ${JSON.stringify({ choices: [{ delta: { role: 'assistant', content: text } }] })}\n\n` +
-    `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n` +
-    'data: [DONE]\n\n'
-  );
-}
-
-function openaiSSEWithUsage(text: string, tin: number, tout: number): string {
-  return (
-    `data: ${JSON.stringify({ choices: [{ delta: { role: 'assistant', content: text } }] })}\n\n` +
-    `data: ${JSON.stringify({
-      choices: [{ delta: {}, finish_reason: 'stop' }],
-      usage: { prompt_tokens: tin, completion_tokens: tout },
-    })}\n\n` +
-    'data: [DONE]\n\n'
-  );
+function okReply(text: string, usage?: { tin: number; tout: number }) {
+  return {
+    choices: [{ message: { role: 'assistant', content: text }, finish_reason: 'stop' }],
+    ...(usage ? { usage: { prompt_tokens: usage.tin, completion_tokens: usage.tout } } : {}),
+  };
 }
 
 beforeEach(async () => {
@@ -154,23 +142,19 @@ describe('M2 Durable Object ledger', () => {
     expect(r2.status).toBe(200);
   });
 
-  it('primary dying before first byte mid-stream request → fallback completes the stream', async () => {
-    // openrouter replies 200 but with an empty body (no SSE data at all)
+  it('primary erroring outright on a streamed request → fallback completes it (client never sees an error)', async () => {
+    // Kompass always calls upstream non-streaming and buffers the full answer
+    // before ever writing to the client — so a provider dying HOWEVER (garbled
+    // body, error, timeout) is invisible to Claude Code; it just takes longer.
     fetchMock
       .get('https://openrouter.ai')
       .intercept({ path: '/api/v1/chat/completions', method: 'POST' })
-      .reply(200, '');
+      .reply(200, 'not valid json'); // upstream.json() throws → falls through
     fetchMock
       .get('https://integrate.api.nvidia.com')
       .intercept({ path: '/v1/chat/completions', method: 'POST' })
-      .reply(200, openaiSSE('rescued'), {
-        headers: { 'content-type': 'text/event-stream' },
-      });
+      .reply(200, okReply('rescued'));
 
-    // fresh session, and clear openrouter cooldown state via a distinct entry name is
-    // not possible here — instead release any cooldown by using burn-reset semantics:
-    // (cooldown for model-a may exist from the previous test; that's fine — the
-    // outcome is identical: nvidia serves the stream.)
     const res = await SELF.fetch('https://kompass.test/v1/messages', {
       method: 'POST',
       headers: AUTH,
@@ -181,26 +165,24 @@ describe('M2 Durable Object ledger', () => {
     expect(text).toContain('message_start');
     expect(text).toContain('rescued');
     expect(text).toContain('message_stop');
-  }, 15_000);
+    expect(text).not.toContain('event: error'); // never a client-visible failure
+  });
 
-  it('a 200 stream with no content (role-only then DONE) falls through to the next model', async () => {
-    // the dataforge-local bug: provider streams "success" with zero content and the
-    // client receives a finished-looking empty turn → session silently stops.
+  it('a 200 response with zero content blocks (empty completion) falls through to the next model', async () => {
+    // the dataforge-local bug: provider returns "success" with nothing to say and
+    // Claude Code takes it as a finished empty turn → session silently stops.
+    // Kompass now treats an empty translated response as a failure, same as any
+    // other bad response, and falls through — the client never sees it.
     fetchMock
       .get('https://openrouter.ai')
       .intercept({ path: '/api/v1/chat/completions', method: 'POST' })
-      .reply(
-        200,
-        `data: ${JSON.stringify({ choices: [{ delta: { role: 'assistant' } }] })}\n\n` +
-          'data: [DONE]\n\n',
-        { headers: { 'content-type': 'text/event-stream' } },
-      );
+      .reply(200, {
+        choices: [{ message: { role: 'assistant', content: '' }, finish_reason: 'stop' }],
+      });
     fetchMock
       .get('https://integrate.api.nvidia.com')
       .intercept({ path: '/v1/chat/completions', method: 'POST' })
-      .reply(200, openaiSSE('rescued-from-empty'), {
-        headers: { 'content-type': 'text/event-stream' },
-      });
+      .reply(200, okReply('rescued-from-empty'));
     const res = await SELF.fetch('https://kompass.test/v1/messages', {
       method: 'POST',
       headers: AUTH,
@@ -210,35 +192,34 @@ describe('M2 Durable Object ledger', () => {
     const text = await res.text();
     expect(text).toContain('rescued-from-empty');
     expect(text).toContain('message_stop');
-  }, 15_000);
 
-  it('records token usage per route and per-provider daily totals', async () => {
-    // non-stream: usage lands with the outcome report
+    const status = (await (
+      await SELF.fetch('https://kompass.test/status', { headers: AUTH })
+    ).json()) as any;
+    const failed = status.routes.find((r: any) => r.entry === 'openrouter/model-a:free' && !r.ok);
+    expect(failed?.detail).toMatch(/empty/i);
+  });
+
+  it('records token usage per route and per-provider daily totals (non-stream and streamed requests alike)', async () => {
     fetchMock
       .get('https://openrouter.ai')
       .intercept({ path: '/api/v1/chat/completions', method: 'POST' })
-      .reply(200, {
-        choices: [{ message: { role: 'assistant', content: 'hi' }, finish_reason: 'stop' }],
-        usage: { prompt_tokens: 120, completion_tokens: 45 },
-      });
+      .reply(200, okReply('hi', { tin: 120, tout: 45 }));
     await SELF.fetch('https://kompass.test/v1/messages', {
       method: 'POST',
       headers: AUTH,
       body: msgBody(),
     });
-    // stream: usage attaches at stream end
     fetchMock
       .get('https://openrouter.ai')
       .intercept({ path: '/api/v1/chat/completions', method: 'POST' })
-      .reply(200, openaiSSEWithUsage('streamed', 200, 80), {
-        headers: { 'content-type': 'text/event-stream' },
-      });
+      .reply(200, okReply('streamed', { tin: 200, tout: 80 }));
     const sres = await SELF.fetch('https://kompass.test/v1/messages', {
       method: 'POST',
       headers: AUTH,
       body: msgBody({ stream: true }),
     });
-    await sres.text(); // drain the stream so onFinal fires
+    await sres.text();
 
     const status = (await (
       await SELF.fetch('https://kompass.test/status', { headers: AUTH })
