@@ -122,4 +122,36 @@ describe('openAIToAnthropic', () => {
     expect(out.content).toEqual([{ type: 'tool_use', id: 'call_1', name: 'f', input: {} }]);
     expect(out.stop_reason).toBe('tool_use');
   });
+
+  it('handles a malformed body with no choices array without throwing', () => {
+    // Seen live from OpenRouter: a 200 response shaped like an error body
+    // ({} or {"error": ...}) with no `choices` at all — must translate to an
+    // empty (zero-content) response, not throw, so router.ts's empty-content
+    // guard can catch it and fall through to the next chain entry.
+    const res = {} as OpenAIResponse;
+    const out = openAIToAnthropic(res, 'claude-sonnet-4-5');
+    expect(out.content).toEqual([]);
+  });
+
+  it('handles a bare null body without throwing', () => {
+    const out = openAIToAnthropic(null as unknown as OpenAIResponse, 'claude-sonnet-4-5');
+    expect(out.content).toEqual([]);
+  });
+
+  it('handles a tool_call with a missing function object without throwing', () => {
+    const res: OpenAIResponse = {
+      choices: [
+        {
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: [{ id: 'call_1', type: 'function' } as never],
+          },
+          finish_reason: 'tool_calls',
+        },
+      ],
+    };
+    const out = openAIToAnthropic(res, 'claude-sonnet-4-5');
+    expect(out.content).toEqual([{ type: 'tool_use', id: 'call_1', name: '', input: {} }]);
+  });
 });

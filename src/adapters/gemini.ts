@@ -261,11 +261,18 @@ function mapGeminiFinish(reason: string | undefined, sawToolCall: boolean): Anth
 }
 
 /** Translate a non-streaming Gemini response into an Anthropic Messages response. */
-export function geminiToAnthropic(res: GeminiResponse, requestedModel: string): AnthropicResponse {
+export function geminiToAnthropic(
+  rawRes: GeminiResponse,
+  requestedModel: string,
+): AnthropicResponse {
+  // Mirrors openAIToAnthropic's guard: a malformed 200 body (null, {}) must
+  // translate to an empty response, not throw — see adapters/openai.ts.
+  const res = rawRes && typeof rawRes === 'object' ? rawRes : ({} as GeminiResponse);
   const cand = res.candidates?.[0];
   const content: Array<AnthropicTextBlock | AnthropicToolUseBlock> = [];
   let sawToolCall = false;
   for (const part of cand?.content?.parts ?? []) {
+    if (!part) continue;
     if (part.thought) continue;
     if (part.text) {
       const last = content[content.length - 1];

@@ -118,4 +118,9 @@ describe('geminiToAnthropic', () => {
     expect(out.stop_reason).toBe('tool_use');
     expect(out.usage).toEqual({ input_tokens: 12, output_tokens: 10 });
   });
+
+  it('handles a bare null/malformed body without throwing', () => {
+    expect(geminiToAnthropic(null as unknown as GeminiResponse, 'm').content).toEqual([]);
+    expect(geminiToAnthropic({} as GeminiResponse, 'm').content).toEqual([]);
+  });
 });

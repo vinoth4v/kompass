@@ -28,7 +28,7 @@ function blockText(
   if (content == null) return '';
   if (typeof content === 'string') return content;
   return content
-    .filter((b) => b.type === 'text')
+    .filter((b) => b && b.type === 'text')
     .map((b) => b.text ?? '')
     .join('\n');
 }
@@ -159,8 +159,16 @@ function safeParseJSON(s: string | undefined): Record<string, unknown> {
 }
 
 /** Translate a non-streaming OpenAI response into an Anthropic Messages response. */
-export function openAIToAnthropic(res: OpenAIResponse, requestedModel: string): AnthropicResponse {
-  const choice = res.choices[0];
+export function openAIToAnthropic(
+  rawRes: OpenAIResponse,
+  requestedModel: string,
+): AnthropicResponse {
+  // Providers occasionally return a 200 with a malformed/error-shaped body
+  // (null, {}, missing choices) — seen live from OpenRouter and NVIDIA. Don't
+  // crash on any of it; fall through to an empty translated response, which
+  // router.ts treats as a failure and retries the next chain entry.
+  const res = rawRes && typeof rawRes === 'object' ? rawRes : ({} as OpenAIResponse);
+  const choice = res.choices?.[0];
   const content: Array<AnthropicTextBlock | AnthropicToolUseBlock> = [];
   const msg = choice?.message;
   const text =
@@ -169,11 +177,12 @@ export function openAIToAnthropic(res: OpenAIResponse, requestedModel: string): 
       : blockText(msg?.content as Array<{ type: string; text?: string }> | null | undefined);
   if (text) content.push({ type: 'text', text });
   for (const tc of msg?.tool_calls ?? []) {
+    const fn = tc.function ?? {};
     content.push({
       type: 'tool_use',
       id: tc.id ?? `toolu_${crypto.randomUUID().replaceAll('-', '').slice(0, 24)}`,
-      name: tc.function.name ?? '',
-      input: safeParseJSON(tc.function.arguments),
+      name: fn.name ?? '',
+      input: safeParseJSON(typeof fn.arguments === 'string' ? fn.arguments : undefined),
     });
   }
   return {

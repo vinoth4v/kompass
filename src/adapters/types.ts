@@ -128,7 +128,8 @@ export interface OpenAIRequest {
 export interface OpenAIResponse {
   id?: string;
   model?: string;
-  choices: Array<{
+  // Optional to reflect reality: a malformed/error-shaped 200 body can omit it.
+  choices?: Array<{
     message: OpenAIMessage;
     finish_reason: string | null;
   }>;

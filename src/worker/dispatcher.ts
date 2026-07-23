@@ -147,11 +147,12 @@ async function callClassifier(
       console.log(`classifier ${entry} HTTP ${res.status}`);
       return null;
     }
-    const json = (await res.json()) as {
+    const parsed = (await res.json()) as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> } }>;
-    };
+    } | null;
+    const json = parsed ?? {};
     const text = (json.candidates?.[0]?.content?.parts ?? [])
-      .filter((part) => !part.thought)
+      .filter((part) => part && !part.thought)
       .map((part) => part.text ?? '')
       .join('');
     return parseVerdict(text);
@@ -177,10 +178,10 @@ async function callClassifier(
     console.log(`classifier ${entry} HTTP ${res.status}`);
     return null;
   }
-  const json = (await res.json()) as {
+  const parsed = (await res.json()) as {
     choices?: Array<{ message?: { content?: string | null } }>;
-  };
-  return parseVerdict(json.choices?.[0]?.message?.content ?? '');
+  } | null;
+  return parseVerdict(parsed?.choices?.[0]?.message?.content ?? '');
 }
 
 /**
