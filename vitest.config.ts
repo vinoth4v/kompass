@@ -1,0 +1,18 @@
+import { defineWorkersConfig } from '@cloudflare/vitest-pool-workers/config';
+
+export default defineWorkersConfig({
+  test: {
+    include: ['test/**/*.test.ts'],
+    poolOptions: {
+      workers: {
+        wrangler: { configPath: './wrangler.jsonc' },
+        miniflare: {
+          bindings: {
+            KOMPASS_BEARER: 'test-bearer-token',
+            OPENROUTER_API_KEY: 'test-openrouter-key',
+          },
+        },
+      },
+    },
+  },
+});
