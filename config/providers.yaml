@@ -1,6 +1,10 @@
 # Kompass provider registry. All model IDs live here or in lanes.yaml — never in code
 # (BUILD_PLAN §6.5). Limits: verified live where possible, else conservative + TODO(verify).
 providers:
+  # ── Get a free key: https://openrouter.ai/keys ──────────────────────────────
+  # Sign in (GitHub/Google works) → "Create Key" → copy the sk-or-v1-… value into
+  # secrets/.secrets.json as OPENROUTER_API_KEY. No credit card needed; buying $10
+  # of credits once raises :free models from 50 to 1000 requests/day.
   openrouter:
     kind: openai
     base_url: https://openrouter.ai/api/v1
@@ -12,6 +16,9 @@ providers:
     # (<10 credits purchased): 20 RPM, 50 RPD. Rises to 1000 RPD with 10+ credits.
     limits: { rpm: 20, rpd: 50 }
 
+  # ── Get a free key: https://build.nvidia.com ────────────────────────────────
+  # Create an NVIDIA account → open any model page → "Get API Key" → copy the
+  # nvapi-… value into secrets/.secrets.json as NVIDIA_API_KEY. Free tier, no card.
   nvidia:
     kind: openai
     base_url: https://integrate.api.nvidia.com/v1
@@ -21,6 +28,10 @@ providers:
     # Conservative per-key values; per-key vs per-model is an open SPEC §8 question.
     limits: { rpm: 40, rpd: 5000 }
 
+  # ── Get a free key: https://aistudio.google.com/apikey ─────────────────────
+  # Sign in with a Google account → "Create API key" → copy the AIza… value into
+  # secrets/.secrets.json as GOOGLE_AI_KEY. Your live free-tier limits are shown at
+  # https://aistudio.google.com/rate-limit (update the numbers below to match).
   google:
     kind: gemini
     base_url: https://generativelanguage.googleapis.com/v1beta
@@ -35,6 +46,9 @@ providers:
       # current numbers in the AI Studio dashboard (not published in docs anymore).
       gemini-3.5-flash-lite: { rpm: 15, rpd: 1000 }
 
+  # ── Get a free key: https://console.groq.com/keys ──────────────────────────
+  # Create a Groq account → "Create API Key" → copy the gsk_… value into
+  # secrets/.secrets.json as GROQ_API_KEY. Free tier, no card.
   groq:
     kind: openai
     base_url: https://api.groq.com/openai/v1

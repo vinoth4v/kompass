@@ -15,6 +15,17 @@ export CLOUDFLARE_API_TOKEN=...   # dash.cloudflare.com → API Tokens → "Edit
 pnpm kompass init                 # guided: keys → KV → workers.dev URL → deploy → smoke → shell function
 ```
 
+### Where to create the free API keys
+
+| Provider         | Create key at                                             | Notes                                                               |
+| ---------------- | --------------------------------------------------------- | ------------------------------------------------------------------- |
+| OpenRouter       | https://openrouter.ai/keys                                | free `:free` models; buying $10 credits once lifts 50→1000 req/day  |
+| NVIDIA Build     | https://build.nvidia.com (any model page → "Get API Key") | free tier, no card                                                  |
+| Google AI Studio | https://aistudio.google.com/apikey                        | free tier; your live limits: https://aistudio.google.com/rate-limit |
+| Groq             | https://console.groq.com/keys                             | free tier, no card; ultra-fast small models                         |
+
+Any subset works — missing providers are skipped automatically.
+
 The wizard is idempotent (safe to re-run), stores your keys only in the gitignored
 `secrets/.secrets.json` + Cloudflare Worker secrets, and ends with a working
 `claude-free` command in your shell. Prefer copy-paste? Use the

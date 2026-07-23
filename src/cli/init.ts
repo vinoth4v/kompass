@@ -65,18 +65,20 @@ export async function init(): Promise<void> {
     secrets = JSON.parse(readFileSync(secretsPath, 'utf8'));
     ok(`existing ${secretsPath} found (${Object.keys(secrets).length} keys) — keeping it`);
   } else {
-    console.log(
-      '  Get free keys: openrouter.ai/keys · build.nvidia.com · aistudio.google.com/apikey · console.groq.com/keys',
-    );
-    console.log('  Leave any blank to skip that provider.\n');
+    console.log('  All four are free tiers, no credit card. Leave any blank to skip it.\n');
     secrets = { KOMPASS_BEARER: randomBytes(24).toString('hex') };
-    const wanted: Array<[string, string]> = [
-      ['OPENROUTER_API_KEY', 'OpenRouter key (sk-or-v1-…)'],
-      ['NVIDIA_API_KEY', 'NVIDIA Build key (nvapi-…)'],
-      ['GOOGLE_AI_KEY', 'Google AI Studio key (AIza…)'],
-      ['GROQ_API_KEY', 'Groq key (gsk_…)'],
+    const wanted: Array<[string, string, string]> = [
+      ['OPENROUTER_API_KEY', 'OpenRouter key (sk-or-v1-…)', 'https://openrouter.ai/keys'],
+      [
+        'NVIDIA_API_KEY',
+        'NVIDIA Build key (nvapi-…)',
+        'https://build.nvidia.com  (any model page → "Get API Key")',
+      ],
+      ['GOOGLE_AI_KEY', 'Google AI Studio key (AIza…)', 'https://aistudio.google.com/apikey'],
+      ['GROQ_API_KEY', 'Groq key (gsk_…)', 'https://console.groq.com/keys'],
     ];
-    for (const [envKey, label] of wanted) {
+    for (const [envKey, label, link] of wanted) {
+      console.log(`  create at: ${link}`);
       const v = await ask(label);
       if (v) secrets[envKey] = v;
     }
