@@ -33,32 +33,43 @@ privacy:
     - '**/credentials.json'
     - 'secrets/**'
 
+# NVIDIA slugs verified live + probed invocable 2026-07-23 (second pass):
+# poolside/laguna-xs-2.1, minimaxai/minimax-m3, nvidia/nemotron-3-ultra-550b-a55b,
+# stepfun-ai/step-3.7-flash all answered; mistralai/mistral-medium-3.5-128b listed
+# but cold/congested on probe (kept as tail fallback — cooldowns route around it).
+# kimi-k2.6 still 404s ("Function not found for account") on this key → excluded.
+# nemotron-3-embed-1b excluded: embeddings model, Claude Code sends chat traffic only.
 lanes:
   FAST:
     - google/gemini-3.5-flash-lite
+    - nvidia/stepfun-ai/step-3.7-flash
     - openrouter/poolside/laguna-xs-2.1:free
     - nvidia/nvidia/llama-3.3-nemotron-super-49b-v1
 
   SIMPLE:
     - openrouter/poolside/laguna-xs-2.1:free
+    - nvidia/poolside/laguna-xs-2.1
     - nvidia/nvidia/llama-3.3-nemotron-super-49b-v1
+    - nvidia/mistralai/mistral-medium-3.5-128b
     - google/gemini-3.5-flash-lite
 
-  # kimi-k2.6 removed 2026-07-23: listed in /v1/models but invocation 404s
-  # ("Function not found for account") on this key. Gemini tail keeps the lane
-  # alive when OpenRouter RPD is exhausted and NVIDIA free workers are congested.
   AGENTIC:
     - openrouter/poolside/laguna-s-2.1:free
+    - nvidia/poolside/laguna-xs-2.1
     - nvidia/z-ai/glm-5.2
     - openrouter/poolside/laguna-xs-2.1:free
+    - nvidia/minimaxai/minimax-m3
     - google/gemini-3.6-flash
 
   HARD:
     - nvidia/deepseek-ai/deepseek-v4-pro
+    - nvidia/minimaxai/minimax-m3
     - google/gemini-3.1-pro-preview
     - openrouter/poolside/laguna-s-2.1:free
     - nvidia/deepseek-ai/deepseek-v4-flash
 
   LONGCTX:
     - google/gemini-3.6-flash
+    - nvidia/nemotron-3-ultra-550b-a55b
+    - nvidia/minimaxai/minimax-m3
     - openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
