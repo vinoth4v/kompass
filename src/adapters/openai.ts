@@ -202,7 +202,7 @@ export function openAIStreamToAnthropicStream(
   let buffer = '';
   let started = false;
   let blockIndex = -1;
-  let blockType: 'text' | 'tool_use' | null = null;
+  let blockType: 'text' | 'tool_use' | 'thinking' | null = null;
   let currentToolIndex: number | null = null;
   let stopReason: AnthropicStopReason | null = null;
   let usage = { input_tokens: 0, output_tokens: 0 };
@@ -274,6 +274,36 @@ export function openAIStreamToAnthropicStream(
     const choice = chunk.choices?.[0];
     if (!choice) return;
     const delta = choice.delta;
+
+    // Reasoning models (e.g. OpenRouter `reasoning`, some providers `reasoning_content`)
+    // stream thinking tokens before any text — surface them as Anthropic thinking blocks
+    // so long silences don't look like a stalled stream.
+    const reasoning = delta?.reasoning ?? delta?.reasoning_content;
+    if (reasoning) {
+      if (blockType !== 'thinking') {
+        closeBlock(controller);
+        blockIndex++;
+        blockType = 'thinking';
+        controller.enqueue(
+          encoder.encode(
+            sseEvent('content_block_start', {
+              type: 'content_block_start',
+              index: blockIndex,
+              content_block: { type: 'thinking', thinking: '' },
+            }),
+          ),
+        );
+      }
+      controller.enqueue(
+        encoder.encode(
+          sseEvent('content_block_delta', {
+            type: 'content_block_delta',
+            index: blockIndex,
+            delta: { type: 'thinking_delta', thinking: reasoning },
+          }),
+        ),
+      );
+    }
 
     if (delta?.content) {
       if (blockType !== 'text') {

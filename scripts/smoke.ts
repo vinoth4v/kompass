@@ -72,7 +72,9 @@ async function testStreaming() {
     headers: HEADERS,
     body: JSON.stringify({
       model: 'claude-sonnet-4-5',
-      max_tokens: 128,
+      // Generous budget: reasoning models spend tokens thinking before any text,
+      // and Claude Code itself always sends large max_tokens.
+      max_tokens: 2048,
       stream: true,
       messages: [{ role: 'user', content: 'Reply with exactly the word: pong' }],
     }),

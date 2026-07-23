@@ -153,6 +153,33 @@ describe('openAIStreamToAnthropicStream', () => {
     expect(md.data.usage.output_tokens).toBe(2);
   });
 
+  it('surfaces reasoning deltas as a thinking block before the text block', async () => {
+    const events = await collectSSE(
+      openAIStreamToAnthropicStream(
+        openAISSE([
+          { choices: [{ delta: { reasoning: 'hmm, ' } }] },
+          { choices: [{ delta: { reasoning: 'pong it is' } }] },
+          { choices: [{ delta: { content: 'pong' } }] },
+          { choices: [{ delta: {}, finish_reason: 'stop' }] },
+        ]),
+        'm',
+      ),
+    );
+    const starts = events.filter((e) => e.event === 'content_block_start');
+    expect(starts[0]!.data.content_block.type).toBe('thinking');
+    expect(starts[1]!.data.content_block.type).toBe('text');
+    const thinking = events
+      .filter((e) => e.data.delta?.type === 'thinking_delta')
+      .map((e) => e.data.delta.thinking)
+      .join('');
+    expect(thinking).toBe('hmm, pong it is');
+    // the thinking block must be closed before the text block opens
+    const kinds = events.map((e) => e.event);
+    expect(kinds.indexOf('content_block_stop')).toBeLessThan(
+      kinds.lastIndexOf('content_block_start'),
+    );
+  });
+
   it('translates streamed tool calls into tool_use blocks with input_json_delta', async () => {
     const events = await collectSSE(
       openAIStreamToAnthropicStream(

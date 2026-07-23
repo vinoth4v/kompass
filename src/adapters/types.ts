@@ -142,6 +142,8 @@ export interface OpenAIStreamChunk {
     delta?: {
       role?: string;
       content?: string | null;
+      reasoning?: string | null;
+      reasoning_content?: string | null;
       tool_calls?: OpenAIToolCall[];
     };
     finish_reason?: string | null;
