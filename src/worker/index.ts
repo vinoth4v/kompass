@@ -172,11 +172,13 @@ app.get('/status', async (c) => {
   for (const [name, p] of Object.entries(cfg?.providers ?? {})) {
     const rpmUsed = snap.rpm[name]?.minute === minute ? snap.rpm[name].count : 0;
     const rpdUsed = snap.rpd[name]?.day === day ? snap.rpd[name].count : 0;
+    const tok = snap.tokens[name]?.day === day ? snap.tokens[name] : undefined;
     providers[name] = {
       enabled: p.enabled !== false,
       has_key: Boolean((c.env as unknown as Record<string, string>)[p.key_env]),
       rpm: { used: rpmUsed, limit: p.limits.rpm },
       rpd: { used: rpdUsed, limit: p.limits.rpd },
+      tokens_today: { in: tok?.tin ?? 0, out: tok?.tout ?? 0 },
     };
   }
   return c.json({

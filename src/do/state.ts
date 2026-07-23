@@ -19,6 +19,15 @@ export interface RouteRecord {
   ms?: number;
   session?: string;
   detail?: string;
+  /** token usage (input/output) — attached post-hoc for streams */
+  tin?: number;
+  tout?: number;
+}
+
+interface TokenCell {
+  day: string;
+  tin: number;
+  tout: number;
 }
 
 interface RpmCell {
@@ -139,6 +148,21 @@ export class KompassState extends DurableObject {
     return { ok: true };
   }
 
+  private async bumpTokens(provider: string, tin: number, tout: number): Promise<void> {
+    const day = utcDay(Date.now());
+    const cell = (await this.ctx.storage.get<TokenCell>(`tokd:${provider}`)) ?? {
+      day,
+      tin: 0,
+      tout: 0,
+    };
+    const fresh = cell.day === day ? cell : { day, tin: 0, tout: 0 };
+    await this.ctx.storage.put(`tokd:${provider}`, {
+      day,
+      tin: fresh.tin + tin,
+      tout: fresh.tout + tout,
+    });
+  }
+
   /** Success: refresh stickiness + log. Failure: 10-min cooldown for the model + log. */
   async reportOutcome(
     entry: string,
@@ -149,6 +173,7 @@ export class KompassState extends DurableObject {
       lane?: string;
       ms?: number;
       detail?: string;
+      usage?: { input_tokens: number; output_tokens: number };
     } = {},
   ): Promise<void> {
     const now = Date.now();
@@ -172,8 +197,38 @@ export class KompassState extends DurableObject {
       ms: opts.ms,
       session: opts.sessionId?.slice(-12),
       detail: ok ? undefined : (opts.kind ?? 'error') + (opts.detail ? `: ${opts.detail}` : ''),
+      tin: opts.usage?.input_tokens,
+      tout: opts.usage?.output_tokens,
     });
     await this.ctx.storage.put('routes', routes.slice(-MAX_ROUTES));
+    if (opts.usage) {
+      await this.bumpTokens(
+        entry.split('/')[0] ?? '',
+        opts.usage.input_tokens,
+        opts.usage.output_tokens,
+      );
+    }
+  }
+
+  /**
+   * Streaming responses only learn their token usage at stream end — attach it to
+   * the most recent matching route record after the fact.
+   */
+  async attachUsage(
+    entry: string,
+    usage: { input_tokens: number; output_tokens: number },
+  ): Promise<void> {
+    const routes = (await this.ctx.storage.get<RouteRecord[]>('routes')) ?? [];
+    for (let i = routes.length - 1; i >= 0; i--) {
+      const r = routes[i]!;
+      if (r.entry === entry && r.ok && r.tin === undefined) {
+        r.tin = usage.input_tokens;
+        r.tout = usage.output_tokens;
+        await this.ctx.storage.put('routes', routes);
+        break;
+      }
+    }
+    await this.bumpTokens(entry.split('/')[0] ?? '', usage.input_tokens, usage.output_tokens);
   }
 
   /** M3 verdict cache: classifier verdicts keyed by task-digest hash, TTL-bound. */
@@ -220,27 +275,31 @@ export class KompassState extends DurableObject {
     await this.ctx.storage.delete(`sticky:${sessionId}`);
   }
 
-  /** Raw state for /status: counters, cooldowns, recent routes. */
+  /** Raw state for /status: counters, cooldowns, token totals, recent routes. */
   async snapshot(): Promise<{
     rpm: Record<string, RpmCell>;
     rpd: Record<string, RpdCell>;
     cooldowns: Record<string, number>;
+    tokens: Record<string, TokenCell>;
     routes: RouteRecord[];
   }> {
     const now = Date.now();
     const rpm: Record<string, RpmCell> = {};
     const rpd: Record<string, RpdCell> = {};
     const cooldowns: Record<string, number> = {};
+    const tokens: Record<string, TokenCell> = {};
     const all = await this.ctx.storage.list();
     for (const [k, v] of all) {
       if (k.startsWith('rpm:')) rpm[k.slice(4)] = v as RpmCell;
       else if (k.startsWith('rpd:')) rpd[k.slice(4)] = v as RpdCell;
+      else if (k.startsWith('tokd:')) tokens[k.slice(5)] = v as TokenCell;
       else if (k.startsWith('cool:') && (v as number) > now) cooldowns[k.slice(5)] = v as number;
     }
     return {
       rpm,
       rpd,
       cooldowns,
+      tokens,
       routes: (await this.ctx.storage.get<RouteRecord[]>('routes')) ?? [],
     };
   }

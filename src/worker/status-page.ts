@@ -49,13 +49,20 @@ async function refresh() {
   }
 }
 function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function fmtTok(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+  return String(n ?? 0);
+}
 function render(d) {
-  let h = '<h2>Providers</h2><table><tr><th>provider</th><th>state</th><th>RPM</th><th>RPD</th></tr>';
+  let h = '<h2>Providers</h2><table><tr><th>provider</th><th>state</th><th>RPM</th><th>RPD</th><th>tokens today (in / out)</th></tr>';
   for (const [name, p] of Object.entries(d.providers)) {
     const state = !p.enabled ? 'disabled' : !p.has_key ? 'no key' : 'live';
     const pct = (u, l) => '<span class="bar" style="width:' + Math.min(100, (u / l) * 100) * 0.9 + 'px"></span> ' + u + '/' + l;
+    const tok = p.tokens_today ?? { in: 0, out: 0 };
     h += '<tr><td>' + esc(name) + '</td><td class="' + (state === 'live' ? 'ok' : 'bad') + '">' + state + '</td>' +
-         '<td>' + pct(p.rpm.used, p.rpm.limit) + '</td><td>' + pct(p.rpd.used, p.rpd.limit) + '</td></tr>';
+         '<td>' + pct(p.rpm.used, p.rpm.limit) + '</td><td>' + pct(p.rpd.used, p.rpd.limit) + '</td>' +
+         '<td>' + fmtTok(tok.in) + ' / ' + fmtTok(tok.out) + '</td></tr>';
   }
   h += '</table><h2>Lanes</h2><table><tr><th>lane</th><th>chain</th></tr>';
   for (const [lane, chain] of Object.entries(d.lanes)) {
@@ -67,10 +74,11 @@ function render(d) {
     h += '<h2>Cooldowns</h2><table><tr><th>model</th><th>remaining</th></tr>' +
       cds.map(([m, t]) => '<tr><td>' + esc(m) + '</td><td>' + esc(t) + '</td></tr>').join('') + '</table>';
   }
-  h += '<h2>Last ' + d.routes.length + ' routes</h2><table><tr><th>time</th><th>lane</th><th>model</th><th>ok</th><th>ms</th><th>detail</th></tr>';
+  h += '<h2>Last ' + d.routes.length + ' routes</h2><table><tr><th>time</th><th>lane</th><th>model</th><th>ok</th><th>ms</th><th>tokens in/out</th><th>detail</th></tr>';
   for (const r of d.routes) {
+    const tok = r.tin !== undefined ? fmtTok(r.tin) + ' / ' + fmtTok(r.tout) : '';
     h += '<tr><td>' + new Date(r.ts).toISOString().slice(11, 19) + '</td><td>' + esc(r.lane) + '</td><td>' + esc(r.entry) + '</td>' +
-         '<td class="' + (r.ok ? 'ok' : 'bad') + '">' + (r.ok ? '✓' : '✗') + '</td><td>' + esc(r.ms ?? '') + '</td><td>' + esc(r.detail ?? '') + '</td></tr>';
+         '<td class="' + (r.ok ? 'ok' : 'bad') + '">' + (r.ok ? '✓' : '✗') + '</td><td>' + esc(r.ms ?? '') + '</td><td>' + tok + '</td><td>' + esc(r.detail ?? '') + '</td></tr>';
   }
   h += '</table>';
   document.getElementById('content').innerHTML = h;

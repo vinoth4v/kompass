@@ -51,6 +51,7 @@ interface StatusPayload {
       has_key: boolean;
       rpm: { used: number; limit: number };
       rpd: { used: number; limit: number };
+      tokens_today?: { in: number; out: number };
     }
   >;
   cooldowns: Record<string, string>;
@@ -61,7 +62,16 @@ interface StatusPayload {
     ok: boolean;
     ms?: number;
     detail?: string;
+    tin?: number;
+    tout?: number;
   }>;
+}
+
+function fmtTok(n?: number): string {
+  if (n === undefined) return '';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+  return String(n);
 }
 
 async function status() {
@@ -80,8 +90,11 @@ async function status() {
   console.log('Providers');
   for (const [name, p] of Object.entries(d.providers)) {
     const state = !p.enabled ? 'disabled' : !p.has_key ? 'no-key' : 'live';
+    const tok = p.tokens_today
+      ? `  tokens ${fmtTok(p.tokens_today.in)}→${fmtTok(p.tokens_today.out)}`
+      : '';
     console.log(
-      `  ${name.padEnd(12)} ${state.padEnd(9)} rpm ${p.rpm.used}/${p.rpm.limit}  rpd ${p.rpd.used}/${p.rpd.limit}`,
+      `  ${name.padEnd(12)} ${state.padEnd(9)} rpm ${p.rpm.used}/${p.rpm.limit}  rpd ${p.rpd.used}/${p.rpd.limit}${tok}`,
     );
   }
   console.log('Lanes');
@@ -97,8 +110,9 @@ async function status() {
   console.log(`Last ${d.routes.length} routes`);
   for (const r of d.routes.slice(0, 50)) {
     const time = new Date(r.ts).toISOString().slice(11, 19);
+    const tok = r.tin !== undefined ? ` ${fmtTok(r.tin)}→${fmtTok(r.tout)} tok` : '';
     console.log(
-      `  ${time} ${r.ok ? '✓' : '✗'} ${r.lane.padEnd(8)} ${r.entry}${r.ms !== undefined ? ` ${r.ms}ms` : ''}${r.detail ? `  [${r.detail}]` : ''}`,
+      `  ${time} ${r.ok ? '✓' : '✗'} ${r.lane.padEnd(8)} ${r.entry}${r.ms !== undefined ? ` ${r.ms}ms` : ''}${tok}${r.detail ? `  [${r.detail}]` : ''}`,
     );
   }
 }

@@ -309,6 +309,7 @@ function sseEvent(event: string, data: unknown): string {
 export function geminiStreamToAnthropicStream(
   upstream: ReadableStream<Uint8Array>,
   requestedModel: string,
+  onFinal?: (usage: { input_tokens: number; output_tokens: number }) => void,
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -471,6 +472,7 @@ export function geminiStreamToAnthropicStream(
       ),
     );
     controller.enqueue(encoder.encode(sseEvent('message_stop', { type: 'message_stop' })));
+    onFinal?.(usage);
   }
 
   const transform = new TransformStream<Uint8Array, Uint8Array>({

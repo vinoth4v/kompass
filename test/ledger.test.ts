@@ -60,6 +60,17 @@ function openaiSSE(text: string): string {
   );
 }
 
+function openaiSSEWithUsage(text: string, tin: number, tout: number): string {
+  return (
+    `data: ${JSON.stringify({ choices: [{ delta: { role: 'assistant', content: text } }] })}\n\n` +
+    `data: ${JSON.stringify({
+      choices: [{ delta: {}, finish_reason: 'stop' }],
+      usage: { prompt_tokens: tin, completion_tokens: tout },
+    })}\n\n` +
+    'data: [DONE]\n\n'
+  );
+}
+
 beforeEach(async () => {
   await env.CONFIG.put('config', JSON.stringify(cfg()));
   // fresh DO state per test: unique session-independent reset via burn to zero is not
@@ -171,6 +182,44 @@ describe('M2 Durable Object ledger', () => {
     expect(text).toContain('rescued');
     expect(text).toContain('message_stop');
   }, 15_000);
+
+  it('records token usage per route and per-provider daily totals', async () => {
+    // non-stream: usage lands with the outcome report
+    fetchMock
+      .get('https://openrouter.ai')
+      .intercept({ path: '/api/v1/chat/completions', method: 'POST' })
+      .reply(200, {
+        choices: [{ message: { role: 'assistant', content: 'hi' }, finish_reason: 'stop' }],
+        usage: { prompt_tokens: 120, completion_tokens: 45 },
+      });
+    await SELF.fetch('https://kompass.test/v1/messages', {
+      method: 'POST',
+      headers: AUTH,
+      body: msgBody(),
+    });
+    // stream: usage attaches at stream end
+    fetchMock
+      .get('https://openrouter.ai')
+      .intercept({ path: '/api/v1/chat/completions', method: 'POST' })
+      .reply(200, openaiSSEWithUsage('streamed', 200, 80), {
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    const sres = await SELF.fetch('https://kompass.test/v1/messages', {
+      method: 'POST',
+      headers: AUTH,
+      body: msgBody({ stream: true }),
+    });
+    await sres.text(); // drain the stream so onFinal fires
+
+    const status = (await (
+      await SELF.fetch('https://kompass.test/status', { headers: AUTH })
+    ).json()) as any;
+    const nonStream = status.routes.find((r: any) => r.tin === 120);
+    expect(nonStream).toMatchObject({ tin: 120, tout: 45, ok: true });
+    const streamed = status.routes.find((r: any) => r.tin === 200);
+    expect(streamed).toMatchObject({ tin: 200, tout: 80, ok: true });
+    expect(status.providers.openrouter.tokens_today).toEqual({ in: 320, out: 125 });
+  });
 
   it('sticky release endpoint works', async () => {
     const res = await SELF.fetch('https://kompass.test/session/release', {

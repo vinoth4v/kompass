@@ -28,6 +28,7 @@ export interface RouteAttempt {
   entry: string;
   status: number | string;
   detail?: string;
+  usage?: { input_tokens: number; output_tokens: number };
 }
 
 export interface RouteOutcome {
@@ -149,6 +150,7 @@ async function tryChainEntry(
   body: AnthropicRequest,
   attempts: RouteAttempt[],
   privacySensitive = false,
+  onStreamUsage?: (usage: { input_tokens: number; output_tokens: number }) => void,
 ): Promise<Response | null> {
   const { provider, model } = parseChainEntry(entry);
   const p = cfg.providers[provider];
@@ -198,18 +200,18 @@ async function tryChainEntry(
       }
       const stream =
         p.kind === 'gemini'
-          ? geminiStreamToAnthropicStream(resilient, body.model)
-          : openAIStreamToAnthropicStream(resilient, body.model);
+          ? geminiStreamToAnthropicStream(resilient, body.model, onStreamUsage)
+          : openAIStreamToAnthropicStream(resilient, body.model, onStreamUsage);
       attempts.push({ entry, status: 200 });
       return new Response(stream, { headers: SSE_HEADERS });
     }
 
     const json = await upstream.json();
-    attempts.push({ entry, status: 200 });
     const translated =
       p.kind === 'gemini'
         ? geminiToAnthropic(json as GeminiResponse, body.model)
         : openAIToAnthropic(json as OpenAIResponse, body.model);
+    attempts.push({ entry, status: 200, usage: translated.usage });
     return Response.json(translated);
   } catch (e) {
     const timedOut = e instanceof DOMException && e.name === 'TimeoutError';
@@ -270,7 +272,26 @@ export async function routeRequest(
         console.log(`DO reserve failed, proceeding unmetered: ${String(e)}`);
       }
     }
-    const res = await tryChainEntry(env, cfg, entry, body, attempts, ctx.privacySensitive);
+    // Streamed responses learn token usage only at stream end (after this handler
+    // returned) — attach it to the route record then; waitUntil keeps us alive.
+    const onStreamUsage = ctx.stub
+      ? (usage: { input_tokens: number; output_tokens: number }) => {
+          ctx.waitUntil(
+            ctx
+              .stub!.attachUsage(entry, usage)
+              .catch((e) => console.log(`usage attach failed: ${String(e)}`)),
+          );
+        }
+      : undefined;
+    const res = await tryChainEntry(
+      env,
+      cfg,
+      entry,
+      body,
+      attempts,
+      ctx.privacySensitive,
+      onStreamUsage,
+    );
     const last = attempts[attempts.length - 1];
     if (ctx.stub) {
       // Awaited (not waitUntil): a same-colo DO roundtrip is ~1ms and keeps
@@ -282,6 +303,7 @@ export async function routeRequest(
           lane,
           ms: Date.now() - t0,
           detail: res === null ? last?.detail?.slice(0, 120) : undefined,
+          usage: last?.usage,
         })
         .catch((e) => console.log(`DO report failed: ${String(e)}`));
     }
