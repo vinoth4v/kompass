@@ -5,13 +5,23 @@
 // reach megabytes, and the free Workers plan allows ~10ms CPU per request.
 import type { RouterConfig } from './config';
 
-/** Minimal glob → RegExp source: '*' matches within a path segment, '**' across segments. */
+/**
+ * Minimal glob → RegExp source: '*' matches within a path segment, '**' across
+ * segments. CRITICAL: never emit unbounded `.*` — a leading `.*` makes .test()
+ * O(n²) via backtracking, which alone blew the 10ms CPU budget on ~100KB Claude
+ * Code payloads (the original error-1102 trigger). Leading/trailing globstars are
+ * redundant for an unanchored search and are stripped; interior ones become a
+ * bounded character class that cannot cross whitespace or JSON string quotes.
+ */
 export function globToRegExpSource(glob: string): string {
-  return glob
+  let g = glob;
+  if (g.startsWith('**/')) g = g.slice(2); // '**/x' → '/x' (unanchored search does the rest)
+  if (g.endsWith('/**')) g = g.slice(0, -2); // 'x/**' → 'x/'
+  return g
     .replace(/[.+^${}()|[\]\\]/g, '\\$&')
     .replaceAll('**', ' ')
     .replaceAll('*', '[^/\\s"\']*')
-    .replaceAll(' ', '.*')
+    .replaceAll(' ', '[^\\s"\']*')
     .replaceAll('?', '.');
 }
 
