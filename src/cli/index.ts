@@ -109,7 +109,7 @@ async function status() {
   }
   console.log(`Last ${d.routes.length} routes`);
   for (const r of d.routes.slice(0, 50)) {
-    const time = new Date(r.ts).toISOString().slice(11, 19);
+    const time = new Date(r.ts).toLocaleTimeString([], { hour12: false });
     const tok = r.tin !== undefined ? ` ${fmtTok(r.tin)}→${fmtTok(r.tout)} tok` : '';
     console.log(
       `  ${time} ${r.ok ? '✓' : '✗'} ${r.lane.padEnd(8)} ${r.entry}${r.ms !== undefined ? ` ${r.ms}ms` : ''}${tok}${r.detail ? `  [${r.detail}]` : ''}`,

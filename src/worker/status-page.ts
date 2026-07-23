@@ -77,7 +77,9 @@ function render(d) {
   h += '<h2>Last ' + d.routes.length + ' routes</h2><table><tr><th>time</th><th>lane</th><th>model</th><th>ok</th><th>ms</th><th>tokens in/out</th><th>detail</th></tr>';
   for (const r of d.routes) {
     const tok = r.tin !== undefined ? fmtTok(r.tin) + ' / ' + fmtTok(r.tout) : '';
-    h += '<tr><td>' + new Date(r.ts).toISOString().slice(11, 19) + '</td><td>' + esc(r.lane) + '</td><td>' + esc(r.entry) + '</td>' +
+    // browser-local time, not UTC
+    const t = new Date(r.ts).toLocaleTimeString([], { hour12: false });
+    h += '<tr><td>' + t + '</td><td>' + esc(r.lane) + '</td><td>' + esc(r.entry) + '</td>' +
          '<td class="' + (r.ok ? 'ok' : 'bad') + '">' + (r.ok ? '✓' : '✗') + '</td><td>' + esc(r.ms ?? '') + '</td><td>' + tok + '</td><td>' + esc(r.detail ?? '') + '</td></tr>';
   }
   h += '</table>';
