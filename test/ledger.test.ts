@@ -183,6 +183,35 @@ describe('M2 Durable Object ledger', () => {
     expect(text).toContain('message_stop');
   }, 15_000);
 
+  it('a 200 stream with no content (role-only then DONE) falls through to the next model', async () => {
+    // the dataforge-local bug: provider streams "success" with zero content and the
+    // client receives a finished-looking empty turn → session silently stops.
+    fetchMock
+      .get('https://openrouter.ai')
+      .intercept({ path: '/api/v1/chat/completions', method: 'POST' })
+      .reply(
+        200,
+        `data: ${JSON.stringify({ choices: [{ delta: { role: 'assistant' } }] })}\n\n` +
+          'data: [DONE]\n\n',
+        { headers: { 'content-type': 'text/event-stream' } },
+      );
+    fetchMock
+      .get('https://integrate.api.nvidia.com')
+      .intercept({ path: '/v1/chat/completions', method: 'POST' })
+      .reply(200, openaiSSE('rescued-from-empty'), {
+        headers: { 'content-type': 'text/event-stream' },
+      });
+    const res = await SELF.fetch('https://kompass.test/v1/messages', {
+      method: 'POST',
+      headers: AUTH,
+      body: msgBody({ stream: true }),
+    });
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toContain('rescued-from-empty');
+    expect(text).toContain('message_stop');
+  }, 15_000);
+
   it('records token usage per route and per-provider daily totals', async () => {
     // non-stream: usage lands with the outcome report
     fetchMock

@@ -84,44 +84,100 @@ function callUpstream(
   });
 }
 
+/** Does this SSE data payload carry actual model output? */
+function frameHasContent(payload: string, kind: 'openai' | 'gemini'): boolean | 'error' {
+  try {
+    const j = JSON.parse(payload);
+    if (j.error) return 'error';
+    if (kind === 'gemini') {
+      const parts = j.candidates?.[0]?.content?.parts;
+      return Array.isArray(parts) && parts.length > 0;
+    }
+    const d = j.choices?.[0]?.delta;
+    return Boolean(
+      d && (d.content || d.reasoning || d.reasoning_content || (d.tool_calls?.length ?? 0) > 0),
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
- * Wait for the first chunk (so a dead upstream still falls back to the next model),
- * then hand off a stream that closes gracefully on mid-stream upstream errors —
- * the SSE transform's flush() then emits message_delta/message_stop, so the client
- * always sees a well-formed Anthropic stream even if the provider dies mid-answer.
+ * Commit to a provider's stream only once it produces a *content* frame — a 200
+ * whose stream dies, errors, or ends empty before any content falls through to the
+ * next model instead of reaching the client as a "finished" empty assistant turn
+ * (observed live: Claude Code sessions silently stopping on 0-token responses).
+ * After content starts, mid-stream death closes gracefully (the SSE transform's
+ * flush emits message_delta/message_stop) and `onMidStreamError` lets the caller
+ * cool the model down + break stickiness so the next turn re-routes.
  */
-export async function resilientFirstChunkStream(
+export async function gateStreamOnContent(
   body: ReadableStream<Uint8Array>,
+  kind: 'openai' | 'gemini',
   timeoutMs = FIRST_CHUNK_TIMEOUT_MS,
+  onMidStreamError?: () => void,
 ): Promise<ReadableStream<Uint8Array> | null> {
   const reader = body.getReader();
-  let first: ReadableStreamReadResult<Uint8Array>;
+  const decoder = new TextDecoder();
+  const buffered: Uint8Array[] = [];
+  let text = '';
+  let lineStart = 0;
+  const deadline = Date.now() + timeoutMs;
+
   try {
-    first = await Promise.race([
-      reader.read(),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('first-chunk timeout')), timeoutMs),
-      ),
-    ]);
+    scan: for (;;) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new Error('no content before timeout');
+      const next = await Promise.race([
+        reader.read(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('no content before timeout')), remaining),
+        ),
+      ]);
+      if (next.done) {
+        console.log('upstream stream ended with no content — failing over');
+        return null;
+      }
+      buffered.push(next.value);
+      text += decoder.decode(next.value, { stream: true });
+      let idx: number;
+      while ((idx = text.indexOf('\n', lineStart)) !== -1) {
+        const line = text.slice(lineStart, idx).replace(/\r$/, '');
+        lineStart = idx + 1;
+        if (!line.startsWith('data:')) continue;
+        const payload = line.slice(5).trim();
+        if (payload === '[DONE]') {
+          console.log('upstream sent [DONE] before any content — failing over');
+          return null;
+        }
+        const has = frameHasContent(payload, kind);
+        if (has === 'error') {
+          console.log(`upstream in-stream error frame: ${payload.slice(0, 200)} — failing over`);
+          return null;
+        }
+        if (has) break scan;
+      }
+    }
   } catch (e) {
-    console.log(`upstream first-chunk failure: ${String(e)}`);
+    console.log(`upstream content-gate failure: ${String(e)}`);
     reader.cancel().catch(() => {});
     return null;
   }
-  if (first.done) return null; // empty body → treat as provider failure
 
-  const firstValue = first.value;
+  let i = 0;
   return new ReadableStream<Uint8Array>({
-    start(c) {
-      c.enqueue(firstValue);
-    },
-    async pull(c) {
+    pull: async (c) => {
+      if (i < buffered.length) {
+        c.enqueue(buffered[i++]!);
+        return;
+      }
       try {
         const { done, value } = await reader.read();
         if (done) c.close();
         else c.enqueue(value);
       } catch (e) {
         console.log(`upstream mid-stream error (graceful close): ${String(e)}`);
+        onMidStreamError?.();
         c.close();
       }
     },
@@ -151,6 +207,7 @@ async function tryChainEntry(
   attempts: RouteAttempt[],
   privacySensitive = false,
   onStreamUsage?: (usage: { input_tokens: number; output_tokens: number }) => void,
+  onMidStreamError?: () => void,
 ): Promise<Response | null> {
   const { provider, model } = parseChainEntry(entry);
   const p = cfg.providers[provider];
@@ -193,15 +250,20 @@ async function tryChainEntry(
         attempts.push({ entry, status: 'error', detail: 'no body' });
         return null;
       }
-      const resilient = await resilientFirstChunkStream(upstream.body);
-      if (!resilient) {
-        attempts.push({ entry, status: 'first-chunk', detail: 'no data before timeout' });
+      const gated = await gateStreamOnContent(
+        upstream.body,
+        p.kind,
+        FIRST_CHUNK_TIMEOUT_MS,
+        onMidStreamError,
+      );
+      if (!gated) {
+        attempts.push({ entry, status: 'first-chunk', detail: 'no content before timeout/EOF' });
         return null;
       }
       const stream =
         p.kind === 'gemini'
-          ? geminiStreamToAnthropicStream(resilient, body.model, onStreamUsage)
-          : openAIStreamToAnthropicStream(resilient, body.model, onStreamUsage);
+          ? geminiStreamToAnthropicStream(gated, body.model, onStreamUsage)
+          : openAIStreamToAnthropicStream(gated, body.model, onStreamUsage);
       attempts.push({ entry, status: 200 });
       return new Response(stream, { headers: SSE_HEADERS });
     }
@@ -283,6 +345,23 @@ export async function routeRequest(
           );
         }
       : undefined;
+    // A stream dying AFTER content started can't be re-routed (Anthropic bytes are
+    // already flushed) — but cool the model down and break stickiness so the very
+    // next turn routes elsewhere instead of looping on a broken provider.
+    const onMidStreamError = ctx.stub
+      ? () => {
+          ctx.waitUntil(
+            ctx
+              .stub!.reportOutcome(entry, false, {
+                kind: 'stream-error',
+                sessionId: ctx.sessionId,
+                lane,
+                detail: 'died mid-stream after content started',
+              })
+              .catch((e) => console.log(`mid-stream report failed: ${String(e)}`)),
+          );
+        }
+      : undefined;
     const res = await tryChainEntry(
       env,
       cfg,
@@ -291,6 +370,7 @@ export async function routeRequest(
       attempts,
       ctx.privacySensitive,
       onStreamUsage,
+      onMidStreamError,
     );
     const last = attempts[attempts.length - 1];
     if (ctx.stub) {

@@ -187,6 +187,12 @@ export class KompassState extends DurableObject {
       }
     } else {
       await this.ctx.storage.put(`cool:${entry}`, now + COOLDOWN_MS);
+      // If this session was stuck to the failing model, unstick it so the next
+      // turn re-plans instead of looping on a broken provider.
+      if (opts.sessionId) {
+        const cell = await this.ctx.storage.get<StickyCell>(`sticky:${opts.sessionId}`);
+        if (cell?.entry === entry) await this.ctx.storage.delete(`sticky:${opts.sessionId}`);
+      }
     }
     const routes = (await this.ctx.storage.get<RouteRecord[]>('routes')) ?? [];
     routes.push({
