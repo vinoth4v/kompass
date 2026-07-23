@@ -1,20 +1,9 @@
 import { Hono } from 'hono';
-import type { AnthropicRequest, OpenAIResponse } from '../adapters/types';
-import {
-  anthropicToOpenAI,
-  openAIStreamToAnthropicStream,
-  openAIToAnthropic,
-} from '../adapters/openai';
+import type { AnthropicRequest } from '../adapters/types';
 import { bearerAuth } from './auth';
+import { CONFIG_KV_KEY, loadConfig, validateConfig } from './config';
 import type { Env } from './env';
-
-// M0 bootstrap exception (BUILD_PLAN §6.5): single hardcoded model, replaced by the
-// KV registry in M1. Slug verified live against GET openrouter.ai/api/v1/models
-// on 2026-07-23 (1 active endpoint). Planned fallback qwen/qwen3-coder:free was
-// dead-listed; live substitute chosen from the roster.
-const M0_MODEL = 'poolside/laguna-s-2.1:free';
-const M0_FALLBACK_MODEL = 'poolside/laguna-xs-2.1:free';
-const OPENROUTER_BASE = 'https://openrouter.ai/api/v1';
+import { routeRequest } from './router';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -22,62 +11,66 @@ app.get('/healthz', (c) => c.json({ ok: true, service: 'kompass' }));
 
 app.use('*', bearerAuth);
 
+function anthropicError(type: string, message: string, status: number): Response {
+  return new Response(JSON.stringify({ type: 'error', error: { type, message } }), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
 app.post('/v1/messages', async (c) => {
   const body = (await c.req.json()) as AnthropicRequest;
-  if (!c.env.OPENROUTER_API_KEY) {
-    return c.json(
-      { type: 'error', error: { type: 'api_error', message: 'OPENROUTER_API_KEY not configured' } },
-      500,
-    );
+  const cfg = await loadConfig(c.env.CONFIG);
+  if (!cfg) {
+    return anthropicError('api_error', 'no config in KV — run `kompass config push`', 503);
   }
 
-  for (const model of [M0_MODEL, M0_FALLBACK_MODEL]) {
-    const openaiReq = anthropicToOpenAI(body, model);
-    const upstream = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${c.env.OPENROUTER_API_KEY}`,
-        'content-type': 'application/json',
-        'http-referer': 'https://github.com/vinoth4v/kompass',
-        'x-title': 'Kompass',
-      },
-      body: JSON.stringify(openaiReq),
-    });
+  // Test/debug override: force a specific "provider/model" chain entry.
+  const forced = c.req.header('x-kompass-model') ?? undefined;
 
-    if (!upstream.ok) {
-      const errText = await upstream.text();
-      console.log(`upstream ${model} -> ${upstream.status}: ${errText.slice(0, 300)}`);
-      continue; // try fallback
-    }
+  // Lane selection: M3 adds the dispatcher; until then everything rides the default lane.
+  const lane = cfg.default_lane;
 
-    if (body.stream) {
-      if (!upstream.body) continue;
-      return new Response(openAIStreamToAnthropicStream(upstream.body, body.model), {
-        headers: {
-          'content-type': 'text/event-stream; charset=utf-8',
-          'cache-control': 'no-cache',
-        },
-      });
-    }
-    const json = (await upstream.json()) as OpenAIResponse;
-    return c.json(openAIToAnthropic(json, body.model));
+  const outcome = await routeRequest(c.env, cfg, lane, body, forced);
+  if (outcome.response) {
+    console.log(JSON.stringify({ route: outcome.used, lane, attempts: outcome.attempts.length }));
+    return outcome.response;
   }
-
-  // 529 (Anthropic "overloaded") is outside Hono's typed status union — build the Response directly.
-  return new Response(
-    JSON.stringify({
-      type: 'error',
-      error: { type: 'overloaded_error', message: 'all upstream models failed' },
-    }),
-    { status: 529, headers: { 'content-type': 'application/json' } },
+  console.log(JSON.stringify({ route: null, lane, attempts: outcome.attempts }));
+  return anthropicError(
+    'overloaded_error',
+    `all chain entries failed: ${outcome.attempts.map((a) => `${a.entry}→${a.status}`).join(', ')}`,
+    529,
   );
 });
 
-// Claude Code probes this for context tracking; a cheap estimate keeps it happy.
 app.post('/v1/messages/count_tokens', async (c) => {
   const body = (await c.req.json()) as AnthropicRequest;
   const text = JSON.stringify(body.messages) + JSON.stringify(body.system ?? '');
   return c.json({ input_tokens: Math.ceil(text.length / 4) });
+});
+
+// Hot-reload: the CLI compiles config/*.yaml → JSON and POSTs it here (SPEC P0 #4).
+app.post('/config', async (c) => {
+  let candidate: unknown;
+  try {
+    candidate = await c.req.json();
+  } catch {
+    return anthropicError('invalid_request_error', 'config body must be JSON', 400);
+  }
+  try {
+    validateConfig(candidate);
+  } catch (e) {
+    return anthropicError('invalid_request_error', `invalid config: ${String(e)}`, 400);
+  }
+  await c.env.CONFIG.put(CONFIG_KV_KEY, JSON.stringify(candidate));
+  return c.json({ ok: true });
+});
+
+app.get('/config', async (c) => {
+  const cfg = await loadConfig(c.env.CONFIG);
+  if (!cfg) return anthropicError('not_found_error', 'no config pushed yet', 404);
+  return c.json(cfg);
 });
 
 export default app;

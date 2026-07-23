@@ -1,0 +1,44 @@
+# Kompass provider registry. All model IDs live here or in lanes.yaml — never in code
+# (BUILD_PLAN §6.5). Limits: verified live where possible, else conservative + TODO(verify).
+providers:
+  openrouter:
+    kind: openai
+    base_url: https://openrouter.ai/api/v1
+    key_env: OPENROUTER_API_KEY
+    # OpenRouter free endpoints may train on prompts; treat as training-on-data for
+    # the M5 privacy guard (conservative; per docs some :free endpoints train).
+    trains_on_data: true
+    # Verified 2026-07-23 at openrouter.ai/docs/api-reference/limits, free-tier key
+    # (<10 credits purchased): 20 RPM, 50 RPD. Rises to 1000 RPD with 10+ credits.
+    limits: { rpm: 20, rpd: 50 }
+
+  nvidia:
+    kind: openai
+    base_url: https://integrate.api.nvidia.com/v1
+    key_env: NVIDIA_API_KEY
+    trains_on_data: false
+    # TODO(verify): NVIDIA Build commonly documents 40 RPM per key; RPD not published.
+    # Conservative per-key values; per-key vs per-model is an open SPEC §8 question.
+    limits: { rpm: 40, rpd: 5000 }
+
+  google:
+    kind: gemini
+    base_url: https://generativelanguage.googleapis.com/v1beta
+    key_env: GOOGLE_AI_KEY
+    trains_on_data: false
+    # TODO(verify): ai.google.dev no longer publishes free-tier numbers (dashboard-only,
+    # needs browser). Conservative defaults; per-model overrides below.
+    limits: { rpm: 10, rpd: 500 }
+    model_limits:
+      gemini-3.1-pro-preview: { rpm: 2, rpd: 50 }
+
+  groq:
+    kind: openai
+    base_url: https://api.groq.com/openai/v1
+    key_env: GROQ_API_KEY
+    # No GROQ_API_KEY in secrets/.secrets.json (BLOCKERS.md) — ships disabled; flip to
+    # true and `kompass config push` once a key exists. Model slugs unverifiable
+    # without a key (guardrail §6.6), so no groq entries in lanes.yaml yet.
+    enabled: false
+    trains_on_data: false
+    limits: { rpm: 30, rpd: 1000 }

@@ -4,4 +4,5 @@ export interface Env {
   NVIDIA_API_KEY?: string;
   GOOGLE_AI_KEY?: string;
   GROQ_API_KEY?: string;
+  CONFIG: KVNamespace;
 }

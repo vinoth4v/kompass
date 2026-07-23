@@ -7,9 +7,12 @@ export default defineWorkersConfig({
       workers: {
         wrangler: { configPath: './wrangler.jsonc' },
         miniflare: {
+          kvNamespaces: ['CONFIG'],
           bindings: {
             KOMPASS_BEARER: 'test-bearer-token',
             OPENROUTER_API_KEY: 'test-openrouter-key',
+            GOOGLE_AI_KEY: 'test-google-key',
+            NVIDIA_API_KEY: 'test-nvidia-key',
           },
         },
       },

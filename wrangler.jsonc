@@ -6,4 +6,10 @@
   "observability": {
     "enabled": true,
   },
+  "kv_namespaces": [
+    {
+      "binding": "CONFIG",
+      "id": "45e10070376d4b8986fbb559ed3ecef9",
+    },
+  ],
 }

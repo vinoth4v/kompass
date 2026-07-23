@@ -109,11 +109,13 @@ const WEATHER_TOOL = {
   },
 };
 
-async function testToolRoundTrip() {
+async function testToolRoundTrip(forced?: string) {
+  const label = forced ? `tool round-trip [${forced}]` : 'tool round-trip';
+  const headers = forced ? { ...HEADERS, 'x-kompass-model': forced } : HEADERS;
   // Turn 1: model should ask to call get_weather (streamed, like Claude Code does).
   const res1 = await fetch(`${BASE_URL}/v1/messages`, {
     method: 'POST',
-    headers: HEADERS,
+    headers,
     body: JSON.stringify({
       model: 'claude-sonnet-4-5',
       max_tokens: 256,
@@ -123,11 +125,7 @@ async function testToolRoundTrip() {
     }),
   });
   if (res1.status !== 200) {
-    check(
-      'tool round-trip',
-      false,
-      `turn1 HTTP ${res1.status}: ${(await res1.text()).slice(0, 200)}`,
-    );
+    check(label, false, `turn1 HTTP ${res1.status}: ${(await res1.text()).slice(0, 200)}`);
     return;
   }
   const events = await readSSE(res1);
@@ -135,7 +133,7 @@ async function testToolRoundTrip() {
     (e) => e.event === 'content_block_start' && e.data.content_block?.type === 'tool_use',
   );
   if (!toolStart) {
-    check('tool round-trip', false, 'no tool_use block in turn 1');
+    check(label, false, 'no tool_use block in turn 1');
     return;
   }
   const toolId = toolStart.data.content_block.id;
@@ -148,14 +146,14 @@ async function testToolRoundTrip() {
   try {
     args = JSON.parse(argsJson || '{}');
   } catch {
-    check('tool round-trip', false, `unparsable tool args: ${argsJson.slice(0, 100)}`);
+    check(label, false, `unparsable tool args: ${argsJson.slice(0, 100)}`);
     return;
   }
 
   // Turn 2: return a tool_result, expect a final text answer mentioning the value.
   const res2 = await fetch(`${BASE_URL}/v1/messages`, {
     method: 'POST',
-    headers: HEADERS,
+    headers,
     body: JSON.stringify({
       model: 'claude-sonnet-4-5',
       max_tokens: 256,
@@ -176,11 +174,7 @@ async function testToolRoundTrip() {
     }),
   });
   if (res2.status !== 200) {
-    check(
-      'tool round-trip',
-      false,
-      `turn2 HTTP ${res2.status}: ${(await res2.text()).slice(0, 200)}`,
-    );
+    check(label, false, `turn2 HTTP ${res2.status}: ${(await res2.text()).slice(0, 200)}`);
     return;
   }
   const final = (await res2.json()) as any;
@@ -189,7 +183,7 @@ async function testToolRoundTrip() {
     .map((b: any) => b.text)
     .join(' ');
   check(
-    'tool round-trip',
+    label,
     toolName === 'get_weather' && typeof args.city === 'string' && /21|sunny/i.test(finalText),
     `tool=${toolName}(${JSON.stringify(args)}), final="${finalText.slice(0, 80)}"`,
   );
@@ -199,6 +193,9 @@ console.log(`Smoke target: ${BASE_URL}`);
 await testAuth();
 await testStreaming();
 await testToolRoundTrip();
+// M1 acceptance: identical toy tool-call task on one OpenAI-format and one Gemini model.
+const adapterTargets = (process.env.SMOKE_ADAPTER_MODELS ?? '').split(',').filter(Boolean);
+for (const target of adapterTargets) await testToolRoundTrip(target);
 if (failures > 0) {
   console.error(`\n${failures} smoke check(s) FAILED`);
   process.exit(1);

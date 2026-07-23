@@ -1,0 +1,36 @@
+# Kompass lane table. Chain entries are "<provider>/<model>" (model may itself contain
+# slashes, e.g. openrouter/poolside/laguna-s-2.1:free — split on FIRST slash only).
+# All slugs verified live 2026-07-23:
+#   - OpenRouter: GET openrouter.ai/api/v1/models (:free roster, tools=true)
+#   - NVIDIA:     GET integrate.api.nvidia.com/v1/models
+#   - Google:     GET generativelanguage.googleapis.com/v1beta/models
+# allow_paid=false (guardrail §6.8): with a free-tier OpenRouter key only :free slugs
+# are callable; NVIDIA Build and AI Studio keys are unbilled free-tier keys.
+default_lane: AGENTIC
+allow_paid: false
+
+lanes:
+  FAST:
+    - google/gemini-3.5-flash-lite
+    - openrouter/poolside/laguna-xs-2.1:free
+    - nvidia/nvidia/llama-3.3-nemotron-super-49b-v1
+
+  SIMPLE:
+    - openrouter/poolside/laguna-xs-2.1:free
+    - nvidia/z-ai/glm-5.2
+    - google/gemini-3.5-flash-lite
+
+  AGENTIC:
+    - openrouter/poolside/laguna-s-2.1:free
+    - nvidia/moonshotai/kimi-k2.6
+    - openrouter/poolside/laguna-xs-2.1:free
+    - nvidia/z-ai/glm-5.2
+
+  HARD:
+    - nvidia/deepseek-ai/deepseek-v4-pro
+    - google/gemini-3.1-pro-preview
+    - openrouter/poolside/laguna-s-2.1:free
+
+  LONGCTX:
+    - google/gemini-3.6-flash
+    - openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
