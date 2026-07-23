@@ -124,3 +124,42 @@ describe('geminiToAnthropic', () => {
     expect(geminiToAnthropic({} as GeminiResponse, 'm').content).toEqual([]);
   });
 });
+
+describe('anthropicToGemini document blocks', () => {
+  it('maps a base64 PDF document to inlineData', () => {
+    const out = anthropicToGemini({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 100,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0=' },
+            },
+            { type: 'text', text: 'classify this' },
+          ],
+        },
+      ],
+    });
+    expect(out.contents[0]?.parts).toEqual([
+      { inlineData: { mimeType: 'application/pdf', data: 'JVBERi0=' } },
+      { text: 'classify this' },
+    ]);
+  });
+
+  it('maps a plain-text document source to a text part', () => {
+    const out = anthropicToGemini({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 100,
+      messages: [
+        {
+          role: 'user',
+          content: [{ type: 'document', source: { type: 'text', data: 'raw text' } }],
+        },
+      ],
+    });
+    expect(out.contents[0]?.parts).toEqual([{ text: 'raw text' }]);
+  });
+});

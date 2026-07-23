@@ -15,6 +15,18 @@ export interface AnthropicImageBlock {
   };
 }
 
+export interface AnthropicDocumentBlock {
+  type: 'document';
+  source: {
+    /** base64 = binary (PDF); text = plain-text source; url is not forwarded. */
+    type: 'base64' | 'url' | 'text';
+    media_type?: string;
+    data?: string;
+    url?: string;
+  };
+  title?: string;
+}
+
 export interface AnthropicToolUseBlock {
   type: 'tool_use';
   id: string;
@@ -38,6 +50,7 @@ export interface AnthropicThinkingBlock {
 export type AnthropicContentBlock =
   | AnthropicTextBlock
   | AnthropicImageBlock
+  | AnthropicDocumentBlock
   | AnthropicToolUseBlock
   | AnthropicToolResultBlock
   | AnthropicThinkingBlock;

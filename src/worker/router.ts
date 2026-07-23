@@ -133,6 +133,17 @@ function failureKind(status: number | string): FailureKind {
   return 'stream-error';
 }
 
+/** True when any message carries an image/document block — needs a multimodal model. */
+export function hasMultimodalBlocks(body: AnthropicRequest): boolean {
+  for (const m of body.messages) {
+    if (typeof m.content === 'string') continue;
+    for (const b of m.content) {
+      if (b.type === 'image' || b.type === 'document') return true;
+    }
+  }
+  return false;
+}
+
 async function tryChainEntry(
   env: Env,
   cfg: RouterConfig,
@@ -140,6 +151,7 @@ async function tryChainEntry(
   body: AnthropicRequest,
   attempts: RouteAttempt[],
   privacySensitive = false,
+  multimodal = false,
 ): Promise<Response | null> {
   const { provider, model } = parseChainEntry(entry);
   const p = cfg.providers[provider];
@@ -154,6 +166,12 @@ async function tryChainEntry(
   // M5 privacy guard: sensitive content never reaches providers that train on inputs.
   if (privacySensitive && p.trains_on_data === true) {
     attempts.push({ entry, status: 'skipped-privacy', detail: 'trains_on_data provider' });
+    return null;
+  }
+  // Image/PDF blocks: text-only providers silently ignore them and answer blind —
+  // skip ahead to a provider whose models can actually read the attachment.
+  if (multimodal && p.multimodal !== true) {
+    attempts.push({ entry, status: 'skipped-multimodal', detail: 'text-only provider' });
     return null;
   }
   const key = providerKey(env, p);
@@ -223,6 +241,7 @@ export async function routeRequest(
   const chain = ctx.forced ? [ctx.forced] : resolveLaneChain(cfg, lane);
   const spreadTop = ctx.forced ? 1 : resolveLaneSpreadTop(cfg, lane);
   const attempts: RouteAttempt[] = [];
+  const multimodal = hasMultimodalBlocks(body);
 
   const limitsByEntry: Record<string, { key: string; limits: ReserveLimits }> = {};
   for (const entry of chain) {
@@ -258,7 +277,15 @@ export async function routeRequest(
         console.log(`DO reserve failed, proceeding unmetered: ${String(e)}`);
       }
     }
-    const res = await tryChainEntry(env, cfg, entry, body, attempts, ctx.privacySensitive);
+    const res = await tryChainEntry(
+      env,
+      cfg,
+      entry,
+      body,
+      attempts,
+      ctx.privacySensitive,
+      multimodal,
+    );
     const last = attempts[attempts.length - 1];
     if (ctx.stub) {
       // Awaited (not waitUntil): a same-colo DO roundtrip is ~1ms and keeps

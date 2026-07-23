@@ -85,6 +85,17 @@ export function anthropicToOpenAI(req: AnthropicRequest, model: string): OpenAIR
             });
           } else if (b.type === 'image' && b.source.type === 'url') {
             parts.push({ type: 'image_url', image_url: { url: b.source.url } });
+          } else if (b.type === 'document' && b.source.type === 'base64' && b.source.data) {
+            // OpenAI/OpenRouter "file" content part — PDFs ride as a data URL.
+            parts.push({
+              type: 'file',
+              file: {
+                filename: b.title ?? 'document.pdf',
+                file_data: `data:${b.source.media_type ?? 'application/pdf'};base64,${b.source.data}`,
+              },
+            });
+          } else if (b.type === 'document' && b.source.type === 'text' && b.source.data) {
+            parts.push({ type: 'text', text: b.source.data });
           }
         }
         const onlyText = parts.every((p) => p.type === 'text');

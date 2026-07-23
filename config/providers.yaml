@@ -39,6 +39,10 @@ providers:
     base_url: https://generativelanguage.googleapis.com/v1beta
     key_env: GOOGLE_AI_KEY
     trains_on_data: false
+    # Gemini reads images AND PDFs natively (inlineData). Requests carrying
+    # image/document blocks skip text-only providers (router: skipped-multimodal)
+    # so the model that answers can actually see the attachment.
+    multimodal: true
     # TODO(verify): ai.google.dev no longer publishes free-tier numbers (dashboard-only,
     # needs browser). Conservative defaults; per-model overrides below.
     limits: { rpm: 10, rpd: 500 }

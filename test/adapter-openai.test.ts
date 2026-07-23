@@ -155,3 +155,55 @@ describe('openAIToAnthropic', () => {
     expect(out.content).toEqual([{ type: 'tool_use', id: 'call_1', name: '', input: {} }]);
   });
 });
+
+describe('anthropicToOpenAI document blocks', () => {
+  it('maps a base64 PDF document to a file content part', () => {
+    const out = anthropicToOpenAI(
+      {
+        model: 'claude-sonnet-4-5',
+        max_tokens: 100,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'document',
+                source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0=' },
+              },
+              { type: 'text', text: 'classify this' },
+            ],
+          },
+        ],
+      },
+      'm',
+    );
+    const content = out.messages[0]?.content as Array<Record<string, unknown>>;
+    expect(content[0]).toEqual({
+      type: 'file',
+      file: { filename: 'document.pdf', file_data: 'data:application/pdf;base64,JVBERi0=' },
+    });
+    expect(content[1]).toEqual({ type: 'text', text: 'classify this' });
+  });
+
+  it('maps a plain-text document source to a text part', () => {
+    const out = anthropicToOpenAI(
+      {
+        model: 'claude-sonnet-4-5',
+        max_tokens: 100,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'document',
+                source: { type: 'text', media_type: 'text/plain', data: 'raw text' },
+              },
+            ],
+          },
+        ],
+      },
+      'm',
+    );
+    expect(out.messages[0]?.content).toBe('raw text');
+  });
+});

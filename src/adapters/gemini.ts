@@ -199,6 +199,19 @@ export function anthropicToGemini(req: AnthropicRequest): GeminiRequest {
               });
             }
             break;
+          case 'document':
+            // Gemini reads PDFs natively as inlineData, same as images.
+            if (b.source.type === 'base64' && b.source.data) {
+              parts.push({
+                inlineData: {
+                  mimeType: b.source.media_type ?? 'application/pdf',
+                  data: b.source.data,
+                },
+              });
+            } else if (b.source.type === 'text' && b.source.data) {
+              parts.push({ text: b.source.data });
+            }
+            break;
           case 'thinking':
             break; // never replay thinking to a different model
         }

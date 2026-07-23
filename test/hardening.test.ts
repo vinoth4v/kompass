@@ -4,6 +4,7 @@ import { SELF, env, fetchMock } from 'cloudflare:test';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { HARD_EXHAUSTED_NOTICE, laneUp, lastTurnHadToolError } from '../src/worker/escalation';
 import { compilePrivacyGuard, globToRegExp, privacyMatch } from '../src/worker/privacy';
+import { hasMultimodalBlocks } from '../src/worker/router';
 import type { AnthropicRequest } from '../src/adapters/types';
 import type { RouterConfig } from '../src/worker/config';
 
@@ -39,6 +40,7 @@ function cfg(): RouterConfig {
         base_url: 'https://integrate.api.nvidia.com/v1',
         key_env: 'NVIDIA_API_KEY',
         trains_on_data: false,
+        multimodal: true,
         limits: { rpm: 100, rpd: 5000 },
       },
     },
@@ -112,7 +114,76 @@ describe('privacy guard (unit)', () => {
   });
 });
 
+describe('multimodal routing (unit)', () => {
+  it('detects image and document blocks; ignores plain text', () => {
+    const base = { model: 'm', max_tokens: 1 };
+    expect(hasMultimodalBlocks({ ...base, messages: [{ role: 'user', content: 'hi' }] })).toBe(
+      false,
+    );
+    expect(
+      hasMultimodalBlocks({
+        ...base,
+        messages: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
+      }),
+    ).toBe(false);
+    expect(
+      hasMultimodalBlocks({
+        ...base,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'document', source: { type: 'base64', data: 'JVBERi0=' } },
+              { type: 'text', text: 'classify' },
+            ],
+          },
+        ],
+      }),
+    ).toBe(true);
+    expect(
+      hasMultimodalBlocks({
+        ...base,
+        messages: [
+          { role: 'user', content: [{ type: 'image', source: { type: 'base64', data: 'x' } }] },
+        ],
+      }),
+    ).toBe(true);
+  });
+});
+
 describe('M5 integration', () => {
+  it('a PDF document block skips text-only providers for a multimodal one', async () => {
+    // only the multimodal (nvidia) interceptor exists — hitting openrouter would throw
+    fetchMock
+      .get('https://integrate.api.nvidia.com')
+      .intercept({ path: '/v1/chat/completions', method: 'POST' })
+      .reply(200, {
+        choices: [{ message: { role: 'assistant', content: 'read it' }, finish_reason: 'stop' }],
+      });
+    const res = await SELF.fetch('https://kompass.test/v1/messages', {
+      method: 'POST',
+      headers: AUTH,
+      body: JSON.stringify({
+        model: 'kompass-simple',
+        max_tokens: 64,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'document',
+                source: { type: 'base64', media_type: 'application/pdf', data: 'JVBERi0=' },
+              },
+              { type: 'text', text: 'what document type is this?' },
+            ],
+          },
+        ],
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as any).content[0].text).toBe('read it');
+  });
+
   it('privacy-sensitive request skips the trains_on_data provider', async () => {
     // only the clean (nvidia) interceptor exists — hitting openrouter would throw
     fetchMock

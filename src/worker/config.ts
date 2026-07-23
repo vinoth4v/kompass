@@ -12,6 +12,10 @@ export interface ProviderConfig {
   key_env: string;
   enabled?: boolean;
   trains_on_data?: boolean;
+  /** Models can read image/document (PDF) content blocks. Default false: text-only
+   *  providers silently ignore such blocks, so requests carrying them skip ahead
+   *  to a multimodal provider instead of answering blind. */
+  multimodal?: boolean;
   limits: ProviderLimits;
   model_limits?: Record<string, ProviderLimits>;
   /** Model-listing endpoint for discovery; defaults to `${base_url}/models`. */

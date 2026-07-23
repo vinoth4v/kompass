@@ -71,9 +71,14 @@ async function handleAnthropic(
   }
 
   const stub = stateStub(c.env);
+  // A pinned lane (x-kompass-lane header or kompass-<lane> model name) skips the
+  // dispatcher entirely — no classifier latency or quota for pre-routed traffic.
+  const pinned = c.req.header('x-kompass-lane') ?? laneOverride;
   // M3 dispatcher: heuristics → cached/live classifier verdict → safe fallback.
-  const verdict = await dispatch(c.env, cfg, body, stub, raw.length);
-  let lane = c.req.header('x-kompass-lane') ?? laneOverride ?? verdict.lane;
+  const verdict = pinned
+    ? { lane: pinned, source: 'forced' as const, ms: 0 }
+    : await dispatch(c.env, cfg, body, stub, raw.length);
+  let lane = verdict.lane;
 
   // Claude Code stamps a stable per-session metadata.user_id — the stickiness key.
   const sessionId = body.metadata?.user_id;
@@ -171,7 +176,9 @@ app.post('/v1/messages', async (c) => {
   } catch {
     return anthropicError('invalid_request_error', 'body must be JSON', 400);
   }
-  return handleAnthropic(c, body, raw);
+  // kompass-<lane> model names pin the lane on the native dialect too (the
+  // OpenAI-dialect ingresses below already do this via routeTranslated).
+  return handleAnthropic(c, body, raw, laneFromModel(body.model));
 });
 
 // ---- OpenAI-compatible ingress (Cursor, Cline, Roo Code, Continue, Aider …) ----
