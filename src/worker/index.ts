@@ -74,6 +74,9 @@ async function handleAnthropic(
   body: AnthropicRequest,
   raw: string,
   laneOverride?: string,
+  // Native Claude Code dialect only: stream text deltas live (router.ts/live.ts).
+  // The OpenAI-dialect ingresses need the complete buffered response to reshape.
+  live = false,
 ): Promise<Response> {
   const cfg = await loadConfig(c.env.CONFIG);
   if (!cfg) {
@@ -131,6 +134,7 @@ async function handleAnthropic(
       sessionId,
       forced: forcedModel,
       privacySensitive,
+      live,
       waitUntil: (p) => c.executionCtx.waitUntil(p),
     });
 
@@ -188,7 +192,7 @@ app.post('/v1/messages', async (c) => {
   }
   // kompass-<lane> model names pin the lane on the native dialect too (the
   // OpenAI-dialect ingresses below already do this via routeTranslated).
-  return handleAnthropic(c, body, raw, laneFromModel(body.model));
+  return handleAnthropic(c, body, raw, laneFromModel(body.model), true);
 });
 
 // ---- OpenAI-compatible ingress (Cursor, Cline, Roo Code, Continue, Aider …) ----

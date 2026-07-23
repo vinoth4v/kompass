@@ -1,16 +1,18 @@
 // Chain resolution + provider dispatch, consulting the Durable Object for
 // quota pre-skip, per-attempt reservation, health cooldowns and stickiness (M2).
 //
-// Streaming design (rewritten 2026-07-23): Kompass ALWAYS calls upstream
-// providers non-streaming and buffers the complete answer server-side before
-// ever writing a byte to the client. Once bytes are forwarded to Claude Code
-// they can't be un-sent — a provider dying mid-generation used to become a
-// client-visible in-stream error, and Claude Code does not reliably auto-retry
-// that (observed live: sessions stopped and needed a manual "continue"). By
-// resolving the full answer first, ANY failure (immediate or mid-generation)
-// is invisible to the client and simply falls through to the next chain entry.
-// The client-facing SSE stream (when the caller asked to stream) is synthesized
-// from the complete, already-successful response via messageToAnthropicSSE.
+// Streaming design (hybrid since 2026-07-23, see live.ts): for the native
+// Claude Code dialect with stream:true, upstream is called streaming and text
+// deltas are forwarded live — but only after the first content token, so any
+// failure before that (bad status, garbled body, timeout, empty stream) still
+// falls through to the next chain entry invisibly. A provider dying after
+// text has been forwarded is closed out gracefully (a valid, short-but-
+// completed turn — never a protocol error needing a manual "continue").
+//
+// Every other path — non-streaming clients, the OpenAI-dialect ingresses, and
+// pure tool-call turns — keeps the original buffer-then-emit behavior: the
+// complete answer is resolved server-side first and the client-facing SSE
+// stream (when asked for) is synthesized via messageToAnthropicSSE.
 import type { AnthropicRequest, AnthropicResponse, OpenAIResponse } from '../adapters/types';
 import { anthropicToOpenAI, openAIToAnthropic } from '../adapters/openai';
 import { anthropicToGemini, geminiToAnthropic, type GeminiResponse } from '../adapters/gemini';
@@ -18,6 +20,7 @@ import type { KompassState, FailureKind, ReserveLimits } from '../do/state';
 import type { ProviderConfig, RouterConfig } from './config';
 import { limitsFor, parseChainEntry, resolveLaneChain, resolveLaneSpreadTop } from './config';
 import type { Env } from './env';
+import { tryLiveEntry, type LiveUsage } from './live';
 
 // Free-tier cold starts (NVIDIA especially) run past 60s — 90s covers that with room.
 const TIMEOUT_MS = 90_000;
@@ -41,6 +44,8 @@ export interface RouteContext {
   forced?: string;
   /** Request content matched the privacy guard → skip trains_on_data providers. */
   privacySensitive?: boolean;
+  /** Native Anthropic dialect: stream text deltas live (see live.ts). */
+  live?: boolean;
   waitUntil: (p: Promise<unknown>) => void;
 }
 
@@ -144,6 +149,12 @@ export function hasMultimodalBlocks(body: AnthropicRequest): boolean {
   return false;
 }
 
+interface EntrySuccess {
+  response: Response;
+  /** Live streams only: usage becomes known when the stream ends. */
+  usageLater?: Promise<LiveUsage>;
+}
+
 async function tryChainEntry(
   env: Env,
   cfg: RouterConfig,
@@ -152,7 +163,8 @@ async function tryChainEntry(
   attempts: RouteAttempt[],
   privacySensitive = false,
   multimodal = false,
-): Promise<Response | null> {
+  live = false,
+): Promise<EntrySuccess | null> {
   const { provider, model } = parseChainEntry(entry);
   const p = cfg.providers[provider];
   if (!p) {
@@ -186,20 +198,50 @@ async function tryChainEntry(
   }
 
   try {
-    const signal = AbortSignal.timeout(TIMEOUT_MS);
-    const upstream = await callUpstream(p, key, body, model, signal);
+    let translated: AnthropicResponse | null = null;
 
-    if (!upstream.ok) {
-      const errText = (await upstream.text()).slice(0, 300);
-      attempts.push({ entry, status: upstream.status, detail: errText });
-      return null;
+    if (live && body.stream === true) {
+      const r = await tryLiveEntry(p, key, body, model);
+      if (r.kind === 'live') {
+        attempts.push({ entry, status: 200 });
+        return { response: r.response, usageLater: r.done };
+      }
+      if (r.kind === 'complete') {
+        translated = r.message;
+      } else if (r.kind === 'json') {
+        translated =
+          p.kind === 'gemini'
+            ? geminiToAnthropic(r.json as GeminiResponse, body.model)
+            : openAIToAnthropic(r.json as OpenAIResponse, body.model);
+      } else {
+        // A non-429 4xx may just mean "this provider rejects streaming
+        // requests" — retry the same entry buffered before giving up on it.
+        const retryBuffered = typeof r.status === 'number' && r.status >= 400 && r.status < 429;
+        attempts.push({
+          entry,
+          status: retryBuffered ? `live-${r.status}` : r.status,
+          detail: r.detail,
+        });
+        if (!retryBuffered) return null;
+      }
     }
 
-    const json = await upstream.json();
-    const translated =
-      p.kind === 'gemini'
-        ? geminiToAnthropic(json as GeminiResponse, body.model)
-        : openAIToAnthropic(json as OpenAIResponse, body.model);
+    if (!translated) {
+      const signal = AbortSignal.timeout(TIMEOUT_MS);
+      const upstream = await callUpstream(p, key, body, model, signal);
+
+      if (!upstream.ok) {
+        const errText = (await upstream.text()).slice(0, 300);
+        attempts.push({ entry, status: upstream.status, detail: errText });
+        return null;
+      }
+
+      const json = await upstream.json();
+      translated =
+        p.kind === 'gemini'
+          ? geminiToAnthropic(json as GeminiResponse, body.model)
+          : openAIToAnthropic(json as OpenAIResponse, body.model);
+    }
 
     // The original dataforge-local bug: a provider can return 200 with a
     // technically-valid but empty completion (no text, no tool_use). Treat
@@ -213,9 +255,11 @@ async function tryChainEntry(
     attempts.push({ entry, status: 200, usage: translated.usage });
 
     if (body.stream) {
-      return new Response(messageToAnthropicSSE(translated), { headers: SSE_HEADERS });
+      return {
+        response: new Response(messageToAnthropicSSE(translated), { headers: SSE_HEADERS }),
+      };
     }
-    return Response.json(translated);
+    return { response: Response.json(translated) };
   } catch (e) {
     const timedOut = e instanceof DOMException && e.name === 'TimeoutError';
     attempts.push({
@@ -285,6 +329,7 @@ export async function routeRequest(
       attempts,
       ctx.privacySensitive,
       multimodal,
+      ctx.live === true,
     );
     const last = attempts[attempts.length - 1];
     if (ctx.stub) {
@@ -300,8 +345,18 @@ export async function routeRequest(
           usage: last?.usage,
         })
         .catch((e) => console.log(`DO report failed: ${String(e)}`));
+      if (res?.usageLater) {
+        // Live streams learn their token counts only at stream end — patch the
+        // ledger and the routes log after the fact, off the response path.
+        const stub = ctx.stub;
+        ctx.waitUntil(
+          res.usageLater
+            .then((u) => stub.recordUsage(entry, u))
+            .catch((e) => console.log(`DO recordUsage failed: ${String(e)}`)),
+        );
+      }
     }
-    if (res) return { response: res, attempts, used: entry };
+    if (res) return { response: res.response, attempts, used: entry };
   }
   return { response: null, attempts };
 }

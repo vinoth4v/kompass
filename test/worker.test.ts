@@ -254,3 +254,130 @@ describe('worker ingress', () => {
     expect(((await res.json()) as any).input_tokens).toBeGreaterThan(0);
   });
 });
+
+describe('live streaming (native dialect, stream:true)', () => {
+  const SSE_HEADERS = { headers: { 'content-type': 'text/event-stream; charset=utf-8' } };
+  const d = (obj: unknown) => `data: ${JSON.stringify(obj)}\n\n`;
+  const interceptA = () =>
+    fetchMock.get('https://openrouter.ai').intercept({
+      path: '/api/v1/chat/completions',
+      method: 'POST',
+      body: (b) => JSON.parse(b as string).model === 'model-a:free',
+    });
+
+  it('streams text deltas live from an SSE upstream', async () => {
+    interceptA().reply(
+      200,
+      d({ choices: [{ delta: { role: 'assistant' } }] }) +
+        d({ choices: [{ delta: { content: 'Hel' } }] }) +
+        d({ choices: [{ delta: { content: 'lo' } }] }) +
+        d({
+          choices: [{ delta: {}, finish_reason: 'stop' }],
+          usage: { prompt_tokens: 5, completion_tokens: 2 },
+        }) +
+        'data: [DONE]\n\n',
+      SSE_HEADERS,
+    );
+    const res = await SELF.fetch('https://kompass.test/v1/messages', {
+      method: 'POST',
+      headers: AUTH,
+      body: msgBody({ stream: true }),
+    });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/event-stream');
+    const txt = await res.text();
+    expect(txt).toContain('"text":"Hel"');
+    expect(txt).toContain('"text":"lo"');
+    expect(txt).toContain('"stop_reason":"end_turn"');
+    expect(txt).toContain('message_stop');
+  });
+
+  it('closes gracefully when the upstream dies mid-stream', async () => {
+    // Stream ends abruptly after one text delta: no finish_reason, no [DONE].
+    interceptA().reply(
+      200,
+      d({ choices: [{ delta: { content: 'partial answer' } }] }),
+      SSE_HEADERS,
+    );
+    const res = await SELF.fetch('https://kompass.test/v1/messages', {
+      method: 'POST',
+      headers: AUTH,
+      body: msgBody({ stream: true }),
+    });
+    expect(res.status).toBe(200);
+    const txt = await res.text();
+    expect(txt).toContain('"text":"partial answer"');
+    // Graceful close: a completed turn, never a client-visible error event.
+    expect(txt).toContain('"stop_reason":"end_turn"');
+    expect(txt).toContain('message_stop');
+    expect(txt).not.toContain('"type":"error"');
+  });
+
+  it('assembles tool calls from streamed fragments into whole blocks', async () => {
+    interceptA().reply(
+      200,
+      d({ choices: [{ delta: { content: 'Let me check.' } }] }) +
+        d({
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  { index: 0, id: 'call_1', function: { name: 'read_file', arguments: '{"pa' } },
+                ],
+              },
+            },
+          ],
+        }) +
+        d({
+          choices: [
+            { delta: { tool_calls: [{ index: 0, function: { arguments: 'th":"a.ts"}' } }] } },
+          ],
+        }) +
+        d({ choices: [{ delta: {}, finish_reason: 'tool_calls' }] }) +
+        'data: [DONE]\n\n',
+      SSE_HEADERS,
+    );
+    const res = await SELF.fetch('https://kompass.test/v1/messages', {
+      method: 'POST',
+      headers: AUTH,
+      body: msgBody({ stream: true }),
+    });
+    expect(res.status).toBe(200);
+    const txt = await res.text();
+    expect(txt).toContain('"name":"read_file"');
+    expect(txt).toContain('path'); // reassembled args reach the client whole
+    expect(txt).toContain('"stop_reason":"tool_use"');
+  });
+
+  it('falls through to the next entry when the stream ends with no content', async () => {
+    const origin = fetchMock.get('https://openrouter.ai');
+    origin
+      .intercept({
+        path: '/api/v1/chat/completions',
+        method: 'POST',
+        body: (b) => JSON.parse(b as string).model === 'model-a:free',
+      })
+      .reply(
+        200,
+        d({ choices: [{ delta: { role: 'assistant' } }] }) + 'data: [DONE]\n\n',
+        SSE_HEADERS,
+      );
+    origin
+      .intercept({
+        path: '/api/v1/chat/completions',
+        method: 'POST',
+        body: (b) => JSON.parse(b as string).model === 'model-b:free',
+      })
+      .reply(200, {
+        choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+      });
+    const res = await SELF.fetch('https://kompass.test/v1/messages', {
+      method: 'POST',
+      headers: AUTH,
+      body: msgBody({ stream: true }),
+    });
+    expect(res.status).toBe(200);
+    const txt = await res.text();
+    expect(txt).toContain('"text":"ok"');
+  });
+});

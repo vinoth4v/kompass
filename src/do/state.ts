@@ -284,6 +284,29 @@ export class KompassState extends DurableObject {
     }
   }
 
+  /**
+   * Late usage report for live-streamed responses (router.ts live path): token
+   * counts are only known at stream end, after reportOutcome already logged the
+   * route. Bumps the provider token counters and back-fills the newest matching
+   * route record so the status page shows real numbers.
+   */
+  async recordUsage(
+    entry: string,
+    usage: { input_tokens: number; output_tokens: number },
+  ): Promise<void> {
+    await this.bumpTokens(entry.split('/')[0] ?? '', usage.input_tokens, usage.output_tokens);
+    const routes = (await this.ctx.storage.get<RouteRecord[]>('routes')) ?? [];
+    for (let i = routes.length - 1; i >= 0; i--) {
+      const r = routes[i];
+      if (r && r.entry === entry && r.ok && r.tin === undefined) {
+        r.tin = usage.input_tokens;
+        r.tout = usage.output_tokens;
+        await this.ctx.storage.put('routes', routes);
+        break;
+      }
+    }
+  }
+
   /** M3 verdict cache: classifier verdicts keyed by task-digest hash, TTL-bound. */
   async getVerdict(key: string): Promise<{ lane: string; confidence: number } | null> {
     const cell = await this.ctx.storage.get<{ lane: string; confidence: number; exp: number }>(
