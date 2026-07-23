@@ -1213,7 +1213,8 @@
           <h3>Complexity-aware, instantly</h3>
           <p>
             Heuristics short-circuit most turns at 0ms; the rest get a strict-JSON verdict from a
-            fast free reasoning model. Trivial tasks never burn heavyweight quota.
+            dedicated classifier with its own budget — and its own fallback chain (Gemini → Groq →
+            Mistral), so routing never goes blind. Trivial tasks never burn heavyweight quota.
           </p>
         </div>
         <div class="card">
