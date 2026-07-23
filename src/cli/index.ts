@@ -41,6 +41,29 @@ async function configPush() {
   console.log(`config pushed (version ${cfg.version}) → ${baseUrl()}/config`);
 }
 
+interface StatusPayload {
+  lanes: Record<string, string[]>;
+  default_lane?: string;
+  providers: Record<
+    string,
+    {
+      enabled: boolean;
+      has_key: boolean;
+      rpm: { used: number; limit: number };
+      rpd: { used: number; limit: number };
+    }
+  >;
+  cooldowns: Record<string, string>;
+  routes: Array<{
+    ts: number;
+    lane: string;
+    entry: string;
+    ok: boolean;
+    ms?: number;
+    detail?: string;
+  }>;
+}
+
 async function status() {
   const res = await fetch(`${baseUrl()}/status`, {
     headers: { authorization: `Bearer ${bearer()}` },
@@ -49,7 +72,35 @@ async function status() {
     console.error(`status failed: HTTP ${res.status}: ${await res.text()}`);
     process.exit(1);
   }
-  console.log(JSON.stringify(await res.json(), null, 2));
+  const d = (await res.json()) as StatusPayload;
+  if (process.argv.includes('--json')) {
+    console.log(JSON.stringify(d, null, 2));
+    return;
+  }
+  console.log('Providers');
+  for (const [name, p] of Object.entries(d.providers)) {
+    const state = !p.enabled ? 'disabled' : !p.has_key ? 'no-key' : 'live';
+    console.log(
+      `  ${name.padEnd(12)} ${state.padEnd(9)} rpm ${p.rpm.used}/${p.rpm.limit}  rpd ${p.rpd.used}/${p.rpd.limit}`,
+    );
+  }
+  console.log('Lanes');
+  for (const [lane, chain] of Object.entries(d.lanes)) {
+    const mark = lane === d.default_lane ? '*' : ' ';
+    console.log(`  ${mark}${lane.padEnd(8)} ${chain.join(' → ')}`);
+  }
+  const cds = Object.entries(d.cooldowns);
+  if (cds.length) {
+    console.log('Cooldowns');
+    for (const [m, t] of cds) console.log(`  ${m} (${t} left)`);
+  }
+  console.log(`Last ${d.routes.length} routes`);
+  for (const r of d.routes.slice(0, 50)) {
+    const time = new Date(r.ts).toISOString().slice(11, 19);
+    console.log(
+      `  ${time} ${r.ok ? '✓' : '✗'} ${r.lane.padEnd(8)} ${r.entry}${r.ms !== undefined ? ` ${r.ms}ms` : ''}${r.detail ? `  [${r.detail}]` : ''}`,
+    );
+  }
 }
 
 function deploy() {

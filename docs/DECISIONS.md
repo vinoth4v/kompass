@@ -19,3 +19,5 @@ One line per non-obvious decision, newest at bottom (BUILD_PLAN §6.3).
 - 2026-07-23: DO route reports are awaited (not waitUntil) — same-colo DO RPC ≈1ms and keeps /status strictly consistent with the routes that produced it.
 - 2026-07-23: POST /ledger/burn (authenticated) accepts negative n so the deployed smoke can prove RPD-exhaustion fallback and then restore the counter.
 - 2026-07-23: M2 deployed proof: openrouter burned to 50/50 → pre-emptively skipped (rpm stayed 0 → zero 429s), nvidia glm-5.2 timed out → 10-min cooldown, google/gemini-3.6-flash served the request; hops visible in /status routes.
+- 2026-07-23: Classifier verdicts are metered against the google ledger (they are real requests); counters keyed per provider, or per provider:model where model_limits is set (so pro's 50/day window is separate from flash-lite's 1000/day).
+- 2026-07-23: M3 deployed acceptance: p50 added latency 0ms (12/20 heuristic short-circuits), classifier max 681ms, all <400ms p50 target met. Verdict-cache write had to be awaited — a dangling DO RPC promise is cancelled when the Worker invocation ends (observed: 0 cache hits until fixed).

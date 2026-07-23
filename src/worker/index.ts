@@ -5,12 +5,17 @@ import { CONFIG_KV_KEY, loadConfig, validateConfig } from './config';
 import { dispatch } from './dispatcher';
 import type { Env } from './env';
 import { routeRequest } from './router';
+import { STATUS_HTML } from './status-page';
 
 export { KompassState } from '../do/state';
 
 const app = new Hono<{ Bindings: Env }>();
 
 app.get('/healthz', (c) => c.json({ ok: true, service: 'kompass' }));
+
+// Data-free static shell (like /healthz): the token is entered in-page and all
+// data flows through the authenticated /status endpoint (DECISIONS.md).
+app.get('/status.html', (c) => c.html(STATUS_HTML));
 
 app.use('*', bearerAuth);
 
