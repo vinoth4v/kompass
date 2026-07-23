@@ -295,6 +295,7 @@ async function discovery() {
 
 const [, , cmd, sub] = process.argv;
 if (cmd === 'init') await (await import('./init')).init();
+else if (cmd === 'ui') await import('../ui/server');
 else if (cmd === 'config' && sub === 'push') await configPush();
 else if (cmd === 'status') await status();
 else if (cmd === 'deploy') deploy();
@@ -305,7 +306,7 @@ else if (cmd === 'deprecate')
   (await import('./deprecate')).deprecateModel(flag('config-dir') ?? 'config');
 else {
   console.log(
-    'Usage: kompass <init|deploy|status|logs|bench|discovery [--run]|deprecate <old> --replaced-by <new>|config push> [--url <worker-url>]',
+    'Usage: kompass <init|ui|deploy|status|logs|bench|discovery [--run]|deprecate <old> --replaced-by <new>|config push> [--url <worker-url>]',
   );
   process.exit(cmd ? 1 : 0);
 }

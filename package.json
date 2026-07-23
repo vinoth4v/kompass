@@ -28,11 +28,13 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "smoke": "tsx scripts/smoke.ts",
+    "ui": "tsx src/ui/server.ts",
     "secrets:push": "wrangler secret bulk secrets/.secrets.json",
     "kompass": "tsx src/cli/index.ts"
   },
   "dependencies": {
-    "hono": "^4.6.0"
+    "hono": "^4.6.0",
+    "pptxgenjs": "^4.0.1"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.9.0",

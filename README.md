@@ -101,7 +101,25 @@ session stickiness, and health state live in one Durable Object, not on your lap
 | `pnpm kompass config push --url <url>` | hot-reload `config/*.yaml` — no redeploy            |
 | `pnpm kompass deploy`                  | `wrangler deploy` + secrets bulk push               |
 | `pnpm kompass logs`                    | live tail (`wrangler tail`)                         |
+| `pnpm kompass ui`                      | local web workbench (chat/agent/research/slides)    |
 | `https://…workers.dev/status.html`     | read-only status page (enter bearer once)           |
+
+## Web workbench (`kompass ui`)
+
+`pnpm kompass ui` starts a local claude.ai-style interface at `http://127.0.0.1:4876`
+with four modes, all routed through your Kompass gateway:
+
+- **Chat** — plain conversation with markdown rendering.
+- **Agent** — Claude Code-style coding agent: bash, read/write/edit files, search — in
+  a workspace directory you choose, with per-action approval (or auto-approve).
+- **Research** — the model runs web searches (DuckDuckGo, no API key) and reads pages,
+  then writes a sourced report.
+- **Slides** — describe a deck; the model designs it and generates a real downloadable
+  `.pptx` (optionally researching the topic first).
+
+Everything runs locally: sessions are saved under `~/.kompass/ui/`, tools execute on
+your machine, and the browser only ever talks to the local server — your Kompass
+bearer never reaches the page. The sidebar shows live per-provider quota.
 
 ## Add a model in 4 lines
 
