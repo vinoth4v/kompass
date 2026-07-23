@@ -701,7 +701,8 @@
           <b>$0 infra, $0 models</b>, and your API keys never leave your machines.
         </p>
         <span class="pill"
-          ><span class="dot"></span> OpenRouter · NVIDIA Build · Google AI Studio · Groq</span
+          ><span class="dot"></span> 10 free providers: OpenRouter · NVIDIA · Google · Groq ·
+          Mistral · GitHub Models · Cloudflare AI · SambaNova · Cohere · Hugging Face</span
         >
         <div class="cta">
           <a class="btn primary" href="#quickstart">Install in 10 minutes</a>
@@ -960,11 +961,13 @@
         <tr>
           <th>Lane</th>
           <th>Serves</th>
+          <th>Spread</th>
           <th>Default chain (hot-editable YAML)</th>
         </tr>
         <tr>
           <td><span class="lanechip" style="background: #34d39922; color: #34d399">FAST</span></td>
           <td>quick lookups, renames, one-liners</td>
+          <td class="mono muted">— (quality-first)</td>
           <td class="mono muted">gemini-flash-lite → llama-8b-instant (groq) → step-3.7-flash</td>
         </tr>
         <tr>
@@ -972,6 +975,7 @@
             <span class="lanechip" style="background: #2dd4bf22; color: #2dd4bf">SIMPLE</span>
           </td>
           <td>single-file edits, docstrings</td>
+          <td class="mono muted">top 2</td>
           <td class="mono muted">laguna-xs → codestral (mistral) → nemotron-49b</td>
         </tr>
         <tr>
@@ -979,11 +983,13 @@
             <span class="lanechip" style="background: #f5a52422; color: #f5a524">AGENTIC</span>
           </td>
           <td>multi-step tool work (default)</td>
+          <td class="mono muted">top 2</td>
           <td class="mono muted">laguna-s → minimax-m3 → devstral → qwen3-coder (hf)</td>
         </tr>
         <tr>
           <td><span class="lanechip" style="background: #f4635e22; color: #f4635e">HARD</span></td>
           <td>deep debugging, architecture</td>
+          <td class="mono muted">top 2</td>
           <td class="mono muted">gpt-4.1 (github) → deepseek-v4-pro → deepseek-v3.2</td>
         </tr>
         <tr>
@@ -991,12 +997,16 @@
             <span class="lanechip" style="background: #a78bfa22; color: #a78bfa">LONGCTX</span>
           </td>
           <td>&gt;60k-token contexts</td>
+          <td class="mono muted">top 2</td>
           <td class="mono muted">gemini-flash (1M) → nemotron-ultra (1M)</td>
         </tr>
       </table>
       <p class="muted" style="font-size: 0.85rem">
-        Chains hot-reload from YAML with <code>kompass config push</code> — no redeploy. Paid models
-        are unreachable unless you explicitly set <code>allow_paid: true</code> (enforced in code).
+        Chains hot-reload from YAML with <code>kompass config push</code> — no redeploy. "Spread"
+        lanes pick their first attempt by weighted-random among the top N candidates (weighted by
+        each model's live success rate) instead of always #1 — spreads load and adapts to reality
+        without touching YAML. Paid models are unreachable unless you explicitly set
+        <code>allow_paid: true</code> (enforced in code).
       </p>
 
       <!-- ============ FEATURES with mini-viz ============ -->
@@ -1255,8 +1265,10 @@
         Claude Code always shows "Sonnet 4.5" — that's just the requested alias. Your Kompass
         dashboard (<code>/status.html</code> on your Worker, or <code>kompass status</code> in the
         terminal) shows the truth: which free model actually answered, the lane the classifier
-        picked, latency, <b>tokens in/out per request</b>, per-provider daily token totals,
-        remaining quota, and active cooldowns. Auto-refreshes every 15 seconds.
+        picked, latency, <b>tokens in/out per request</b>, per-provider daily token totals, live
+        success-rate per model, remaining quota, active cooldowns — and Kompass's <b>own</b>
+        Cloudflare Workers/KV/Durable-Object usage against the free-plan ceilings, so you see
+        infrastructure headroom, not just LLM quota. Auto-refreshes every 15 seconds.
       </p>
 
       <div class="dash" aria-hidden="true">
@@ -1265,7 +1277,29 @@
           <span class="dash-live"><span class="dot"></span> live · refreshes 15s</span>
         </div>
         <div class="dash-body">
-          <div class="dash-sec">PROVIDERS</div>
+          <div class="dash-sec">CLOUDFLARE PLATFORM UTILIZATION</div>
+          <table class="dash-t">
+            <tr>
+              <th></th>
+              <th>today</th>
+              <th>free-plan limit</th>
+            </tr>
+            <tr>
+              <td>Workers requests</td>
+              <td colspan="2"><span class="bar" style="width: 2px"></span> 1.6k / 100k (1.6%)</td>
+            </tr>
+            <tr>
+              <td>Worker CPU / request</td>
+              <td colspan="2">
+                p50 1ms · p99 <span style="color: #f4635e">231ms</span> (limit 10ms)
+              </td>
+            </tr>
+            <tr>
+              <td>KV reads / writes</td>
+              <td colspan="2">1.0k/100k · 30/1k</td>
+            </tr>
+          </table>
+          <div class="dash-sec">PROVIDERS <span style="font-weight: normal">(10 total)</span></div>
           <table class="dash-t">
             <tr>
               <th>provider</th>
@@ -1290,6 +1324,32 @@
               <td class="ok">live</td>
               <td><span class="bar" style="width: 12px"></span> 29/500</td>
               <td>103.2k / 21.7k</td>
+            </tr>
+            <tr>
+              <td>mistral</td>
+              <td class="ok">live</td>
+              <td><span class="bar" style="width: 1px"></span> 3/5000</td>
+              <td>271 / 48</td>
+            </tr>
+            <tr>
+              <td class="muted">+ 6 more (groq, github, cfai, sambanova, cohere, hf)</td>
+              <td colspan="3" class="muted">—</td>
+            </tr>
+          </table>
+          <div class="dash-sec">
+            DEPRECATED MODELS
+            <span style="font-weight: normal">(auto-substituted, never live again)</span>
+          </div>
+          <table class="dash-t">
+            <tr>
+              <th>old</th>
+              <th>→ replaced by</th>
+              <th>note</th>
+            </tr>
+            <tr>
+              <td>poolside/laguna-s-2.1</td>
+              <td>poolside/laguna-s-3.0</td>
+              <td class="muted">3.0 is faster, better coding benchmarks</td>
             </tr>
           </table>
           <div class="dash-sec">LAST ROUTES</div>
@@ -1564,6 +1624,16 @@ https://kompass.&lt;you&gt;.workers.dev/status.html   # live dashboard in the br
         <p class="muted">
           The state layer is a pluggable interface; a self-hosted SQLite target is on the roadmap.
           Today the same codebase also runs locally via <code>wrangler dev</code>.
+        </p>
+      </details>
+      <details>
+        <summary>A better version of a model I'm using just came out — now what?</summary>
+        <p class="muted">
+          <code>kompass deprecate old/model --replaced-by new/model --note "why"</code> adds one
+          declarative entry to <code>lanes.yaml</code>. Every future <code>config push</code>
+          automatically rewrites every lane and the dispatcher that referenced the old model to the
+          new one — so it can never accidentally go live again, even if it's still listed somewhere,
+          and you never hand-edit multiple lanes to retire something.
         </p>
       </details>
 
