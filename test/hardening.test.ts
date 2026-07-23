@@ -92,11 +92,9 @@ describe('escalation state machine (unit)', () => {
 
 describe('privacy guard (unit)', () => {
   const guard = compilePrivacyGuard(cfg())!;
-  const req = (text: string): AnthropicRequest => ({
-    model: 'm',
-    max_tokens: 1,
-    messages: [{ role: 'user', content: text }],
-  });
+  // privacyMatch scans the raw request text (single combined-regex pass)
+  const req = (text: string): string =>
+    JSON.stringify({ model: 'm', max_tokens: 1, messages: [{ role: 'user', content: text }] });
 
   it('matches a seeded AWS key pattern', () => {
     expect(privacyMatch(guard, req('here is cfg: AKIAIOSFODNN7EXAMPLE ok'))).toBe(true);

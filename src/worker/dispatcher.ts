@@ -19,8 +19,14 @@ export interface DispatchResult {
 
 const FALLBACK_LANE: Lane = 'AGENTIC'; // safe middle (SPEC §4)
 
-/** chars/4 across the whole request — same estimate count_tokens uses. */
-export function estimateTokens(body: AnthropicRequest): number {
+/**
+ * chars/4 estimate. Prefer passing rawLength (the already-read request text length)
+ * — re-stringifying a megabyte conversation costs real CPU against the free plan's
+ * ~10ms budget (error 1102). The stringify path remains as a fallback for callers
+ * without the raw text (unit tests).
+ */
+export function estimateTokens(body: AnthropicRequest, rawLength?: number): number {
+  if (rawLength !== undefined) return Math.ceil(rawLength / 4);
   let chars = typeof body.system === 'string' ? body.system.length : 0;
   if (Array.isArray(body.system)) for (const b of body.system) chars += b.text.length;
   chars += JSON.stringify(body.messages).length;
@@ -28,8 +34,8 @@ export function estimateTokens(body: AnthropicRequest): number {
 }
 
 /** 0ms pre-filter (BUILD_PLAN M3): tiny & tool-less → FAST; huge context → LONGCTX. */
-export function heuristicLane(body: AnthropicRequest): Lane | null {
-  const tokens = estimateTokens(body);
+export function heuristicLane(body: AnthropicRequest, rawLength?: number): Lane | null {
+  const tokens = estimateTokens(body, rawLength);
   if (tokens > 60_000) return 'LONGCTX';
   if (tokens < 1_000 && !body.tools?.length) return 'FAST';
   return null;
@@ -49,14 +55,14 @@ function lastUserText(body: AnthropicRequest): string {
 }
 
 /** Compressed task digest (≤~500 tokens) — also the verdict-cache key material. */
-export function taskDigest(body: AnthropicRequest): string {
+export function taskDigest(body: AnthropicRequest, rawLength?: number): string {
   const toolNames = (body.tools ?? []).map((t) => t.name).slice(0, 25);
   return JSON.stringify({
     task: lastUserText(body).slice(0, 1500),
     tools: toolNames,
     tool_count: body.tools?.length ?? 0,
     turns: body.messages.length,
-    approx_tokens: estimateTokens(body),
+    approx_tokens: estimateTokens(body, rawLength),
   });
 }
 
@@ -152,16 +158,17 @@ export async function dispatch(
   cfg: RouterConfig,
   body: AnthropicRequest,
   stub: DurableObjectStub<KompassState> | null,
+  rawLength?: number,
 ): Promise<DispatchResult> {
   const t0 = Date.now();
 
-  const h = heuristicLane(body);
+  const h = heuristicLane(body, rawLength);
   if (h && cfg.lanes[h]) return { lane: h, source: 'heuristic', ms: Date.now() - t0 };
 
   const cc = classifierConfig(cfg);
   if (!cc) return { lane: FALLBACK_LANE, source: 'fallback', ms: Date.now() - t0 };
 
-  const digest = taskDigest(body);
+  const digest = taskDigest(body, rawLength);
   const key = await digestKey(digest);
 
   if (stub) {

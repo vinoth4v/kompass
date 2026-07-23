@@ -39,7 +39,16 @@ function stateStub(env: Env) {
 }
 
 app.post('/v1/messages', async (c) => {
-  const body = (await c.req.json()) as AnthropicRequest;
+  // Read the raw text ONCE and reuse it for token estimates and the privacy scan —
+  // Claude Code contexts reach megabytes and repeated stringify passes were blowing
+  // the free plan's ~10ms CPU budget (Cloudflare error 1102).
+  const raw = await c.req.text();
+  let body: AnthropicRequest;
+  try {
+    body = JSON.parse(raw) as AnthropicRequest;
+  } catch {
+    return anthropicError('invalid_request_error', 'body must be JSON', 400);
+  }
   const cfg = await loadConfig(c.env.CONFIG);
   if (!cfg) {
     return anthropicError('api_error', 'no config in KV — run `kompass config push`', 503);
@@ -47,7 +56,7 @@ app.post('/v1/messages', async (c) => {
 
   const stub = stateStub(c.env);
   // M3 dispatcher: heuristics → cached/live classifier verdict → safe fallback.
-  const verdict = await dispatch(c.env, cfg, body, stub);
+  const verdict = await dispatch(c.env, cfg, body, stub, raw.length);
   let lane = c.req.header('x-kompass-lane') ?? verdict.lane;
 
   // Claude Code stamps a stable per-session metadata.user_id — the stickiness key.
@@ -78,8 +87,11 @@ app.post('/v1/messages', async (c) => {
   }
 
   // M5 privacy guard: matched content never reaches trains_on_data providers.
-  const guard = compilePrivacyGuard(cfg);
-  const privacySensitive = guard ? privacyMatch(guard, body) : false;
+  // Single combined-regex pass over the raw text; skipped entirely when no
+  // configured provider trains on data.
+  const anyTrainingProvider = Object.values(cfg.providers).some((p) => p.trains_on_data === true);
+  const guard = anyTrainingProvider ? compilePrivacyGuard(cfg) : null;
+  const privacySensitive = guard ? privacyMatch(guard, raw) : false;
 
   const outcome = await routeRequest(c.env, cfg, lane, body, {
     stub,
@@ -120,9 +132,9 @@ app.post('/v1/messages', async (c) => {
 });
 
 app.post('/v1/messages/count_tokens', async (c) => {
-  const body = (await c.req.json()) as AnthropicRequest;
-  const text = JSON.stringify(body.messages) + JSON.stringify(body.system ?? '');
-  return c.json({ input_tokens: Math.ceil(text.length / 4) });
+  // Raw length ÷ 4 — no parse, no re-stringify (CPU budget, see /v1/messages).
+  const raw = await c.req.text();
+  return c.json({ input_tokens: Math.ceil(raw.length / 4) });
 });
 
 // Hot-reload: the CLI compiles config/*.yaml → JSON and POSTs it here (SPEC P0 #4).
@@ -181,10 +193,11 @@ app.get('/status', async (c) => {
 // Dispatcher dry-run: returns the lane verdict + added latency without routing.
 // Backs the M3 acceptance measurement (p50 added latency < 400ms over 20 mixed requests).
 app.post('/dispatch/preview', async (c) => {
-  const body = (await c.req.json()) as AnthropicRequest;
+  const raw = await c.req.text();
+  const body = JSON.parse(raw) as AnthropicRequest;
   const cfg = await loadConfig(c.env.CONFIG);
   if (!cfg) return anthropicError('api_error', 'no config pushed yet', 503);
-  return c.json(await dispatch(c.env, cfg, body, stateStub(c.env)));
+  return c.json(await dispatch(c.env, cfg, body, stateStub(c.env), raw.length));
 });
 
 // Test/admin helper backing the M2 multi-machine acceptance: burn provider budget.
