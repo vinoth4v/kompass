@@ -199,7 +199,9 @@ export async function dispatch(
           ? FALLBACK_LANE
           : verdict.lane;
       if (stub) {
-        stub
+        // Awaited: a dangling promise is cancelled when the Worker invocation ends,
+        // which silently disabled the cache (observed live: 8/8 classifier calls).
+        await stub
           .putVerdict(key, { lane, confidence: verdict.confidence }, cc.cache_ttl_s)
           .catch((e) => console.log(`verdict cache write failed: ${String(e)}`));
       }
