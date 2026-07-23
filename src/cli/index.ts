@@ -171,12 +171,13 @@ async function bench() {
 }
 
 const [, , cmd, sub] = process.argv;
-if (cmd === 'config' && sub === 'push') await configPush();
+if (cmd === 'init') await (await import('./init')).init();
+else if (cmd === 'config' && sub === 'push') await configPush();
 else if (cmd === 'status') await status();
 else if (cmd === 'deploy') deploy();
 else if (cmd === 'logs') logs();
 else if (cmd === 'bench') await bench();
 else {
-  console.log('Usage: kompass <deploy|status|logs|bench|config push> [--url <worker-url>]');
+  console.log('Usage: kompass <init|deploy|status|logs|bench|config push> [--url <worker-url>]');
   process.exit(cmd ? 1 : 0);
 }

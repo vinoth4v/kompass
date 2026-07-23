@@ -13,6 +13,13 @@ export default tseslint.config(
     },
   },
   {
+    // Plain-JS Node launcher: give it Node globals so no-undef doesn't fire.
+    files: ['bin/**/*.mjs'],
+    languageOptions: {
+      globals: { process: 'readonly', URL: 'readonly', console: 'readonly' },
+    },
+  },
+  {
     // Guardrail §6.9: no Node-only APIs in Worker/DO code
     files: ['src/worker/**/*.ts', 'src/do/**/*.ts', 'src/adapters/**/*.ts'],
     rules: {

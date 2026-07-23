@@ -5,6 +5,22 @@ Anthropic-compatible `/v1/messages` endpoint that routes your Claude Code traffi
 free model providers (OpenRouter `:free`, NVIDIA Build, Google AI Studio, Groq) by task
 complexity — with a shared quota ledger across every machine you code from. $0 infra, $0 models.
 
+**Website & Setup Builder:** https://kompass-vinoth4vs-projects.vercel.app · MIT · Node 20+
+
+## Install (the easy way)
+
+```sh
+git clone https://github.com/vinoth4v/kompass && cd kompass && pnpm install
+export CLOUDFLARE_API_TOKEN=...   # dash.cloudflare.com → API Tokens → "Edit Cloudflare Workers" + KV edit
+pnpm kompass init                 # guided: keys → KV → workers.dev URL → deploy → smoke → shell function
+```
+
+The wizard is idempotent (safe to re-run), stores your keys only in the gitignored
+`secrets/.secrets.json` + Cloudflare Worker secrets, and ends with a working
+`claude-free` command in your shell. Prefer copy-paste? Use the
+[Setup Builder](https://kompass-vinoth4vs-projects.vercel.app#builder) — it generates your
+personalized files entirely in your browser. The manual path follows below.
+
 ```
 Claude Code ──► Kompass Worker ──► FAST / SIMPLE / AGENTIC / HARD / LONGCTX lane
                  │  heuristics + Gemini flash-lite classifier
@@ -12,7 +28,7 @@ Claude Code ──► Kompass Worker ──► FAST / SIMPLE / AGENTIC / HARD / 
                  └► OpenRouter · NVIDIA Build · Google AI Studio · (Groq)
 ```
 
-## 10-minute setup
+## 10-minute setup (manual path)
 
 Prereqs: Node 22, pnpm, a Cloudflare account, and free API keys from the providers you want
 ([OpenRouter](https://openrouter.ai/keys), [NVIDIA Build](https://build.nvidia.com),

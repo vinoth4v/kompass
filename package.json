@@ -1,10 +1,24 @@
 {
-  "name": "kompass",
-  "version": "0.1.0",
-  "private": true,
+  "name": "kompass-gateway",
+  "version": "1.0.0",
   "type": "module",
-  "description": "Classifier-routed free-model gateway for Claude Code (Cloudflare Worker)",
+  "description": "Classifier-routed free-model gateway for Claude Code — one Cloudflare Worker routes your coding sessions across free model providers by task complexity",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vinoth4v/kompass.git"
+  },
+  "homepage": "https://github.com/vinoth4v/kompass#readme",
+  "keywords": [
+    "claude-code",
+    "llm-router",
+    "cloudflare-workers",
+    "free-models",
+    "ai-gateway"
+  ],
+  "bin": {
+    "kompass": "bin/kompass.mjs"
+  },
   "packageManager": "pnpm@11.9.0",
   "scripts": {
     "dev": "wrangler dev",
