@@ -39,9 +39,12 @@ providers:
     kind: openai
     base_url: https://api.groq.com/openai/v1
     key_env: GROQ_API_KEY
-    # No GROQ_API_KEY in secrets/.secrets.json (BLOCKERS.md) — ships disabled; flip to
-    # true and `kompass config push` once a key exists. Model slugs unverifiable
-    # without a key (guardrail §6.6), so no groq entries in lanes.yaml yet.
-    enabled: false
+    enabled: true
     trains_on_data: false
+    # Verified 2026-07-23 via x-ratelimit-limit-requests response headers (per-day):
+    # llama-3.3-70b/gpt-oss-120b 1000 RPD, llama-3.1-8b-instant 14400 RPD.
+    # TPM is tiny on free tier (6-12k) → Groq suits small-context lanes; oversized
+    # requests get rejected upstream and fall through the chain. rpm TODO(verify).
     limits: { rpm: 30, rpd: 1000 }
+    model_limits:
+      llama-3.1-8b-instant: { rpm: 30, rpd: 14400 }

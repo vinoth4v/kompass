@@ -40,7 +40,11 @@ privacy:
 # kimi-k2.6 still 404s ("Function not found for account") on this key → excluded.
 # nemotron-3-embed-1b excluded: embeddings model, Claude Code sends chat traffic only.
 lanes:
+  # Groq (enabled 2026-07-23, tool-calling probed ✓): ultra-fast but free-tier TPM
+  # is 6-12k, so it leads FAST (heuristic-small requests) and tails SIMPLE only —
+  # big contexts get rejected upstream and fall through the chain.
   FAST:
+    - groq/llama-3.1-8b-instant
     - google/gemini-3.5-flash-lite
     - nvidia/stepfun-ai/step-3.7-flash
     - openrouter/poolside/laguna-xs-2.1:free
@@ -50,6 +54,7 @@ lanes:
     - openrouter/poolside/laguna-xs-2.1:free
     - nvidia/poolside/laguna-xs-2.1
     - nvidia/nvidia/llama-3.3-nemotron-super-49b-v1
+    - groq/llama-3.3-70b-versatile
     - nvidia/mistralai/mistral-medium-3.5-128b
     - google/gemini-3.5-flash-lite
 
