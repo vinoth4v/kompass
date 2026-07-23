@@ -1,5 +1,12 @@
 # Kompass — Blockers
 
+## ~~Git push blocked: placeholder remote~~ — RESOLVED 2026-07-23
+
+Resolved same day: installed `gh` via Homebrew, user completed `gh auth login --web`,
+created private repo `vinoth4v/kompass`, switched origin to HTTPS, pushed all commits
++ tags m0–m5. CI (readme-dryrun) triggered on first push. Original entry kept below
+for the record.
+
 ## Git push blocked: placeholder remote (open, non-fatal)
 
 - **When:** 2026-07-23, M0 push step (BUILD_PLAN §5).
