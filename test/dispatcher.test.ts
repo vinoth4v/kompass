@@ -176,6 +176,45 @@ describe('M3 dispatcher (integration)', () => {
     });
   });
 
+  it('primary classifier 429 → openai-format backup classifier decides the lane', async () => {
+    const withBackup = cfg();
+    withBackup.dispatcher!.fallbacks = ['openrouter/backup-cls:free'];
+    await env.CONFIG.put('config', JSON.stringify(withBackup));
+    fetchMock
+      .get('https://generativelanguage.googleapis.com')
+      .intercept({ path: '/v1beta/models/classifier-model:generateContent', method: 'POST' })
+      .reply(429, { error: { message: 'rate limited' } });
+    fetchMock
+      .get('https://openrouter.ai')
+      .intercept({
+        path: '/api/v1/chat/completions',
+        method: 'POST',
+        body: (b) => (JSON.parse(b as string) as { model: string }).model === 'backup-cls:free',
+      })
+      .reply(200, {
+        choices: [
+          {
+            message: { role: 'assistant', content: '{"lane":"HARD","confidence":0.88}' },
+            finish_reason: 'stop',
+          },
+        ],
+      });
+    const res = await SELF.fetch('https://kompass.test/dispatch/preview', {
+      method: 'POST',
+      headers: AUTH,
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 64,
+        tools: TOOLS,
+        messages: [{ role: 'user', content: 'backup-classifier probe: gnarly deadlock' }],
+      }),
+    });
+    const verdict = (await res.json()) as any;
+    expect(verdict.lane).toBe('HARD');
+    expect(verdict.source).toBe('classifier');
+    expect(verdict.confidence).toBe(0.88);
+  });
+
   it('classifier 429 → request still routes (heuristics-only fallback, never block)', async () => {
     fetchMock
       .get('https://generativelanguage.googleapis.com')

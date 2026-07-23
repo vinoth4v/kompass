@@ -124,12 +124,11 @@ providers:
     trains_on_data: false
     limits: { rpm: 30, rpd: 1000 }
 
-  # ── https://huggingface.co/settings/tokens — regenerate the token with the
-  # "Make calls to Inference Providers" permission, then set enabled: true.
+  # ── https://huggingface.co/settings/tokens ("Make calls to Inference Providers")
+  # Enabled 2026-07-23 after token permission fix; Qwen3-Coder-Next tool-probed ✓.
   hf:
     kind: openai
     base_url: https://router.huggingface.co/v1
     key_env: HF_API_KEY
-    enabled: false
     trains_on_data: true
     limits: { rpm: 10, rpd: 500 }

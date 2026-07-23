@@ -17,7 +17,9 @@ export interface ProviderConfig {
 }
 
 export interface DispatcherConfig {
-  model: string; // chain-entry form, e.g. "google/gemini-3.5-flash-lite"
+  model: string; // chain-entry form, e.g. "google/gemini-3.1-flash-lite"
+  /** Backup classifier models tried in order when the primary fails/exhausts. */
+  fallbacks?: string[];
   timeout_ms?: number;
   cache_ttl_s?: number;
   confidence_floor?: number;
@@ -71,9 +73,11 @@ export function validateConfig(cfg: unknown): RouterConfig {
   }
 
   if (c.dispatcher) {
-    const { provider } = parseChainEntry(c.dispatcher.model);
-    if (!c.providers[provider])
-      throw new Error(`dispatcher.model references unknown provider "${provider}"`);
+    for (const entry of [c.dispatcher.model, ...(c.dispatcher.fallbacks ?? [])]) {
+      const { provider } = parseChainEntry(entry);
+      if (!c.providers[provider])
+        throw new Error(`dispatcher entry "${entry}" references unknown provider`);
+    }
   }
 
   for (const [lane, chain] of Object.entries(c.lanes)) {

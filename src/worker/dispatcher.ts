@@ -84,7 +84,8 @@ const CLASSIFIER_PROMPT = `You are a routing classifier for coding-agent request
 Reply with ONLY strict JSON: {"lane":"<FAST|SIMPLE|AGENTIC|HARD|LONGCTX>","confidence":<0..1>}`;
 
 interface ClassifierConfig {
-  entry: string; // "google/gemini-3.5-flash-lite"
+  /** primary + fallback classifier entries, tried in order */
+  entries: string[];
   timeout_ms: number;
   cache_ttl_s: number;
   confidence_floor: number;
@@ -94,50 +95,14 @@ export function classifierConfig(cfg: RouterConfig): ClassifierConfig | null {
   const d = cfg.dispatcher;
   if (!d?.model) return null;
   return {
-    entry: d.model,
+    entries: [d.model, ...(d.fallbacks ?? [])],
     timeout_ms: d.timeout_ms ?? 1500,
     cache_ttl_s: d.cache_ttl_s ?? 300,
     confidence_floor: d.confidence_floor ?? 0.6,
   };
 }
 
-async function callClassifier(
-  env: Env,
-  cfg: RouterConfig,
-  cc: ClassifierConfig,
-  digest: string,
-): Promise<{ lane: Lane; confidence: number } | null> {
-  const { provider, model } = parseChainEntry(cc.entry);
-  const p = cfg.providers[provider];
-  if (!p || p.kind !== 'gemini') return null;
-  const key = (env as unknown as Record<string, string | undefined>)[p.key_env];
-  if (!key) return null;
-
-  const res = await fetch(`${p.base_url}/models/${model}:generateContent`, {
-    method: 'POST',
-    headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: CLASSIFIER_PROMPT }] },
-      contents: [{ role: 'user', parts: [{ text: digest }] }],
-      generationConfig: {
-        maxOutputTokens: 512,
-        temperature: 0,
-        responseMimeType: 'application/json',
-      },
-    }),
-    signal: AbortSignal.timeout(cc.timeout_ms),
-  });
-  if (!res.ok) {
-    console.log(`classifier HTTP ${res.status}`);
-    return null;
-  }
-  const json = (await res.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> } }>;
-  };
-  const text = (json.candidates?.[0]?.content?.parts ?? [])
-    .filter((p) => !p.thought)
-    .map((p) => p.text ?? '')
-    .join('');
+function parseVerdict(text: string): { lane: Lane; confidence: number } | null {
   try {
     const verdict = JSON.parse(text) as { lane?: string; confidence?: number };
     if (verdict.lane && (LANES as readonly string[]).includes(verdict.lane)) {
@@ -147,6 +112,75 @@ async function callClassifier(
     console.log(`classifier returned non-JSON: ${text.slice(0, 120)}`);
   }
   return null;
+}
+
+/** One classifier attempt against a single entry — supports gemini AND openai kinds. */
+async function callClassifier(
+  env: Env,
+  cfg: RouterConfig,
+  entry: string,
+  timeoutMs: number,
+  digest: string,
+): Promise<{ lane: Lane; confidence: number } | null> {
+  const { provider, model } = parseChainEntry(entry);
+  const p = cfg.providers[provider];
+  if (!p || p.enabled === false) return null;
+  const key = (env as unknown as Record<string, string | undefined>)[p.key_env];
+  if (!key) return null;
+
+  if (p.kind === 'gemini') {
+    const res = await fetch(`${p.base_url}/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: CLASSIFIER_PROMPT }] },
+        contents: [{ role: 'user', parts: [{ text: digest }] }],
+        generationConfig: {
+          maxOutputTokens: 512,
+          temperature: 0,
+          responseMimeType: 'application/json',
+        },
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) {
+      console.log(`classifier ${entry} HTTP ${res.status}`);
+      return null;
+    }
+    const json = (await res.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string; thought?: boolean }> } }>;
+    };
+    const text = (json.candidates?.[0]?.content?.parts ?? [])
+      .filter((part) => !part.thought)
+      .map((part) => part.text ?? '')
+      .join('');
+    return parseVerdict(text);
+  }
+
+  // openai-format backup classifiers (groq/mistral/… — JSON mode verified per model)
+  const res = await fetch(`${p.base_url}/chat/completions`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      max_tokens: 512,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: CLASSIFIER_PROMPT },
+        { role: 'user', content: digest },
+      ],
+    }),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  if (!res.ok) {
+    console.log(`classifier ${entry} HTTP ${res.status}`);
+    return null;
+  }
+  const json = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string | null } }>;
+  };
+  return parseVerdict(json.choices?.[0]?.message?.content ?? '');
 }
 
 /**
@@ -187,35 +221,38 @@ export async function dispatch(
     }
   }
 
-  try {
-    // Meter the classifier call against its provider budget (it is a real request).
-    if (stub) {
-      const { provider, model } = parseChainEntry(cc.entry);
-      const p = cfg.providers[provider];
-      const limits = p?.model_limits?.[model] ?? p?.limits;
-      if (p && limits) {
-        const key = p.model_limits?.[model] ? `${provider}:${model}` : provider;
-        const r = await stub.reserve(key, limits);
-        if (!r.ok) return { lane: FALLBACK_LANE, source: 'fallback', ms: Date.now() - t0 };
-      }
-    }
-    const verdict = await callClassifier(env, cfg, cc, digest);
-    if (verdict) {
-      const lane =
-        verdict.confidence < cc.confidence_floor || !cfg.lanes[verdict.lane]
-          ? FALLBACK_LANE
-          : verdict.lane;
+  // Primary + backups, tried in order: each attempt is metered against its own
+  // provider budget; exhausted/failed entries fall through to the next.
+  for (const entry of cc.entries) {
+    try {
       if (stub) {
-        // Awaited: a dangling promise is cancelled when the Worker invocation ends,
-        // which silently disabled the cache (observed live: 8/8 classifier calls).
-        await stub
-          .putVerdict(key, { lane, confidence: verdict.confidence }, cc.cache_ttl_s)
-          .catch((e) => console.log(`verdict cache write failed: ${String(e)}`));
+        const { provider, model } = parseChainEntry(entry);
+        const p = cfg.providers[provider];
+        const limits = p?.model_limits?.[model] ?? p?.limits;
+        if (p && limits) {
+          const counter = p.model_limits?.[model] ? `${provider}:${model}` : provider;
+          const r = await stub.reserve(counter, limits);
+          if (!r.ok) continue;
+        }
       }
-      return { lane, source: 'classifier', ms: Date.now() - t0, confidence: verdict.confidence };
+      const verdict = await callClassifier(env, cfg, entry, cc.timeout_ms, digest);
+      if (verdict) {
+        const lane =
+          verdict.confidence < cc.confidence_floor || !cfg.lanes[verdict.lane]
+            ? FALLBACK_LANE
+            : verdict.lane;
+        if (stub) {
+          // Awaited: a dangling promise is cancelled when the Worker invocation ends,
+          // which silently disabled the cache (observed live: 8/8 classifier calls).
+          await stub
+            .putVerdict(key, { lane, confidence: verdict.confidence }, cc.cache_ttl_s)
+            .catch((e) => console.log(`verdict cache write failed: ${String(e)}`));
+        }
+        return { lane, source: 'classifier', ms: Date.now() - t0, confidence: verdict.confidence };
+      }
+    } catch (e) {
+      console.log(`classifier ${entry} unavailable (${String(e).slice(0, 100)}) — trying next`);
     }
-  } catch (e) {
-    console.log(`classifier unavailable (${String(e).slice(0, 120)}) — heuristics-only`);
   }
   return { lane: FALLBACK_LANE, source: 'fallback', ms: Date.now() - t0 };
 }

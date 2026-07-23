@@ -16,6 +16,11 @@ allow_paid: false
 # traffic can never starve the classifier's budget. Probed live: strict-JSON ✓.
 dispatcher:
   model: google/gemini-3.1-flash-lite
+  # Backup classifiers (JSON-mode probed ✓ 2026-07-23): tried in order when the
+  # primary is exhausted/down. Groq 8b classifies in ~70ms with 14400 RPD.
+  fallbacks:
+    - groq/llama-3.1-8b-instant
+    - mistral/mistral-small-latest
   timeout_ms: 1500
   cache_ttl_s: 300
   confidence_floor: 0.6
@@ -72,6 +77,7 @@ lanes:
     - openrouter/poolside/laguna-xs-2.1:free
     - nvidia/z-ai/glm-5.2
     - nvidia/poolside/laguna-xs-2.1
+    - hf/Qwen/Qwen3-Coder-Next
     - google/gemini-3.6-flash
 
   HARD:
