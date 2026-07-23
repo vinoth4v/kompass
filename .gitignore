@@ -6,3 +6,4 @@ secrets/
 *.log
 .DS_Store
 coverage/
+site/.vercel/

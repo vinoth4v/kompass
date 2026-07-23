@@ -5,7 +5,7 @@ Anthropic-compatible `/v1/messages` endpoint that routes your Claude Code traffi
 free model providers (OpenRouter `:free`, NVIDIA Build, Google AI Studio, Groq) by task
 complexity — with a shared quota ledger across every machine you code from. $0 infra, $0 models.
 
-**Website & Setup Builder:** https://kompass-vinoth4vs-projects.vercel.app · MIT · Node 20+
+**Website & Setup Builder:** https://kompass-iota.vercel.app · MIT · Node 20+
 
 ## Install (the easy way)
 
@@ -18,7 +18,7 @@ pnpm kompass init                 # guided: keys → KV → workers.dev URL → 
 The wizard is idempotent (safe to re-run), stores your keys only in the gitignored
 `secrets/.secrets.json` + Cloudflare Worker secrets, and ends with a working
 `claude-free` command in your shell. Prefer copy-paste? Use the
-[Setup Builder](https://kompass-vinoth4vs-projects.vercel.app#builder) — it generates your
+[Setup Builder](https://kompass-iota.vercel.app#builder) — it generates your
 personalized files entirely in your browser. The manual path follows below.
 
 ```

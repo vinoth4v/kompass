@@ -10,34 +10,29 @@
     />
     <style>
       :root {
-        color-scheme: light dark;
-        --bg: #ffffff;
-        --fg: #16181d;
-        --muted: #5b6472;
-        --line: #e3e6ea;
-        --card: #f6f7f9;
-        --accent: #b45309;
-        --accent-2: #1d4ed8;
-        --ok: #15803d;
-        --code-bg: #16181d;
-        --code-fg: #e6e8ec;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --bg: #0e1116;
-          --fg: #e6e8ec;
-          --muted: #9aa4b2;
-          --line: #232833;
-          --card: #161b23;
-          --accent: #f59e0b;
-          --accent-2: #60a5fa;
-          --ok: #4ade80;
-          --code-bg: #0a0d11;
-          --code-fg: #dfe3e8;
-        }
+        color-scheme: dark;
+        --bg: #0a0d14;
+        --bg2: #0e1320;
+        --fg: #e8eaf0;
+        --muted: #8b95a7;
+        --line: #1e2433;
+        --card: #121828;
+        --card2: #161d30;
+        --amber: #f5a524;
+        --blue: #4d8dff;
+        --green: #34d399;
+        --teal: #2dd4bf;
+        --red: #f4635e;
+        --purple: #a78bfa;
+        --pink: #f472b6;
+        --code-bg: #0b0f1a;
+        --code-fg: #dfe3ec;
       }
       * {
         box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
       }
       body {
         margin: 0;
@@ -49,14 +44,29 @@
           'Segoe UI',
           Roboto,
           sans-serif;
+        overflow-x: hidden;
+      }
+      body::before {
+        /* ambient glow */
+        content: '';
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+        background:
+          radial-gradient(600px 400px at 75% -5%, #f5a52422, transparent 65%),
+          radial-gradient(700px 500px at 15% 10%, #4d8dff1e, transparent 65%),
+          radial-gradient(800px 600px at 60% 110%, #a78bfa14, transparent 60%);
       }
       main {
-        max-width: 60rem;
+        position: relative;
+        z-index: 1;
+        max-width: 64rem;
         margin: 0 auto;
         padding: 0 1.25rem 5rem;
       }
       a {
-        color: var(--accent-2);
+        color: var(--blue);
         text-decoration: none;
       }
       a:hover {
@@ -71,17 +81,18 @@
       code {
         background: var(--card);
         border: 1px solid var(--line);
-        border-radius: 4px;
-        padding: 0.1em 0.35em;
+        border-radius: 5px;
+        padding: 0.1em 0.4em;
       }
       pre {
         background: var(--code-bg);
         color: var(--code-fg);
-        border-radius: 10px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
         padding: 1rem 1.1rem;
         overflow-x: auto;
         position: relative;
-        line-height: 1.5;
+        line-height: 1.55;
       }
       pre code {
         background: none;
@@ -92,133 +103,329 @@
       h1,
       h2,
       h3 {
-        line-height: 1.25;
+        line-height: 1.22;
       }
       h2 {
-        margin-top: 3.5rem;
-        font-size: 1.5rem;
-        border-bottom: 1px solid var(--line);
-        padding-bottom: 0.4rem;
+        margin-top: 4.5rem;
+        font-size: 1.7rem;
+      }
+      .kicker {
+        font-size: 0.78rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--amber);
+        margin-bottom: -1.2rem;
+        margin-top: 4.5rem;
+      }
+      .kicker + h2 {
+        margin-top: 1.6rem;
       }
       .muted {
         color: var(--muted);
       }
+
+      /* hero */
       header.hero {
         text-align: center;
-        padding: 4.5rem 0 2.5rem;
+        padding: 4.5rem 0 2rem;
       }
       .hero h1 {
-        font-size: 2.6rem;
-        margin: 0.4rem 0;
+        font-size: clamp(2.6rem, 7vw, 4rem);
+        margin: 1rem 0 0.4rem;
+        letter-spacing: -0.02em;
+        background: linear-gradient(
+          100deg,
+          #ffd68a 5%,
+          var(--amber) 35%,
+          var(--pink) 70%,
+          var(--blue) 100%
+        );
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
       }
       .hero .tag {
-        font-size: 1.2rem;
+        font-size: 1.18rem;
         color: var(--muted);
-        max-width: 42rem;
-        margin: 0.6rem auto 1.6rem;
+        max-width: 44rem;
+        margin: 0.7rem auto 1.4rem;
       }
-      .hero .pill {
-        display: inline-block;
+      .hero .tag b {
+        color: var(--fg);
+      }
+      .pill {
+        display: inline-flex;
+        gap: 0.5rem;
+        align-items: center;
         border: 1px solid var(--line);
-        background: var(--card);
+        background: #ffffff08;
+        backdrop-filter: blur(4px);
         border-radius: 999px;
-        padding: 0.25rem 0.9rem;
+        padding: 0.3rem 1rem;
         font-size: 0.85rem;
         color: var(--muted);
+      }
+      .pill .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--green);
+        box-shadow: 0 0 8px var(--green);
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        50% {
+          opacity: 0.4;
+        }
       }
       .cta {
         display: flex;
         gap: 0.8rem;
         justify-content: center;
         flex-wrap: wrap;
-        margin-top: 1.4rem;
+        margin-top: 1.6rem;
       }
       .btn {
         display: inline-block;
-        padding: 0.6rem 1.2rem;
-        border-radius: 8px;
-        font-weight: 600;
+        padding: 0.65rem 1.3rem;
+        border-radius: 10px;
+        font-weight: 650;
+        transition: all 0.15s;
       }
       .btn.primary {
-        background: var(--accent);
-        color: #fff;
+        background: linear-gradient(100deg, var(--amber), #ff8c42);
+        color: #1a1204;
+        box-shadow: 0 4px 24px #f5a52440;
+      }
+      .btn.primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 32px #f5a52466;
+        text-decoration: none;
       }
       .btn.ghost {
         border: 1px solid var(--line);
         color: var(--fg);
+        background: #ffffff06;
       }
-      .btn:hover {
+      .btn.ghost:hover {
+        border-color: #3a4358;
         text-decoration: none;
-        filter: brightness(1.07);
+        transform: translateY(-2px);
       }
+
+      /* compass */
+      .compass {
+        width: 130px;
+        height: 130px;
+        margin: 0 auto;
+        display: block;
+        filter: drop-shadow(0 0 24px #f5a52444);
+      }
+      .needle {
+        transform-origin: 60px 60px;
+        animation: seek 7s ease-in-out infinite;
+      }
+      @keyframes seek {
+        0%,
+        100% {
+          transform: rotate(-18deg);
+        }
+        18% {
+          transform: rotate(40deg);
+        }
+        38% {
+          transform: rotate(5deg);
+        }
+        60% {
+          transform: rotate(65deg);
+        }
+        80% {
+          transform: rotate(-40deg);
+        }
+      }
+
+      /* terminal mockup */
+      .term {
+        max-width: 40rem;
+        margin: 2.4rem auto 0;
+        background: var(--code-bg);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        box-shadow: 0 20px 60px #00000066;
+        text-align: left;
+        overflow: hidden;
+      }
+      .term .bar {
+        display: flex;
+        gap: 7px;
+        padding: 0.7rem 0.9rem;
+        border-bottom: 1px solid var(--line);
+        background: #ffffff05;
+      }
+      .term .bar i {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+      }
+      .term .bar i:nth-child(1) {
+        background: #ff5f57;
+      }
+      .term .bar i:nth-child(2) {
+        background: #febc2e;
+      }
+      .term .bar i:nth-child(3) {
+        background: #28c840;
+      }
+      .term pre {
+        border: none;
+        border-radius: 0;
+        margin: 0;
+        font-size: 0.84rem;
+        background: transparent;
+      }
+      .t-dim {
+        color: #6b7590;
+      }
+      .t-amber {
+        color: var(--amber);
+      }
+      .t-green {
+        color: var(--green);
+      }
+      .t-blue {
+        color: var(--blue);
+      }
+      .t-purple {
+        color: var(--purple);
+      }
+      .cursor {
+        display: inline-block;
+        width: 8px;
+        height: 15px;
+        background: var(--fg);
+        vertical-align: -2px;
+        animation: blink 1.1s steps(1) infinite;
+      }
+      @keyframes blink {
+        50% {
+          opacity: 0;
+        }
+      }
+
+      /* cards */
       .grid {
         display: grid;
         gap: 1rem;
         grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
-        margin-top: 1.5rem;
+        margin-top: 2.5rem;
       }
       .card {
-        background: var(--card);
+        background: linear-gradient(160deg, var(--card2), var(--card));
         border: 1px solid var(--line);
-        border-radius: 12px;
-        padding: 1.1rem 1.2rem;
+        border-radius: 14px;
+        padding: 1.2rem 1.3rem;
+        transition:
+          transform 0.15s,
+          border-color 0.15s;
+      }
+      .card:hover {
+        transform: translateY(-3px);
+        border-color: #2c3550;
       }
       .card h3 {
-        margin: 0 0 0.4rem;
+        margin: 0.2rem 0 0.4rem;
         font-size: 1.02rem;
       }
       .card p {
         margin: 0;
         color: var(--muted);
-        font-size: 0.93rem;
+        font-size: 0.92rem;
       }
-      .lanes {
+      .card svg.icon {
+        height: 84px;
+        width: 100%;
+        margin-bottom: 0.5rem;
+      }
+
+      /* flow diagram */
+      .flowwrap {
+        margin-top: 2rem;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: linear-gradient(180deg, var(--bg2), var(--bg));
+        padding: 1rem;
+        overflow-x: auto;
+      }
+      .flowwrap svg {
+        min-width: 760px;
+        width: 100%;
+        display: block;
+      }
+      .flow-label {
+        font:
+          600 12px ui-monospace,
+          Menlo,
+          monospace;
+        fill: var(--fg);
+      }
+      .flow-sub {
+        font:
+          10.5px ui-monospace,
+          Menlo,
+          monospace;
+        fill: var(--muted);
+      }
+      .flow-box {
+        fill: var(--card);
+        stroke: var(--line);
+        rx: 10;
+      }
+      .wire {
+        stroke: #2a3350;
+        stroke-width: 1.6;
+        fill: none;
+      }
+      .lanes-table {
         width: 100%;
         border-collapse: collapse;
         font-size: 0.88rem;
-        margin-top: 0.8rem;
+        margin-top: 1.4rem;
       }
-      .lanes th,
-      .lanes td {
+      .lanes-table th,
+      .lanes-table td {
         text-align: left;
-        padding: 0.45rem 0.7rem;
+        padding: 0.5rem 0.7rem;
         border-bottom: 1px solid var(--line);
       }
-      .lanes td:first-child {
-        font-weight: 600;
-        white-space: nowrap;
-      }
-      .copybtn {
-        position: absolute;
-        top: 0.55rem;
-        right: 0.6rem;
-        background: #ffffff22;
-        color: var(--code-fg);
-        border: 1px solid #ffffff33;
+      .lanechip {
+        display: inline-block;
+        padding: 0.05rem 0.55rem;
         border-radius: 6px;
-        font-size: 0.75rem;
-        padding: 0.15rem 0.6rem;
-        cursor: pointer;
+        font:
+          700 0.78rem ui-monospace,
+          Menlo,
+          monospace;
       }
-      .copybtn:hover {
-        background: #ffffff33;
-      }
+
+      /* steps */
       .step {
         display: flex;
-        gap: 0.9rem;
-        margin: 1.4rem 0;
+        gap: 1rem;
+        margin: 1.6rem 0;
       }
       .step .n {
         flex: none;
-        width: 1.9rem;
-        height: 1.9rem;
+        width: 2rem;
+        height: 2rem;
         border-radius: 50%;
-        background: var(--accent);
-        color: #fff;
-        font-weight: 700;
+        background: linear-gradient(120deg, var(--amber), #ff8c42);
+        color: #1a1204;
+        font-weight: 800;
         display: flex;
         align-items: center;
         justify-content: center;
+        box-shadow: 0 2px 14px #f5a52440;
       }
       .step > div {
         min-width: 0;
@@ -227,176 +434,463 @@
       .step pre {
         margin: 0.5rem 0 0;
       }
-      /* setup builder */
+      .copybtn {
+        position: absolute;
+        top: 0.55rem;
+        right: 0.6rem;
+        background: #ffffff10;
+        color: var(--code-fg);
+        border: 1px solid #ffffff22;
+        border-radius: 6px;
+        font-size: 0.75rem;
+        padding: 0.15rem 0.6rem;
+        cursor: pointer;
+      }
+      .copybtn:hover {
+        background: #ffffff22;
+      }
+
+      /* builder */
       .builder {
         border: 1px solid var(--line);
-        border-radius: 14px;
-        padding: 1.4rem;
-        background: var(--card);
-        margin-top: 1.2rem;
+        border-radius: 16px;
+        padding: 1.5rem;
+        background: linear-gradient(160deg, var(--card2), var(--card));
+        margin-top: 1.4rem;
       }
       .builder label {
         display: block;
         font-size: 0.85rem;
         font-weight: 600;
-        margin: 0.9rem 0 0.25rem;
+        margin: 1rem 0 0.25rem;
       }
       .builder input {
         width: 100%;
-        padding: 0.55rem 0.7rem;
+        padding: 0.6rem 0.75rem;
         border: 1px solid var(--line);
-        border-radius: 8px;
+        border-radius: 9px;
         background: var(--bg);
         color: var(--fg);
         font-family: ui-monospace, Menlo, monospace;
         font-size: 0.85rem;
       }
+      .builder input:focus {
+        outline: none;
+        border-color: var(--amber);
+        box-shadow: 0 0 0 3px #f5a52422;
+      }
       .builder .hint {
         font-size: 0.78rem;
         color: var(--muted);
-        margin-top: 0.15rem;
+        margin-top: 0.2rem;
       }
       .privacy {
         display: flex;
         gap: 0.6rem;
         align-items: flex-start;
-        background: color-mix(in srgb, var(--ok) 12%, transparent);
-        border: 1px solid color-mix(in srgb, var(--ok) 40%, transparent);
-        border-radius: 10px;
-        padding: 0.7rem 0.9rem;
+        background: #34d3991a;
+        border: 1px solid #34d39955;
+        border-radius: 12px;
+        padding: 0.8rem 1rem;
         font-size: 0.88rem;
-        margin-bottom: 0.4rem;
+      }
+      .linkbtn {
+        border: none;
+        background: none;
+        color: var(--blue);
+        cursor: pointer;
+        padding: 0;
+        font: inherit;
       }
       .rowbtns {
-        margin-top: 1.2rem;
+        margin-top: 1.3rem;
         display: flex;
         gap: 0.7rem;
         flex-wrap: wrap;
       }
       .rowbtns button {
-        padding: 0.5rem 1rem;
-        border-radius: 8px;
+        padding: 0.55rem 1.1rem;
+        border-radius: 9px;
         border: 1px solid var(--line);
         background: var(--bg);
         color: var(--fg);
         cursor: pointer;
-        font-weight: 600;
+        font-weight: 650;
         font-size: 0.88rem;
+        transition: all 0.15s;
       }
       .rowbtns button.primary {
-        background: var(--accent);
-        border-color: var(--accent);
-        color: #fff;
+        background: linear-gradient(100deg, var(--amber), #ff8c42);
+        border: none;
+        color: #1a1204;
       }
       .rowbtns button:hover {
-        filter: brightness(1.08);
+        transform: translateY(-1px);
       }
+      .out h4 {
+        margin: 1.5rem 0 0.35rem;
+        font-size: 0.95rem;
+      }
+
       details {
-        margin: 0.6rem 0;
+        margin: 0.7rem 0;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 0.7rem 1rem;
+        background: var(--card);
       }
       details summary {
         cursor: pointer;
-        font-weight: 600;
+        font-weight: 650;
+      }
+      details p {
+        margin: 0.6rem 0 0.2rem;
       }
       footer {
         border-top: 1px solid var(--line);
-        margin-top: 4rem;
-        padding: 1.5rem 0;
+        margin-top: 5rem;
+        padding: 1.8rem 0;
         text-align: center;
         color: var(--muted);
         font-size: 0.88rem;
       }
-      .out h4 {
-        margin: 1.4rem 0 0.3rem;
-        font-size: 0.95rem;
+
+      @media (prefers-reduced-motion: reduce) {
+        .needle,
+        .pill .dot,
+        .cursor,
+        .mover {
+          animation: none !important;
+        }
+        .card:hover,
+        .btn:hover {
+          transform: none;
+        }
       }
     </style>
   </head>
   <body>
     <main>
       <header class="hero">
-        <div style="font-size: 3rem">🧭</div>
+        <!-- animated compass -->
+        <svg class="compass" viewBox="0 0 120 120" aria-hidden="true">
+          <defs>
+            <linearGradient id="ng" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#f5a524" />
+              <stop offset="1" stop-color="#ff8c42" />
+            </linearGradient>
+          </defs>
+          <circle cx="60" cy="60" r="54" fill="#121828" stroke="#2a3350" stroke-width="2" />
+          <circle cx="60" cy="60" r="46" fill="none" stroke="#1e2433" stroke-width="1" />
+          <g stroke="#3a4358" stroke-width="2">
+            <line x1="60" y1="10" x2="60" y2="20" />
+            <line x1="60" y1="100" x2="60" y2="110" />
+            <line x1="10" y1="60" x2="20" y2="60" />
+            <line x1="100" y1="60" x2="110" y2="60" />
+          </g>
+          <text
+            x="60"
+            y="30"
+            text-anchor="middle"
+            font-size="10"
+            font-weight="700"
+            fill="#8b95a7"
+            font-family="monospace"
+          >
+            N
+          </text>
+          <g class="needle">
+            <polygon points="60,22 66,60 60,70 54,60" fill="url(#ng)" />
+            <polygon points="60,98 66,60 60,70 54,60" fill="#4d8dff" opacity="0.85" />
+            <circle cx="60" cy="60" r="5.5" fill="#e8eaf0" />
+            <circle cx="60" cy="60" r="2.5" fill="#0a0d14" />
+          </g>
+        </svg>
         <h1>Kompass</h1>
         <p class="tag">
-          Keep coding when your Claude limits hit. One Cloudflare Worker routes
+          Keep coding when your <b>Claude limits</b> hit. One Cloudflare Worker routes
           <b>Claude&nbsp;Code</b> across free model providers by task complexity —
           <b>$0 infra, $0 models</b>, and your API keys never leave your machines.
         </p>
-        <span class="pill">OpenRouter · NVIDIA Build · Google AI Studio · Groq</span>
+        <span class="pill"
+          ><span class="dot"></span> OpenRouter · NVIDIA Build · Google AI Studio · Groq</span
+        >
         <div class="cta">
           <a class="btn primary" href="#quickstart">Install in 10 minutes</a>
           <a class="btn ghost" href="#builder">Setup Builder</a>
-          <a class="btn ghost" href="https://github.com/vinoth4v/kompass">GitHub&nbsp;↗</a>
+          <a class="btn ghost" href="https://github.com/vinoth4v/kompass">GitHub ↗</a>
+        </div>
+
+        <div class="term" aria-hidden="true">
+          <div class="bar"><i></i><i></i><i></i></div>
+          <pre><code><span class="t-dim">~/dataforge</span> $ <span class="t-amber">claude-free</span>
+<span class="t-dim">✻ Claude Code · Sonnet 4.5 · via kompass.you.workers.dev</span>
+
+<span class="t-blue">&gt;</span> run the tests and fix whatever fails
+
+<span class="t-dim">  route:</span> <span class="t-amber">AGENTIC</span> <span class="t-dim">→ laguna-s-2.1 · classifier 0.91 · 0ms cache</span>
+<span class="t-green">  ⏺</span> Running <span class="t-purple">pytest -q</span> … 2 failed → patching <span class="t-purple">transform.py</span>
+<span class="t-green">  ⏺</span> 41 passed ✔ <span class="t-dim">— cost: $0.00, Pro quota untouched</span>
+<span class="t-blue">&gt;</span> <span class="cursor"></span></code></pre>
         </div>
       </header>
 
-      <div class="grid">
-        <div class="card">
-          <h3>⚡ Complexity-aware routing</h3>
-          <p>
-            Heuristics + a fast free reasoning-model classifier pick a lane per request: FAST,
-            SIMPLE, AGENTIC, HARD, or LONGCTX. Trivial tasks never burn premium-grade models.
-          </p>
-        </div>
-        <div class="card">
-          <h3>🧮 One quota ledger, every machine</h3>
-          <p>
-            A Durable Object tracks each provider's per-minute and per-day budgets. Your laptop and
-            desktop draw from the same ledger — exhausted providers are skipped with zero 429s.
-          </p>
-        </div>
-        <div class="card">
-          <h3>🛟 Survives outages</h3>
-          <p>
-            Ordered fallback chains on 429/5xx/timeout, 10-minute health cooldowns, and mid-stream
-            failover before the first byte. A flaky provider costs you seconds, not your session.
-          </p>
-        </div>
-        <div class="card">
-          <h3>🔐 Your keys, your Worker</h3>
-          <p>
-            Deploys under <i>your</i> Cloudflare account, gated by <i>your</i> bearer token. Keys
-            live as Worker secrets. A privacy guard keeps secret-looking content away from providers
-            that train on inputs.
-          </p>
-        </div>
+      <!-- ============ THE JOURNEY ============ -->
+      <p class="kicker">How it works</p>
+      <h2>The 30-millisecond journey of a request</h2>
+      <p class="muted">
+        Claude Code speaks its normal Anthropic protocol. Kompass classifies each turn, checks the
+        shared quota ledger, and forwards to the best free model that's healthy — translating
+        streaming and tool calls both ways so Claude Code never notices.
+      </p>
+
+      <div class="flowwrap">
+        <svg
+          viewBox="0 0 900 330"
+          role="img"
+          aria-label="Request flow: Claude Code through Kompass classifier and ledger to lanes and providers"
+        >
+          <defs>
+            <marker id="arr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+              <path d="M0,0 L7,3.5 L0,7 z" fill="#3a4358" />
+            </marker>
+          </defs>
+
+          <!-- Claude Code -->
+          <rect x="10" y="130" width="130" height="70" rx="12" class="flow-box" />
+          <text x="75" y="160" text-anchor="middle" class="flow-label">👩‍💻 Claude Code</text>
+          <text x="75" y="178" text-anchor="middle" class="flow-sub">ANTHROPIC_BASE_URL</text>
+
+          <!-- wire to kompass -->
+          <path id="w0" class="wire" d="M140,165 H210" marker-end="url(#arr)" />
+
+          <!-- Kompass box -->
+          <rect
+            x="212"
+            y="60"
+            width="190"
+            height="210"
+            rx="14"
+            fill="#0e1320"
+            stroke="#f5a52466"
+            stroke-width="1.5"
+          />
+          <text x="307" y="86" text-anchor="middle" class="flow-label" fill="#f5a524">
+            🧭 KOMPASS
+          </text>
+          <rect x="230" y="100" width="154" height="40" rx="8" class="flow-box" />
+          <text x="307" y="118" text-anchor="middle" class="flow-sub" fill="#e8eaf0">
+            ⚡ heuristics (0 ms)
+          </text>
+          <text x="307" y="132" text-anchor="middle" class="flow-sub">
+            tiny→FAST · huge→LONGCTX
+          </text>
+          <rect x="230" y="150" width="154" height="40" rx="8" class="flow-box" />
+          <text x="307" y="168" text-anchor="middle" class="flow-sub" fill="#e8eaf0">
+            🧠 classifier verdict
+          </text>
+          <text x="307" y="182" text-anchor="middle" class="flow-sub">{"lane":"AGENTIC",0.91}</text>
+          <rect x="230" y="200" width="154" height="40" rx="8" class="flow-box" />
+          <text x="307" y="218" text-anchor="middle" class="flow-sub" fill="#e8eaf0">
+            🧮 quota ledger + health
+          </text>
+          <text x="307" y="232" text-anchor="middle" class="flow-sub">
+            skip exhausted · cooldowns
+          </text>
+
+          <!-- wires to lanes -->
+          <path id="w1" class="wire" d="M402,165 C440,165 440,45  490,45" marker-end="url(#arr)" />
+          <path id="w2" class="wire" d="M402,165 C440,165 440,105 490,105" marker-end="url(#arr)" />
+          <path
+            id="w3"
+            class="wire"
+            d="M402,165 C450,165 450,165 490,165"
+            marker-end="url(#arr)"
+            stroke="#f5a524"
+            stroke-width="2.2"
+          />
+          <path id="w4" class="wire" d="M402,165 C440,165 440,225 490,225" marker-end="url(#arr)" />
+          <path id="w5" class="wire" d="M402,165 C440,165 440,285 490,285" marker-end="url(#arr)" />
+
+          <!-- lanes -->
+          <g font-family="monospace" font-weight="700" font-size="12">
+            <rect
+              x="492"
+              y="28"
+              width="96"
+              height="34"
+              rx="8"
+              fill="#34d39922"
+              stroke="#34d39966"
+            />
+            <text x="540" y="49" text-anchor="middle" fill="#34d399">FAST</text>
+            <rect
+              x="492"
+              y="88"
+              width="96"
+              height="34"
+              rx="8"
+              fill="#2dd4bf22"
+              stroke="#2dd4bf66"
+            />
+            <text x="540" y="109" text-anchor="middle" fill="#2dd4bf">SIMPLE</text>
+            <rect x="492" y="148" width="96" height="34" rx="8" fill="#f5a52422" stroke="#f5a524" />
+            <text x="540" y="169" text-anchor="middle" fill="#f5a524">AGENTIC</text>
+            <rect
+              x="492"
+              y="208"
+              width="96"
+              height="34"
+              rx="8"
+              fill="#f4635e22"
+              stroke="#f4635e66"
+            />
+            <text x="540" y="229" text-anchor="middle" fill="#f4635e">HARD</text>
+            <rect
+              x="492"
+              y="268"
+              width="96"
+              height="34"
+              rx="8"
+              fill="#a78bfa22"
+              stroke="#a78bfa66"
+            />
+            <text x="540" y="289" text-anchor="middle" fill="#a78bfa">LONGCTX</text>
+          </g>
+
+          <!-- wires lanes → providers -->
+          <path id="p1" class="wire" d="M588,45 C640,45 640,75 690,75" marker-end="url(#arr)" />
+          <path
+            id="p3"
+            class="wire"
+            d="M588,165 C640,165 640,135 690,135"
+            marker-end="url(#arr)"
+            stroke="#f5a524"
+            stroke-width="2.2"
+          />
+          <path id="p4" class="wire" d="M588,225 C640,225 640,195 690,195" marker-end="url(#arr)" />
+          <path id="p5" class="wire" d="M588,285 C640,285 640,255 690,255" marker-end="url(#arr)" />
+
+          <!-- providers -->
+          <g>
+            <rect x="692" y="55" width="196" height="40" rx="10" class="flow-box" />
+            <text x="790" y="73" text-anchor="middle" class="flow-sub" fill="#e8eaf0">
+              Google AI Studio
+            </text>
+            <text x="790" y="87" text-anchor="middle" class="flow-sub">
+              gemini-flash-lite · 3.6-flash
+            </text>
+            <rect
+              x="692"
+              y="115"
+              width="196"
+              height="40"
+              rx="10"
+              fill="#121828"
+              stroke="#f5a52466"
+            />
+            <text x="790" y="133" text-anchor="middle" class="flow-sub" fill="#e8eaf0">
+              OpenRouter :free
+            </text>
+            <text x="790" y="147" text-anchor="middle" class="flow-sub">
+              laguna-s-2.1 · laguna-xs
+            </text>
+            <rect x="692" y="175" width="196" height="40" rx="10" class="flow-box" />
+            <text x="790" y="193" text-anchor="middle" class="flow-sub" fill="#e8eaf0">
+              NVIDIA Build
+            </text>
+            <text x="790" y="207" text-anchor="middle" class="flow-sub">
+              glm-5.2 · deepseek-v4 · minimax
+            </text>
+            <rect x="692" y="235" width="196" height="40" rx="10" class="flow-box" />
+            <text x="790" y="253" text-anchor="middle" class="flow-sub" fill="#e8eaf0">
+              …any OpenAI-compatible
+            </text>
+            <text x="790" y="267" text-anchor="middle" class="flow-sub">
+              4 lines of YAML to add
+            </text>
+          </g>
+
+          <!-- animated request dots -->
+          <g class="mover">
+            <circle r="4" fill="#f5a524">
+              <animateMotion dur="2.6s" repeatCount="indefinite" keyPoints="0;1" keyTimes="0;1">
+                <mpath href="#w0" />
+              </animateMotion>
+            </circle>
+            <circle r="4" fill="#f5a524">
+              <animateMotion dur="2.6s" begin="0.5s" repeatCount="indefinite">
+                <mpath href="#w3" />
+              </animateMotion>
+            </circle>
+            <circle r="4" fill="#f5a524">
+              <animateMotion dur="2.6s" begin="1.1s" repeatCount="indefinite">
+                <mpath href="#p3" />
+              </animateMotion>
+            </circle>
+            <circle r="3" fill="#34d399" opacity="0.9">
+              <animateMotion dur="3.4s" begin="1.8s" repeatCount="indefinite">
+                <mpath href="#w1" />
+              </animateMotion>
+            </circle>
+            <circle r="3" fill="#34d399" opacity="0.9">
+              <animateMotion dur="3.4s" begin="2.6s" repeatCount="indefinite">
+                <mpath href="#p1" />
+              </animateMotion>
+            </circle>
+            <circle r="3" fill="#a78bfa" opacity="0.9">
+              <animateMotion dur="4s" begin="0.9s" repeatCount="indefinite">
+                <mpath href="#w5" />
+              </animateMotion>
+            </circle>
+            <circle r="3" fill="#a78bfa" opacity="0.9">
+              <animateMotion dur="4s" begin="2s" repeatCount="indefinite">
+                <mpath href="#p5" />
+              </animateMotion>
+            </circle>
+            <circle r="3" fill="#f4635e" opacity="0.9">
+              <animateMotion dur="4.4s" begin="1.4s" repeatCount="indefinite">
+                <mpath href="#w4" />
+              </animateMotion>
+            </circle>
+          </g>
+        </svg>
       </div>
 
-      <h2 id="how">How it works</h2>
-      <p>
-        Point Claude Code's <code>ANTHROPIC_BASE_URL</code> at your Worker. Every request is parsed
-        (Anthropic wire format, streaming and tool calls included), classified, and forwarded to the
-        best free model whose quota and health allow it — then translated back, so Claude Code never
-        knows the difference.
-      </p>
-      <table class="lanes">
+      <table class="lanes-table">
         <tr>
           <th>Lane</th>
           <th>Serves</th>
           <th>Default chain (hot-editable YAML)</th>
         </tr>
         <tr>
-          <td>FAST</td>
+          <td><span class="lanechip" style="background: #34d39922; color: #34d399">FAST</span></td>
           <td>quick lookups, renames, one-liners</td>
           <td class="mono muted">gemini-flash-lite → step-3.7-flash → laguna-xs</td>
         </tr>
         <tr>
-          <td>SIMPLE</td>
+          <td>
+            <span class="lanechip" style="background: #2dd4bf22; color: #2dd4bf">SIMPLE</span>
+          </td>
           <td>single-file edits, docstrings</td>
           <td class="mono muted">laguna-xs → nemotron-49b → mistral-medium</td>
         </tr>
         <tr>
-          <td>AGENTIC</td>
+          <td>
+            <span class="lanechip" style="background: #f5a52422; color: #f5a524">AGENTIC</span>
+          </td>
           <td>multi-step tool work (default)</td>
           <td class="mono muted">laguna-s → laguna-xs → glm-5.2 → minimax-m3</td>
         </tr>
         <tr>
-          <td>HARD</td>
+          <td><span class="lanechip" style="background: #f4635e22; color: #f4635e">HARD</span></td>
           <td>deep debugging, architecture</td>
           <td class="mono muted">deepseek-v4-pro → minimax-m3 → gemini-pro</td>
         </tr>
         <tr>
-          <td>LONGCTX</td>
+          <td>
+            <span class="lanechip" style="background: #a78bfa22; color: #a78bfa">LONGCTX</span>
+          </td>
           <td>&gt;60k-token contexts</td>
           <td class="mono muted">gemini-flash (1M) → nemotron-ultra (1M)</td>
         </tr>
@@ -406,8 +900,258 @@
         are unreachable unless you explicitly set <code>allow_paid: true</code> (enforced in code).
       </p>
 
-      <h2 id="quickstart">Quickstart</h2>
-      <p>
+      <!-- ============ FEATURES with mini-viz ============ -->
+      <p class="kicker">Why it doesn't fall over</p>
+      <h2>Built for the messy reality of free tiers</h2>
+      <div class="grid">
+        <div class="card">
+          <svg class="icon" viewBox="0 0 220 84" aria-hidden="true">
+            <rect x="6" y="8" width="52" height="30" rx="6" fill="#121828" stroke="#2a3350" />
+            <text
+              x="32"
+              y="27"
+              text-anchor="middle"
+              font-size="9"
+              fill="#8b95a7"
+              font-family="monospace"
+            >
+              laptop
+            </text>
+            <rect x="6" y="48" width="52" height="30" rx="6" fill="#121828" stroke="#2a3350" />
+            <text
+              x="32"
+              y="67"
+              text-anchor="middle"
+              font-size="9"
+              fill="#8b95a7"
+              font-family="monospace"
+            >
+              desktop
+            </text>
+            <path d="M58,23 C90,23 90,40 118,40" class="wire" />
+            <path d="M58,63 C90,63 90,46 118,46" class="wire" />
+            <rect x="120" y="22" width="92" height="42" rx="8" fill="#0e1320" stroke="#4d8dff66" />
+            <text
+              x="166"
+              y="39"
+              text-anchor="middle"
+              font-size="9.5"
+              fill="#4d8dff"
+              font-family="monospace"
+              font-weight="700"
+            >
+              ONE LEDGER
+            </text>
+            <rect x="130" y="46" width="72" height="7" rx="3.5" fill="#1e2433" />
+            <rect x="130" y="46" width="46" height="7" rx="3.5" fill="#4d8dff" />
+            <text
+              x="166"
+              y="61"
+              text-anchor="middle"
+              font-size="8"
+              fill="#8b95a7"
+              font-family="monospace"
+            >
+              openrouter 32/50
+            </text>
+            <circle r="2.5" fill="#4d8dff">
+              <animateMotion dur="2s" repeatCount="indefinite" path="M58,23 C90,23 90,40 118,40" />
+            </circle>
+            <circle r="2.5" fill="#4d8dff">
+              <animateMotion
+                dur="2s"
+                begin="1s"
+                repeatCount="indefinite"
+                path="M58,63 C90,63 90,46 118,46"
+              />
+            </circle>
+          </svg>
+          <h3>One quota ledger, every machine</h3>
+          <p>
+            A Durable Object tracks each provider's RPM/RPD. Your laptop and desktop draw from the
+            same counters — exhausted providers are skipped up-front with <b>zero 429s</b>.
+          </p>
+        </div>
+        <div class="card">
+          <svg class="icon" viewBox="0 0 220 84" aria-hidden="true">
+            <rect x="8" y="30" width="56" height="26" rx="7" fill="#f4635e1a" stroke="#f4635e88" />
+            <text
+              x="36"
+              y="43"
+              text-anchor="middle"
+              font-size="8.5"
+              fill="#f4635e"
+              font-family="monospace"
+            >
+              laguna ✗
+            </text>
+            <text
+              x="36"
+              y="52"
+              text-anchor="middle"
+              font-size="7"
+              fill="#8b95a7"
+              font-family="monospace"
+            >
+              cooldown 10m
+            </text>
+            <rect x="82" y="30" width="56" height="26" rx="7" fill="#f4635e1a" stroke="#f4635e55" />
+            <text
+              x="110"
+              y="43"
+              text-anchor="middle"
+              font-size="8.5"
+              fill="#f4635e"
+              font-family="monospace"
+            >
+              glm ✗
+            </text>
+            <text
+              x="110"
+              y="52"
+              text-anchor="middle"
+              font-size="7"
+              fill="#8b95a7"
+              font-family="monospace"
+            >
+              timeout
+            </text>
+            <rect x="156" y="30" width="56" height="26" rx="7" fill="#34d3991f" stroke="#34d399">
+              <animate
+                attributeName="stroke-width"
+                values="1;2.4;1"
+                dur="2.4s"
+                repeatCount="indefinite"
+              />
+            </rect>
+            <text
+              x="184"
+              y="43"
+              text-anchor="middle"
+              font-size="8.5"
+              fill="#34d399"
+              font-family="monospace"
+            >
+              gemini ✓
+            </text>
+            <text
+              x="184"
+              y="52"
+              text-anchor="middle"
+              font-size="7"
+              fill="#8b95a7"
+              font-family="monospace"
+            >
+              serves it
+            </text>
+            <path d="M36,28 C36,12 110,12 110,28" class="wire" stroke-dasharray="3 3" />
+            <path d="M110,28 C110,12 184,12 184,28" class="wire" stroke-dasharray="3 3" />
+            <circle r="3" fill="#f5a524">
+              <animateMotion
+                dur="2.4s"
+                repeatCount="indefinite"
+                path="M36,28 C36,12 110,12 110,28 C110,12 184,12 184,28"
+              />
+            </circle>
+          </svg>
+          <h3>Survives outages, mid-stream</h3>
+          <p>
+            Ordered fallback on 429/5xx/timeout, 10-minute health cooldowns, and failover before the
+            first byte. A flaky provider costs seconds — not your session.
+          </p>
+        </div>
+        <div class="card">
+          <svg class="icon" viewBox="0 0 220 84" aria-hidden="true">
+            <circle cx="52" cy="42" r="26" fill="none" stroke="#f5a52455" stroke-width="1.6" />
+            <circle
+              cx="52"
+              cy="42"
+              r="26"
+              fill="none"
+              stroke="#f5a524"
+              stroke-width="2.6"
+              stroke-linecap="round"
+              stroke-dasharray="163"
+              stroke-dashoffset="41"
+              transform="rotate(-90 52 42)"
+            >
+              <animate attributeName="stroke-dashoffset" values="163;41" dur="1.6s" fill="freeze" />
+            </circle>
+            <text
+              x="52"
+              y="39"
+              text-anchor="middle"
+              font-size="12"
+              fill="#f5a524"
+              font-family="monospace"
+              font-weight="800"
+            >
+              85%
+            </text>
+            <text
+              x="52"
+              y="52"
+              text-anchor="middle"
+              font-size="7"
+              fill="#8b95a7"
+              font-family="monospace"
+            >
+              first-try lane fit
+            </text>
+            <text x="120" y="30" font-size="9" fill="#e8eaf0" font-family="monospace">
+              p50 routing:
+              <tspan fill="#34d399" font-weight="700">0 ms</tspan>
+            </text>
+            <text x="120" y="46" font-size="9" fill="#e8eaf0" font-family="monospace">
+              heuristic hits:
+              <tspan fill="#34d399" font-weight="700">~60%</tspan>
+            </text>
+            <text x="120" y="62" font-size="9" fill="#e8eaf0" font-family="monospace">
+              verdict cache:
+              <tspan fill="#34d399" font-weight="700">5 min</tspan>
+            </text>
+          </svg>
+          <h3>Complexity-aware, instantly</h3>
+          <p>
+            Heuristics short-circuit most turns at 0ms; the rest get a strict-JSON verdict from a
+            fast free reasoning model. Trivial tasks never burn heavyweight quota.
+          </p>
+        </div>
+        <div class="card">
+          <svg class="icon" viewBox="0 0 220 84" aria-hidden="true">
+            <rect x="70" y="14" width="80" height="56" rx="10" fill="#121828" stroke="#2a3350" />
+            <rect x="98" y="34" width="24" height="20" rx="4" fill="#0a0d14" stroke="#f5a524" />
+            <path
+              d="M103,34 v-6 a7,7 0 0 1 14,0 v6"
+              fill="none"
+              stroke="#f5a524"
+              stroke-width="2.4"
+            />
+            <circle cx="110" cy="43" r="2.6" fill="#f5a524" />
+            <text
+              x="110"
+              y="66"
+              text-anchor="middle"
+              font-size="7.5"
+              fill="#8b95a7"
+              font-family="monospace"
+            >
+              your Worker · your token
+            </text>
+          </svg>
+          <h3>Your keys, your Worker</h3>
+          <p>
+            Deploys under <i>your</i> Cloudflare account, gated by <i>your</i> bearer token. Keys
+            live as Worker secrets. A privacy guard keeps secret-looking content away from providers
+            that train on inputs.
+          </p>
+        </div>
+      </div>
+
+      <!-- ============ QUICKSTART ============ -->
+      <p class="kicker" id="quickstart">Get started</p>
+      <h2>Install in 10 minutes</h2>
+      <p class="muted">
         Prereqs: <a href="https://nodejs.org">Node 20+</a>, <a href="https://pnpm.io">pnpm</a>, a
         free <a href="https://dash.cloudflare.com/sign-up">Cloudflare account</a>, and at least one
         free provider key (<a href="https://openrouter.ai/keys">OpenRouter</a>,
@@ -437,7 +1181,7 @@
       <div class="step">
         <div class="n">3</div>
         <div>
-          <b>Run the wizard</b> — it asks for your provider keys, provisions KV + your
+          <b>Run the wizard</b> — asks for your provider keys, provisions KV + your
           <span class="mono">workers.dev</span> URL, deploys, verifies end-to-end, and installs the
           <code>claude-free</code> command in your shell:
           <pre><code>pnpm kompass init</code><button class="copybtn">copy</button></pre>
@@ -452,10 +1196,12 @@ claude-free        # Claude Code, now riding free models through your Worker</co
         </div>
       </div>
 
-      <h2 id="builder">Setup Builder</h2>
-      <p>
-        Prefer copy-paste over a wizard, or setting up a second machine? Fill this in and the page
-        generates your personalized files and commands.
+      <!-- ============ BUILDER ============ -->
+      <p class="kicker" id="builder">No wizard? No problem</p>
+      <h2>Setup Builder</h2>
+      <p class="muted">
+        Prefer copy-paste, or setting up a second machine? Fill this in and the page generates your
+        personalized files and commands.
       </p>
       <div class="builder">
         <div class="privacy">
@@ -463,19 +1209,7 @@ claude-free        # Claude Code, now riding free models through your Worker</co
           <span
             ><b>Everything stays in your browser.</b> This is a static page with no backend — keys
             are kept in <i>your browser's localStorage only</i> so you can revisit, and are never
-            sent anywhere.
-            <button
-              id="clearbtn"
-              style="
-                border: none;
-                background: none;
-                color: var(--accent-2);
-                cursor: pointer;
-                padding: 0;
-              "
-            >
-              Clear stored values
-            </button></span
+            sent anywhere. <button id="clearbtn" class="linkbtn">Clear stored values</button></span
           >
         </div>
 
@@ -489,18 +1223,7 @@ claude-free        # Claude Code, now riding free models through your Worker</co
         <input id="f-bearer" placeholder="click Generate →" />
         <div class="hint">
           The password protecting <i>your</i> Worker.
-          <button
-            id="genbtn"
-            style="
-              border: none;
-              background: none;
-              color: var(--accent-2);
-              cursor: pointer;
-              padding: 0;
-            "
-          >
-            Generate a strong one
-          </button>
+          <button id="genbtn" class="linkbtn">Generate a strong one</button>
         </div>
 
         <label for="f-or">OpenRouter API key <span class="muted">(optional)</span></label>
@@ -532,21 +1255,25 @@ claude-free        # Claude Code, now riding free models through your Worker</co
         </div>
       </div>
 
-      <h2 id="daytoday">Day to day</h2>
+      <!-- ============ DAY TO DAY ============ -->
+      <p class="kicker">Daily driver</p>
+      <h2>Day to day</h2>
       <pre><code>kompass status          # lanes, remaining quota per provider, last 50 routes
 kompass config push     # hot-reload config/*.yaml — models change with NO redeploy
 kompass logs            # live tail of your Worker
 kompass bench           # run your own 10-task suite across lanes
 https://kompass.&lt;you&gt;.workers.dev/status.html   # live dashboard in the browser</code><button class="copybtn">copy</button></pre>
       <p>
-        Add a brand-new free model the day it drops — one YAML line in
-        <code>config/lanes.yaml</code>, then <code>kompass config push</code>:
+        Add a brand-new free model the day it drops — one YAML line, then
+        <code>kompass config push</code>:
       </p>
       <pre><code>AGENTIC:
   - openrouter/poolside/laguna-s-2.1:free
   - nvidia/z-ai/glm-5.2          # ← your addition</code><button class="copybtn">copy</button></pre>
 
-      <h2 id="faq">FAQ</h2>
+      <!-- ============ FAQ ============ -->
+      <p class="kicker">Questions</p>
+      <h2>FAQ</h2>
       <details>
         <summary>Is this really $0?</summary>
         <p class="muted">
@@ -685,7 +1412,6 @@ pnpm smoke -- --url ${url}`;
         URL.revokeObjectURL(a.href);
       };
 
-      // copy buttons
       for (const btn of document.querySelectorAll('.copybtn')) {
         btn.onclick = async () => {
           const code = btn.parentElement.querySelector('code');
