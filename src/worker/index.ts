@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { AnthropicRequest } from '../adapters/types';
 import { bearerAuth } from './auth';
 import { CONFIG_KV_KEY, loadConfig, validateConfig } from './config';
+import { dispatch } from './dispatcher';
 import type { Env } from './env';
 import { routeRequest } from './router';
 
@@ -31,11 +32,13 @@ app.post('/v1/messages', async (c) => {
     return anthropicError('api_error', 'no config in KV — run `kompass config push`', 503);
   }
 
-  // Lane selection: M3 adds the dispatcher; until then everything rides the default lane.
-  const lane = cfg.default_lane;
+  const stub = stateStub(c.env);
+  // M3 dispatcher: heuristics → cached/live classifier verdict → safe fallback.
+  const verdict = await dispatch(c.env, cfg, body, stub);
+  const lane = verdict.lane;
 
   const outcome = await routeRequest(c.env, cfg, lane, body, {
-    stub: stateStub(c.env),
+    stub,
     // Claude Code stamps a stable per-session metadata.user_id — the stickiness key.
     sessionId: body.metadata?.user_id,
     forced: c.req.header('x-kompass-model') ?? undefined,
@@ -43,7 +46,15 @@ app.post('/v1/messages', async (c) => {
   });
 
   if (outcome.response) {
-    console.log(JSON.stringify({ route: outcome.used, lane, attempts: outcome.attempts.length }));
+    console.log(
+      JSON.stringify({
+        route: outcome.used,
+        lane,
+        dispatch: verdict.source,
+        dispatch_ms: verdict.ms,
+        attempts: outcome.attempts.length,
+      }),
+    );
     return outcome.response;
   }
   console.log(JSON.stringify({ route: null, lane, attempts: outcome.attempts }));
@@ -111,6 +122,15 @@ app.get('/status', async (c) => {
     ),
     routes: snap.routes.slice().reverse(),
   });
+});
+
+// Dispatcher dry-run: returns the lane verdict + added latency without routing.
+// Backs the M3 acceptance measurement (p50 added latency < 400ms over 20 mixed requests).
+app.post('/dispatch/preview', async (c) => {
+  const body = (await c.req.json()) as AnthropicRequest;
+  const cfg = await loadConfig(c.env.CONFIG);
+  if (!cfg) return anthropicError('api_error', 'no config pushed yet', 503);
+  return c.json(await dispatch(c.env, cfg, body, stateStub(c.env)));
 });
 
 // Test/admin helper backing the M2 multi-machine acceptance: burn provider budget.

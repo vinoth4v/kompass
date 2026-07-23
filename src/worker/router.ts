@@ -47,6 +47,11 @@ function providerKey(env: Env, p: ProviderConfig): string | undefined {
   return (env as unknown as Record<string, string | undefined>)[p.key_env];
 }
 
+/** Ledger counter key: per provider, or per provider:model when model_limits applies. */
+export function counterKey(provider: string, model: string, p: ProviderConfig): string {
+  return p.model_limits?.[model] ? `${provider}:${model}` : provider;
+}
+
 function callUpstream(
   p: ProviderConfig,
   key: string,
@@ -223,11 +228,12 @@ export async function routeRequest(
   const chain = ctx.forced ? [ctx.forced] : (cfg.lanes[lane] ?? cfg.lanes[cfg.default_lane] ?? []);
   const attempts: RouteAttempt[] = [];
 
-  const limitsByEntry: Record<string, ReserveLimits> = {};
+  const limitsByEntry: Record<string, { key: string; limits: ReserveLimits }> = {};
   for (const entry of chain) {
     const { provider, model } = parseChainEntry(entry);
     const p = cfg.providers[provider];
-    if (p) limitsByEntry[entry] = limitsFor(p, model);
+    if (p)
+      limitsByEntry[entry] = { key: counterKey(provider, model, p), limits: limitsFor(p, model) };
   }
 
   let order = chain;
@@ -244,10 +250,10 @@ export async function routeRequest(
 
   for (const entry of order) {
     const t0 = Date.now();
-    const { provider } = parseChainEntry(entry);
-    if (ctx.stub) {
+    const cell = limitsByEntry[entry];
+    if (ctx.stub && cell) {
       try {
-        const r = await ctx.stub.reserve(provider, limitsByEntry[entry] ?? { rpm: 1e9, rpd: 1e9 });
+        const r = await ctx.stub.reserve(cell.key, cell.limits);
         if (!r.ok) {
           attempts.push({ entry, status: `skipped-${r.reason} exhausted` });
           continue;

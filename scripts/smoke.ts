@@ -189,10 +189,69 @@ async function testToolRoundTrip(forced?: string) {
   );
 }
 
+async function testDispatchLatency() {
+  // M3 acceptance: p50 added latency < 400ms over 20 mixed requests.
+  const small = (i: number) => ({
+    model: 'claude-sonnet-4-5',
+    max_tokens: 32,
+    messages: [{ role: 'user', content: `what does exit code ${i} mean in bash?` }],
+  });
+  const toolTask = (i: number) => ({
+    model: 'claude-sonnet-4-5',
+    max_tokens: 32,
+    tools: [WEATHER_TOOL],
+    messages: [
+      { role: 'user', content: `refactor module_${i}.py to use async io and update its tests` },
+    ],
+  });
+  const big = () => ({
+    model: 'claude-sonnet-4-5',
+    max_tokens: 32,
+    messages: [{ role: 'user', content: 'summarize this: ' + 'lorem ipsum '.repeat(25_000) }],
+  });
+  // 10 heuristic-small, 4 distinct classifier tasks, those same 4 again (cache), 2 longctx
+  const bodies = [
+    ...Array.from({ length: 10 }, (_, i) => small(i)),
+    ...Array.from({ length: 4 }, (_, i) => toolTask(i)),
+    ...Array.from({ length: 4 }, (_, i) => toolTask(i)),
+    big(),
+    big(),
+  ];
+  const results: Array<{ lane: string; source: string; ms: number }> = [];
+  for (const b of bodies) {
+    const res = await fetch(`${BASE_URL}/dispatch/preview`, {
+      method: 'POST',
+      headers: HEADERS,
+      body: JSON.stringify(b),
+    });
+    if (res.status !== 200) {
+      check(
+        'dispatcher p50 latency',
+        false,
+        `HTTP ${res.status}: ${(await res.text()).slice(0, 120)}`,
+      );
+      return;
+    }
+    results.push((await res.json()) as any);
+  }
+  const sorted = results.map((r) => r.ms).sort((a, b) => a - b);
+  const p50 = sorted[Math.floor(sorted.length / 2)]!;
+  const bySource = results.reduce<Record<string, number>>((acc, r) => {
+    acc[r.source] = (acc[r.source] ?? 0) + 1;
+    return acc;
+  }, {});
+  check(
+    'dispatcher p50 latency <400ms',
+    p50 < 400,
+    `p50=${p50}ms max=${sorted[sorted.length - 1]}ms sources=${JSON.stringify(bySource)}`,
+  );
+}
+
 console.log(`Smoke target: ${BASE_URL}`);
 await testAuth();
 await testStreaming();
 await testToolRoundTrip();
+await testDispatchLatency();
 // M1 acceptance: identical toy tool-call task on one OpenAI-format and one Gemini model.
 const adapterTargets = (process.env.SMOKE_ADAPTER_MODELS ?? '').split(',').filter(Boolean);
 for (const target of adapterTargets) await testToolRoundTrip(target);

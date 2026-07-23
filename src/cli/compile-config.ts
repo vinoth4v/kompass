@@ -12,6 +12,7 @@ export function compileConfig(configDir = 'config'): RouterConfig {
     default_lane: string;
     allow_paid: boolean;
     lanes: RouterConfig['lanes'];
+    dispatcher?: RouterConfig['dispatcher'];
   };
   const cfg: RouterConfig = {
     version: new Date().toISOString(),
@@ -19,6 +20,7 @@ export function compileConfig(configDir = 'config'): RouterConfig {
     default_lane: lanesDoc.default_lane,
     allow_paid: lanesDoc.allow_paid,
     lanes: lanesDoc.lanes,
+    dispatcher: lanesDoc.dispatcher,
   };
   return validateConfig(cfg);
 }

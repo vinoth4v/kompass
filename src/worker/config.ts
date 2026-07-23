@@ -16,12 +16,20 @@ export interface ProviderConfig {
   model_limits?: Record<string, ProviderLimits>;
 }
 
+export interface DispatcherConfig {
+  model: string; // chain-entry form, e.g. "google/gemini-3.5-flash-lite"
+  timeout_ms?: number;
+  cache_ttl_s?: number;
+  confidence_floor?: number;
+}
+
 export interface RouterConfig {
   version?: string;
   default_lane: string;
   allow_paid: boolean;
   providers: Record<string, ProviderConfig>;
   lanes: Record<string, string[]>;
+  dispatcher?: DispatcherConfig;
 }
 
 export interface ChainEntry {
@@ -54,6 +62,12 @@ export function validateConfig(cfg: unknown): RouterConfig {
     if (!p.key_env) throw new Error(`provider ${name}: key_env missing`);
     if (!p.limits || typeof p.limits.rpm !== 'number' || typeof p.limits.rpd !== 'number')
       throw new Error(`provider ${name}: limits.rpm/rpd required`);
+  }
+
+  if (c.dispatcher) {
+    const { provider } = parseChainEntry(c.dispatcher.model);
+    if (!c.providers[provider])
+      throw new Error(`dispatcher.model references unknown provider "${provider}"`);
   }
 
   for (const [lane, chain] of Object.entries(c.lanes)) {

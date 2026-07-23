@@ -9,6 +9,15 @@
 default_lane: AGENTIC
 allow_paid: false
 
+# M3 dispatcher (SPEC §4): fast free reasoning model returning a strict-JSON verdict.
+# Model id verified live in the v1beta models list on 2026-07-23 (see DECISIONS.md);
+# pinned rather than the gemini-flash-lite-latest alias to avoid surprise swaps.
+dispatcher:
+  model: google/gemini-3.5-flash-lite
+  timeout_ms: 1500
+  cache_ttl_s: 300
+  confidence_floor: 0.6
+
 lanes:
   FAST:
     - google/gemini-3.5-flash-lite

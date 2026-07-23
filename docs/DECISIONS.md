@@ -14,3 +14,8 @@ One line per non-obvious decision, newest at bottom (BUILD_PLAN §6.3).
 - 2026-07-23: NVIDIA Build live probes: kimi-k2.6 404s ("Function not found for account") → removed from lanes; glm-5.2/deepseek-v4 exist but free workers are congested (503 "48/48", cold starts >60s) → kept as fallbacks, M2 health cooldown will route around them; llama-3.3-nemotron-super-49b-v1 responds fast → added to FAST/SIMPLE.
 - 2026-07-23: Groq omitted from lanes.yaml entirely — model slugs unverifiable without an API key (guardrail §6.6).
 - 2026-07-23: classifier model for M3 will be `gemini-3.5-flash-lite` (live-verified in v1beta models list; `gemini-flash-lite-latest` alias also exists but pinning avoids surprise swaps).
+- 2026-07-23: Timeouts (router): 75s to headers / 60s to first stream chunk / 90s non-stream total — NVIDIA free-tier cold starts exceed 60s; after first byte no timeout (long agentic streams are legitimate). Fallback to next chain entry on any of these.
+- 2026-07-23: Mid-stream provider death: before first byte → falls back to next model; after first byte → graceful close (transform flush emits message_delta+message_stop) since Anthropic-format bytes were already sent to the client.
+- 2026-07-23: DO route reports are awaited (not waitUntil) — same-colo DO RPC ≈1ms and keeps /status strictly consistent with the routes that produced it.
+- 2026-07-23: POST /ledger/burn (authenticated) accepts negative n so the deployed smoke can prove RPD-exhaustion fallback and then restore the counter.
+- 2026-07-23: M2 deployed proof: openrouter burned to 50/50 → pre-emptively skipped (rpm stayed 0 → zero 429s), nvidia glm-5.2 timed out → 10-min cooldown, google/gemini-3.6-flash served the request; hops visible in /status routes.

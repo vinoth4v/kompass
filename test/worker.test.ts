@@ -33,9 +33,10 @@ function testConfig(overrides: Partial<RouterConfig> = {}): RouterConfig {
         limits: { rpm: 30, rpd: 1000 },
       },
     },
+    // no FAST lane on purpose: small tool-less test bodies would heuristically
+    // land there (M3); without it they fall back to the default lane.
     lanes: {
       AGENTIC: ['openrouter/model-a:free', 'openrouter/model-b:free'],
-      FAST: ['google/gemini-test-flash'],
     },
     ...overrides,
   };
@@ -177,7 +178,7 @@ describe('worker ingress', () => {
 
     // push a new config whose AGENTIC chain starts with model-c
     const newCfg = testConfig({
-      lanes: { AGENTIC: ['openrouter/model-c:free'], FAST: ['google/gemini-test-flash'] },
+      lanes: { AGENTIC: ['openrouter/model-c:free'] },
     });
     const push = await SELF.fetch('https://kompass.test/config', {
       method: 'POST',
@@ -207,7 +208,7 @@ describe('worker ingress', () => {
 
   it('rejects a config with a paid (non-:free) OpenRouter model when allow_paid=false', async () => {
     const bad = testConfig({
-      lanes: { AGENTIC: ['openrouter/some-paid-model'], FAST: ['google/gemini-test-flash'] },
+      lanes: { AGENTIC: ['openrouter/some-paid-model'] },
     });
     const res = await SELF.fetch('https://kompass.test/config', {
       method: 'POST',
@@ -225,7 +226,6 @@ describe('worker ingress', () => {
         testConfig({
           lanes: {
             AGENTIC: ['groq/llama-test', 'openrouter/model-a:free'],
-            FAST: ['google/gemini-test-flash'],
           },
         }),
       ),

@@ -71,7 +71,7 @@ export class KompassState extends DurableObject {
    */
   async filterChain(
     chain: string[],
-    limitsByEntry: Record<string, ReserveLimits>,
+    limitsByEntry: Record<string, { key: string; limits: ReserveLimits }>,
     sessionId?: string,
   ): Promise<{ order: string[]; skipped: Array<{ entry: string; reason: string }> }> {
     const now = Date.now();
@@ -94,9 +94,9 @@ export class KompassState extends DurableObject {
         skipped.push({ entry, reason: `cooldown ${Math.round((cool - now) / 1000)}s` });
         continue;
       }
-      const limits = limitsByEntry[entry];
-      if (limits) {
-        const rem = await this.remaining(entry.split('/')[0] ?? '', limits, now);
+      const cell = limitsByEntry[entry];
+      if (cell) {
+        const rem = await this.remaining(cell.key, cell.limits, now);
         if (rem.rpm <= 0) {
           skipped.push({ entry, reason: 'rpm exhausted' });
           continue;
@@ -112,27 +112,30 @@ export class KompassState extends DurableObject {
   }
 
   /**
-   * Consume one request from a provider's RPM+RPD budget. Returns false when the
-   * budget is gone (raced by another machine between filterChain and now).
+   * Consume one request from a counter's RPM+RPD budget. `counterKey` is the
+   * provider name, or "provider:model" when the config sets model_limits (so a
+   * 50/day pro model doesn't share its window with a 1000/day flash model).
+   * Returns false when the budget is gone (raced by another machine between
+   * filterChain and now).
    */
   async reserve(
-    provider: string,
+    counterKey: string,
     limits: ReserveLimits,
   ): Promise<{ ok: boolean; reason?: string }> {
     const now = Date.now();
     const minute = Math.floor(now / 60_000);
     const day = utcDay(now);
 
-    const m = await this.rpm(provider);
+    const m = await this.rpm(counterKey);
     const mCount = m.minute === minute ? m.count : 0;
     if (mCount >= limits.rpm) return { ok: false, reason: 'rpm' };
 
-    const d = await this.rpd(provider);
+    const d = await this.rpd(counterKey);
     const dCount = d.day === day ? d.count : 0;
     if (dCount >= limits.rpd) return { ok: false, reason: 'rpd' };
 
-    await this.ctx.storage.put(`rpm:${provider}`, { minute, count: mCount + 1 });
-    await this.ctx.storage.put(`rpd:${provider}`, { day, count: dCount + 1 });
+    await this.ctx.storage.put(`rpm:${counterKey}`, { minute, count: mCount + 1 });
+    await this.ctx.storage.put(`rpd:${counterKey}`, { day, count: dCount + 1 });
     return { ok: true };
   }
 
@@ -171,6 +174,26 @@ export class KompassState extends DurableObject {
       detail: ok ? undefined : (opts.kind ?? 'error') + (opts.detail ? `: ${opts.detail}` : ''),
     });
     await this.ctx.storage.put('routes', routes.slice(-MAX_ROUTES));
+  }
+
+  /** M3 verdict cache: classifier verdicts keyed by task-digest hash, TTL-bound. */
+  async getVerdict(key: string): Promise<{ lane: string; confidence: number } | null> {
+    const cell = await this.ctx.storage.get<{ lane: string; confidence: number; exp: number }>(
+      `verdict:${key}`,
+    );
+    if (!cell || cell.exp < Date.now()) return null;
+    return { lane: cell.lane, confidence: cell.confidence };
+  }
+
+  async putVerdict(
+    key: string,
+    verdict: { lane: string; confidence: number },
+    ttlSeconds: number,
+  ): Promise<void> {
+    await this.ctx.storage.put(`verdict:${key}`, {
+      ...verdict,
+      exp: Date.now() + ttlSeconds * 1000,
+    });
   }
 
   /** Drop stickiness for a session (used on lane escalation / explicit model switch). */
