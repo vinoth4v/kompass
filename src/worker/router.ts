@@ -40,6 +40,8 @@ export interface RouteContext {
   stub: DurableObjectStub<KompassState> | null;
   sessionId?: string;
   forced?: string;
+  /** Request content matched the privacy guard → skip trains_on_data providers. */
+  privacySensitive?: boolean;
   waitUntil: (p: Promise<unknown>) => void;
 }
 
@@ -146,6 +148,7 @@ async function tryChainEntry(
   entry: string,
   body: AnthropicRequest,
   attempts: RouteAttempt[],
+  privacySensitive = false,
 ): Promise<Response | null> {
   const { provider, model } = parseChainEntry(entry);
   const p = cfg.providers[provider];
@@ -155,6 +158,11 @@ async function tryChainEntry(
   }
   if (p.enabled === false) {
     attempts.push({ entry, status: 'skipped-disabled' });
+    return null;
+  }
+  // M5 privacy guard: sensitive content never reaches providers that train on inputs.
+  if (privacySensitive && p.trains_on_data === true) {
+    attempts.push({ entry, status: 'skipped-privacy', detail: 'trains_on_data provider' });
     return null;
   }
   const key = providerKey(env, p);
@@ -262,7 +270,7 @@ export async function routeRequest(
         console.log(`DO reserve failed, proceeding unmetered: ${String(e)}`);
       }
     }
-    const res = await tryChainEntry(env, cfg, entry, body, attempts);
+    const res = await tryChainEntry(env, cfg, entry, body, attempts, ctx.privacySensitive);
     const last = attempts[attempts.length - 1];
     if (ctx.stub) {
       // Awaited (not waitUntil): a same-colo DO roundtrip is ~1ms and keeps

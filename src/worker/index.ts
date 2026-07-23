@@ -4,6 +4,14 @@ import { bearerAuth } from './auth';
 import { CONFIG_KV_KEY, loadConfig, validateConfig } from './config';
 import { dispatch } from './dispatcher';
 import type { Env } from './env';
+import {
+  ESCALATION_THRESHOLD,
+  lastTurnHadToolError,
+  laneUp,
+  syntheticNotice,
+  syntheticNoticeStream,
+} from './escalation';
+import { compilePrivacyGuard, privacyMatch } from './privacy';
 import { routeRequest } from './router';
 import { STATUS_HTML } from './status-page';
 
@@ -40,13 +48,44 @@ app.post('/v1/messages', async (c) => {
   const stub = stateStub(c.env);
   // M3 dispatcher: heuristics → cached/live classifier verdict → safe fallback.
   const verdict = await dispatch(c.env, cfg, body, stub);
-  const lane = verdict.lane;
+  let lane = c.req.header('x-kompass-lane') ?? verdict.lane;
+
+  // Claude Code stamps a stable per-session metadata.user_id — the stickiness key.
+  const sessionId = body.metadata?.user_id;
+
+  // M5 escalation: ≥3 consecutive failed tool iterations → one lane up, stickiness released.
+  let escalated = false;
+  if (sessionId) {
+    try {
+      const errCount = await stub.bumpToolErrors(sessionId, lastTurnHadToolError(body));
+      if (errCount >= ESCALATION_THRESHOLD) {
+        const up = laneUp(lane);
+        escalated = true;
+        await stub.resetToolErrors(sessionId);
+        await stub.releaseSticky(sessionId);
+        if (up && cfg.lanes[up]) {
+          console.log(JSON.stringify({ escalate: { from: lane, to: up, session: sessionId } }));
+          lane = up;
+        } else if (lane === 'HARD' || !up) {
+          // Already at the top — if HARD can't serve this request either, the
+          // synthetic notice below tells the user to switch to native claude.
+          console.log(JSON.stringify({ escalate: { from: lane, to: null } }));
+        }
+      }
+    } catch (e) {
+      console.log(`escalation state unavailable: ${String(e)}`);
+    }
+  }
+
+  // M5 privacy guard: matched content never reaches trains_on_data providers.
+  const guard = compilePrivacyGuard(cfg);
+  const privacySensitive = guard ? privacyMatch(guard, body) : false;
 
   const outcome = await routeRequest(c.env, cfg, lane, body, {
     stub,
-    // Claude Code stamps a stable per-session metadata.user_id — the stickiness key.
-    sessionId: body.metadata?.user_id,
+    sessionId,
     forced: c.req.header('x-kompass-model') ?? undefined,
+    privacySensitive,
     waitUntil: (p) => c.executionCtx.waitUntil(p),
   });
 
@@ -63,6 +102,16 @@ app.post('/v1/messages', async (c) => {
     return outcome.response;
   }
   console.log(JSON.stringify({ route: null, lane, attempts: outcome.attempts }));
+
+  // HARD exhausted → synthetic in-chat notice instead of an opaque 529 (SPEC §4).
+  if (lane === 'HARD' || (escalated && !laneUp(lane))) {
+    if (body.stream) {
+      return new Response(syntheticNoticeStream(body.model), {
+        headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+      });
+    }
+    return c.json(syntheticNotice(body.model));
+  }
   return anthropicError(
     'overloaded_error',
     `all chain entries failed: ${outcome.attempts.map((a) => `${a.entry}→${a.status}`).join(', ')}`,

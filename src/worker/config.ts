@@ -23,6 +23,11 @@ export interface DispatcherConfig {
   confidence_floor?: number;
 }
 
+export interface PrivacyConfig {
+  block_patterns?: string[]; // regexes
+  block_globs?: string[]; // path globs
+}
+
 export interface RouterConfig {
   version?: string;
   default_lane: string;
@@ -30,6 +35,7 @@ export interface RouterConfig {
   providers: Record<string, ProviderConfig>;
   lanes: Record<string, string[]>;
   dispatcher?: DispatcherConfig;
+  privacy?: PrivacyConfig;
 }
 
 export interface ChainEntry {

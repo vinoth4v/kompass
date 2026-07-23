@@ -196,6 +196,25 @@ export class KompassState extends DurableObject {
     });
   }
 
+  /**
+   * M5 escalation counter: consecutive failed tool iterations per session.
+   * hadError=true increments and returns the new count; false resets to 0.
+   */
+  async bumpToolErrors(sessionId: string, hadError: boolean): Promise<number> {
+    const k = `toolerr:${sessionId}`;
+    if (!hadError) {
+      await this.ctx.storage.delete(k);
+      return 0;
+    }
+    const count = ((await this.ctx.storage.get<number>(k)) ?? 0) + 1;
+    await this.ctx.storage.put(k, count);
+    return count;
+  }
+
+  async resetToolErrors(sessionId: string): Promise<void> {
+    await this.ctx.storage.delete(`toolerr:${sessionId}`);
+  }
+
   /** Drop stickiness for a session (used on lane escalation / explicit model switch). */
   async releaseSticky(sessionId: string): Promise<void> {
     await this.ctx.storage.delete(`sticky:${sessionId}`);

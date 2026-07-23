@@ -112,12 +112,71 @@ function logs() {
   execSync('pnpm exec wrangler tail --format pretty', { stdio: 'inherit' });
 }
 
+/**
+ * M5 bench stub (SPEC P1 #11): run test/tasks/*.md through the deployed router,
+ * optionally once per lane (--lanes FAST,AGENTIC), print a results table.
+ */
+async function bench() {
+  const { readdirSync } = await import('node:fs');
+  const dir = 'test/tasks';
+  const files = readdirSync(dir)
+    .filter((f) => f.endsWith('.md'))
+    .sort();
+  const lanesFlag = flag('lanes');
+  const lanes = lanesFlag ? lanesFlag.split(',') : [undefined];
+  const rows: string[][] = [];
+  for (const file of files) {
+    const task = readFileSync(`${dir}/${file}`, 'utf8').trim();
+    for (const lane of lanes) {
+      const t0 = Date.now();
+      let ok = false;
+      let note = '';
+      try {
+        const res = await fetch(`${baseUrl()}/v1/messages`, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${bearer()}`,
+            ...(lane ? { 'x-kompass-lane': lane } : {}),
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-5',
+            max_tokens: 1024,
+            messages: [{ role: 'user', content: task }],
+          }),
+        });
+        if (res.ok) {
+          const json = (await res.json()) as {
+            content?: Array<{ type: string; text?: string }>;
+          };
+          const text = (json.content ?? [])
+            .filter((b) => b.type === 'text')
+            .map((b) => b.text ?? '')
+            .join('');
+          ok = text.length > 40;
+          note = `${text.length} chars`;
+        } else {
+          note = `HTTP ${res.status}`;
+        }
+      } catch (e) {
+        note = String(e).slice(0, 60);
+      }
+      rows.push([file, lane ?? '(auto)', ok ? '✓' : '✗', `${Date.now() - t0}ms`, note]);
+      console.error(`  ran ${file} [${lane ?? 'auto'}] → ${ok ? 'ok' : 'FAIL'}`);
+    }
+  }
+  console.log('\n| task | lane | ok | latency | note |');
+  console.log('|---|---|---|---|---|');
+  for (const r of rows) console.log(`| ${r.join(' | ')} |`);
+}
+
 const [, , cmd, sub] = process.argv;
 if (cmd === 'config' && sub === 'push') await configPush();
 else if (cmd === 'status') await status();
 else if (cmd === 'deploy') deploy();
 else if (cmd === 'logs') logs();
+else if (cmd === 'bench') await bench();
 else {
-  console.log('Usage: kompass <deploy|status|logs|config push> [--url <worker-url>]');
+  console.log('Usage: kompass <deploy|status|logs|bench|config push> [--url <worker-url>]');
   process.exit(cmd ? 1 : 0);
 }

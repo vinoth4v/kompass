@@ -18,6 +18,21 @@ dispatcher:
   cache_ttl_s: 300
   confidence_floor: 0.6
 
+# M5 privacy guard: requests matching any pattern are never sent to providers
+# flagged trains_on_data: true (they fall through to non-training providers).
+privacy:
+  block_patterns:
+    - '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'
+    - 'AKIA[0-9A-Z]{16}' # AWS access key id
+    - 'ghp_[A-Za-z0-9]{36}' # GitHub PAT
+    - 'sk-ant-[A-Za-z0-9-]{20,}' # Anthropic key
+    - 'xox[bap]-[0-9A-Za-z-]{10,}' # Slack tokens
+  block_globs:
+    - '**/.env'
+    - '**/id_rsa'
+    - '**/credentials.json'
+    - 'secrets/**'
+
 lanes:
   FAST:
     - google/gemini-3.5-flash-lite
