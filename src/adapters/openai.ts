@@ -20,8 +20,12 @@ function systemToString(system: AnthropicRequest['system']): string | undefined 
   return system.map((b) => b.text).join('\n\n');
 }
 
-function blockText(content: string | Array<{ type: string; text?: string }> | undefined): string {
-  if (content === undefined) return '';
+function blockText(
+  content: string | Array<{ type: string; text?: string }> | undefined | null,
+): string {
+  // Tool-calls-only OpenAI-format responses set content: null (not undefined) —
+  // seen live from NVIDIA, crashing this on `.filter` before this guard existed.
+  if (content == null) return '';
   if (typeof content === 'string') return content;
   return content
     .filter((b) => b.type === 'text')
@@ -159,7 +163,10 @@ export function openAIToAnthropic(res: OpenAIResponse, requestedModel: string): 
   const choice = res.choices[0];
   const content: Array<AnthropicTextBlock | AnthropicToolUseBlock> = [];
   const msg = choice?.message;
-  const text = typeof msg?.content === 'string' ? msg.content : blockText(msg?.content as never);
+  const text =
+    typeof msg?.content === 'string'
+      ? msg.content
+      : blockText(msg?.content as Array<{ type: string; text?: string }> | null | undefined);
   if (text) content.push({ type: 'text', text });
   for (const tc of msg?.tool_calls ?? []) {
     content.push({

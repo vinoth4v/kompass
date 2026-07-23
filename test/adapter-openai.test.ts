@@ -98,4 +98,28 @@ describe('openAIToAnthropic', () => {
     expect(out.usage).toEqual({ input_tokens: 10, output_tokens: 5 });
     expect(out.model).toBe('claude-sonnet-4-5');
   });
+
+  it('handles content: null (tool-calls-only response) without throwing', () => {
+    // Standard OpenAI-format behavior for a pure tool-call turn — seen live from
+    // NVIDIA and crashed this adapter with a TypeError before this guard existed.
+    const res: OpenAIResponse = {
+      id: 'abc',
+      choices: [
+        {
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              { id: 'call_1', type: 'function', function: { name: 'f', arguments: '{}' } },
+            ],
+          },
+          finish_reason: 'tool_calls',
+        },
+      ],
+      usage: { prompt_tokens: 10, completion_tokens: 5 },
+    };
+    const out = openAIToAnthropic(res, 'claude-sonnet-4-5');
+    expect(out.content).toEqual([{ type: 'tool_use', id: 'call_1', name: 'f', input: {} }]);
+    expect(out.stop_reason).toBe('tool_use');
+  });
 });
