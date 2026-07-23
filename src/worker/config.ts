@@ -14,6 +14,8 @@ export interface ProviderConfig {
   trains_on_data?: boolean;
   limits: ProviderLimits;
   model_limits?: Record<string, ProviderLimits>;
+  /** Model-listing endpoint for discovery; defaults to `${base_url}/models`. */
+  discovery_url?: string;
 }
 
 export interface DispatcherConfig {
@@ -30,12 +32,32 @@ export interface PrivacyConfig {
   block_globs?: string[]; // path globs
 }
 
+/**
+ * A lane's chain, plainly (old shape, spread_top defaults to 1 = strict priority
+ * order, unchanged behavior) or with an explicit spread_top: the router picks
+ * randomly among the top `spread_top` healthy candidates — weighted by each
+ * entry's recent success rate — instead of always trying #1 first. This spreads
+ * load across comparable models (avoiding one model's RPM ceiling under bursty/
+ * parallel use) and lets outcomes adapt lane order without touching YAML.
+ */
+export type LaneConfig = string[] | { chain: string[]; spread_top?: number };
+
+export function laneChainArray(entry: LaneConfig | undefined): string[] {
+  if (!entry) return [];
+  return Array.isArray(entry) ? entry : entry.chain;
+}
+
+export function laneSpreadTop(entry: LaneConfig | undefined, fallback = 1): number {
+  if (!entry || Array.isArray(entry)) return fallback;
+  return entry.spread_top ?? fallback;
+}
+
 export interface RouterConfig {
   version?: string;
   default_lane: string;
   allow_paid: boolean;
   providers: Record<string, ProviderConfig>;
-  lanes: Record<string, string[]>;
+  lanes: Record<string, LaneConfig>;
   dispatcher?: DispatcherConfig;
   privacy?: PrivacyConfig;
 }
@@ -80,8 +102,13 @@ export function validateConfig(cfg: unknown): RouterConfig {
     }
   }
 
-  for (const [lane, chain] of Object.entries(c.lanes)) {
-    if (!Array.isArray(chain) || chain.length === 0) throw new Error(`lane ${lane}: empty chain`);
+  for (const [lane, laneCfg] of Object.entries(c.lanes)) {
+    const chain = laneChainArray(laneCfg);
+    if (chain.length === 0) throw new Error(`lane ${lane}: empty chain`);
+    if (!Array.isArray(laneCfg) && laneCfg.spread_top !== undefined) {
+      if (!Number.isInteger(laneCfg.spread_top) || laneCfg.spread_top < 1)
+        throw new Error(`lane ${lane}: spread_top must be a positive integer`);
+    }
     for (const entry of chain) {
       const { provider, model } = parseChainEntry(entry);
       if (!c.providers[provider]) throw new Error(`lane ${lane}: unknown provider "${provider}"`);
@@ -109,4 +136,13 @@ export async function loadConfig(kv: KVNamespace): Promise<RouterConfig | null> 
 
 export function limitsFor(p: ProviderConfig, model: string): ProviderLimits {
   return p.model_limits?.[model] ?? p.limits;
+}
+
+/** Resolve a lane name to its chain array, falling back to default_lane. */
+export function resolveLaneChain(cfg: RouterConfig, lane: string): string[] {
+  return laneChainArray(cfg.lanes[lane] ?? cfg.lanes[cfg.default_lane]);
+}
+
+export function resolveLaneSpreadTop(cfg: RouterConfig, lane: string): number {
+  return laneSpreadTop(cfg.lanes[lane] ?? cfg.lanes[cfg.default_lane], 1);
 }

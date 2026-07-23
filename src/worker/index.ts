@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
 import type { AnthropicRequest } from '../adapters/types';
 import { bearerAuth } from './auth';
-import { CONFIG_KV_KEY, loadConfig, validateConfig } from './config';
+import { CONFIG_KV_KEY, laneChainArray, laneSpreadTop, loadConfig, validateConfig } from './config';
 import { dispatch } from './dispatcher';
+import { runDiscovery } from './discovery';
 import type { Env } from './env';
 import {
   ESCALATION_THRESHOLD,
@@ -181,10 +182,26 @@ app.get('/status', async (c) => {
       tokens_today: { in: tok?.tin ?? 0, out: tok?.tout ?? 0 },
     };
   }
+  // Normalize lanes to a uniform {chain, spread_top} shape for clients — config
+  // allows either a bare array or {chain, spread_top} per lane.
+  const lanesOut: Record<string, { chain: string[]; spread_top: number }> = {};
+  for (const [name, laneCfg] of Object.entries(cfg?.lanes ?? {})) {
+    lanesOut[name] = { chain: laneChainArray(laneCfg), spread_top: laneSpreadTop(laneCfg, 1) };
+  }
+  // Per-entry reliability: success rate from recent outcomes (only entries with data).
+  const perf = Object.fromEntries(
+    Object.entries(snap.perf)
+      .filter(([, v]) => v.ok + v.fail > 0)
+      .map(([entry, v]) => [
+        entry,
+        { ok: v.ok, fail: v.fail, rate: Math.round((v.ok / (v.ok + v.fail)) * 100) },
+      ]),
+  );
   return c.json({
-    lanes: cfg?.lanes ?? {},
+    lanes: lanesOut,
     default_lane: cfg?.default_lane,
     providers,
+    perf,
     cooldowns: Object.fromEntries(
       Object.entries(snap.cooldowns).map(([k, v]) => [k, `${Math.round((v - now) / 1000)}s`]),
     ),
@@ -211,6 +228,16 @@ app.post('/ledger/burn', async (c) => {
   return c.json(await stateStub(c.env).burn(provider, n));
 });
 
+// Test/admin helper: directly seed an entry's reliability score (bypasses cooldown).
+app.post('/ledger/seed-perf', async (c) => {
+  const { entry, ok, fail } = (await c.req.json()) as { entry: string; ok: number; fail: number };
+  if (!entry || typeof ok !== 'number' || typeof fail !== 'number') {
+    return anthropicError('invalid_request_error', 'need {entry, ok, fail}', 400);
+  }
+  await stateStub(c.env).seedPerf(entry, ok, fail);
+  return c.json({ ok: true });
+});
+
 // Release a session's stickiness (used by tests; escalation uses it in M5).
 app.post('/session/release', async (c) => {
   const { session_id } = (await c.req.json()) as { session_id: string };
@@ -219,4 +246,29 @@ app.post('/session/release', async (c) => {
   return c.json({ ok: true });
 });
 
-export default app;
+// Scheduled model-discovery report (see discovery.ts + the daily Cron Trigger in
+// wrangler.jsonc). Detect-only: never mutates config, just surfaces what's new.
+app.get('/discovery', async (c) => {
+  const report = await stateStub(c.env).getDiscovery();
+  if (!report) return anthropicError('not_found_error', 'no discovery run yet', 404);
+  return c.json(report);
+});
+
+// Manual trigger (the cron runs this automatically once a day).
+app.post('/discovery/run', async (c) => {
+  const cfg = await loadConfig(c.env.CONFIG);
+  if (!cfg) return anthropicError('api_error', 'no config pushed yet', 503);
+  return c.json(await runDiscovery(c.env, cfg, stateStub(c.env)));
+});
+
+export default {
+  fetch: app.fetch,
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) {
+    const cfg = await loadConfig(env.CONFIG);
+    if (!cfg) {
+      console.log('scheduled discovery skipped: no config in KV');
+      return;
+    }
+    ctx.waitUntil(runDiscovery(env, cfg, stateStub(env)));
+  },
+};

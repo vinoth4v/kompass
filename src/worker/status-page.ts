@@ -41,7 +41,8 @@ async function refresh() {
   try {
     const res = await fetch('/status', { headers: { 'x-api-key': token } });
     if (!res.ok) throw new Error('HTTP ' + res.status + (res.status === 401 ? ' — bad token' : ''));
-    render(await res.json());
+    const disc = await fetch('/discovery', { headers: { 'x-api-key': token } });
+    render(await res.json(), disc.ok ? await disc.json() : null);
     document.getElementById('err').textContent = '';
   } catch (e) {
     document.getElementById('err').textContent = String(e);
@@ -54,7 +55,7 @@ function fmtTok(n) {
   if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
   return String(n ?? 0);
 }
-function render(d) {
+function render(d, disc) {
   let h = '<h2>Providers</h2><table><tr><th>provider</th><th>state</th><th>RPM</th><th>RPD</th><th>tokens today (in / out)</th></tr>';
   for (const [name, p] of Object.entries(d.providers)) {
     const state = !p.enabled ? 'disabled' : !p.has_key ? 'no key' : 'live';
@@ -64,11 +65,21 @@ function render(d) {
          '<td>' + pct(p.rpm.used, p.rpm.limit) + '</td><td>' + pct(p.rpd.used, p.rpd.limit) + '</td>' +
          '<td>' + fmtTok(tok.in) + ' / ' + fmtTok(tok.out) + '</td></tr>';
   }
-  h += '</table><h2>Lanes</h2><table><tr><th>lane</th><th>chain</th></tr>';
-  for (const [lane, chain] of Object.entries(d.lanes)) {
-    h += '<tr><td>' + esc(lane) + (lane === d.default_lane ? ' *' : '') + '</td><td>' + chain.map(esc).join(' → ') + '</td></tr>';
+  h += '</table><h2>Lanes</h2><table><tr><th>lane</th><th>spread</th><th>chain</th></tr>';
+  for (const [lane, l] of Object.entries(d.lanes)) {
+    h += '<tr><td>' + esc(lane) + (lane === d.default_lane ? ' *' : '') + '</td>' +
+         '<td>' + (l.spread_top > 1 ? 'top ' + l.spread_top : '—') + '</td>' +
+         '<td>' + l.chain.map(esc).join(' → ') + '</td></tr>';
   }
   h += '</table>';
+  const perfEntries = Object.entries(d.perf || {}).sort((a, b) => a[1].rate - b[1].rate);
+  if (perfEntries.length) {
+    h += '<h2>Model reliability (recent)</h2><table><tr><th>model</th><th>success rate</th><th>ok/fail</th></tr>';
+    for (const [entry, p] of perfEntries) {
+      h += '<tr><td>' + esc(entry) + '</td><td class="' + (p.rate >= 80 ? 'ok' : p.rate >= 50 ? '' : 'bad') + '">' + p.rate + '%</td><td>' + p.ok + '/' + p.fail + '</td></tr>';
+    }
+    h += '</table>';
+  }
   const cds = Object.entries(d.cooldowns);
   if (cds.length) {
     h += '<h2>Cooldowns</h2><table><tr><th>model</th><th>remaining</th></tr>' +
@@ -83,6 +94,23 @@ function render(d) {
          '<td class="' + (r.ok ? 'ok' : 'bad') + '">' + (r.ok ? '✓' : '✗') + '</td><td>' + esc(r.ms ?? '') + '</td><td>' + tok + '</td><td>' + esc(r.detail ?? '') + '</td></tr>';
   }
   h += '</table>';
+  if (disc) {
+    const rows = Object.entries(disc.providers)
+      .filter(([, p]) => p.error || p.newSinceLast.length || p.unconfigured.length);
+    h += '<h2>Model discovery <span style="font-weight:normal;font-size:0.75em">(daily check, never auto-applied — last run ' +
+      new Date(disc.ts).toLocaleString([], { hour12: false }) + ')</span></h2>';
+    if (!rows.length) {
+      h += '<p style="opacity:0.7">No new or unconfigured models detected.</p>';
+    } else {
+      h += '<table><tr><th>provider</th><th>🆕 new since last check</th><th>unconfigured (live but unused)</th></tr>';
+      for (const [name, p] of rows) {
+        h += '<tr><td>' + esc(name) + (p.error ? ' <span class="bad">(' + esc(p.error) + ')</span>' : '') + '</td>' +
+             '<td>' + (p.newSinceLast.map(esc).join(', ') || '—') + '</td>' +
+             '<td>' + (p.unconfigured.slice(0, 8).map(esc).join(', ') || '—') + (p.unconfigured.length > 8 ? ' …' : '') + '</td></tr>';
+      }
+      h += '</table>';
+    }
+  }
   document.getElementById('content').innerHTML = h;
 }
 refresh();

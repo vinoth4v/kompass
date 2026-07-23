@@ -46,52 +46,74 @@ privacy:
 # but cold/congested on probe (kept as tail fallback — cooldowns route around it).
 # kimi-k2.6 still 404s ("Function not found for account") on this key → excluded.
 # nemotron-3-embed-1b excluded: embeddings model, Claude Code sends chat traffic only.
+#
+# spread_top (2026-07-23): a lane's first pick is drawn by weighted-random from the
+# top `spread_top` entries (weighted by each model's recent live success rate),
+# not always chain[0]. Spreads load across comparable models under bursty/parallel
+# use instead of hammering one model's RPM ceiling, and adapts as models degrade
+# or recover without touching this file. FAST is pinned to spread_top:1 (strict
+# chain[0] only) on purpose — promoting groq's 8b model there earlier caused
+# vague/hedging answers even though it was healthy; quality, not just health,
+# matters for that lane. See docs/DECISIONS.md.
 lanes:
-  # Groq (enabled 2026-07-23, tool-calling probed ✓): ultra-fast but free-tier TPM
-  # is 6-12k, so it backs up FAST (quality-first: flash-lite leads; 8b answers vaguely as primary) and tails SIMPLE —
-  # big contexts get rejected upstream and fall through the chain.
   FAST:
-    - google/gemini-3.5-flash-lite
-    - groq/llama-3.1-8b-instant
-    - nvidia/stepfun-ai/step-3.7-flash
-    - cfai/@cf/meta/llama-3.3-70b-instruct-fp8-fast
-    - openrouter/poolside/laguna-xs-2.1:free
-    - nvidia/nvidia/llama-3.3-nemotron-super-49b-v1
+    spread_top: 1 # quality-first — do not spread (see rationale above)
+    chain:
+      - google/gemini-3.5-flash-lite
+      - groq/llama-3.1-8b-instant
+      - nvidia/stepfun-ai/step-3.7-flash
+      - cfai/@cf/meta/llama-3.3-70b-instruct-fp8-fast
+      - openrouter/poolside/laguna-xs-2.1:free
+      - nvidia/nvidia/llama-3.3-nemotron-super-49b-v1
 
   SIMPLE:
-    - openrouter/poolside/laguna-xs-2.1:free
-    - nvidia/poolside/laguna-xs-2.1
-    - mistral/codestral-2508
-    - nvidia/nvidia/llama-3.3-nemotron-super-49b-v1
-    - sambanova/Meta-Llama-3.3-70B-Instruct
-    - groq/llama-3.3-70b-versatile
-    - nvidia/mistralai/mistral-medium-3.5-128b
-    - google/gemini-3.5-flash-lite
+    spread_top: 2 # top two are roughly comparable single-file coders
+    chain:
+      - openrouter/poolside/laguna-xs-2.1:free
+      - nvidia/poolside/laguna-xs-2.1
+      - mistral/codestral-2508
+      - nvidia/nvidia/llama-3.3-nemotron-super-49b-v1
+      - sambanova/Meta-Llama-3.3-70B-Instruct
+      - groq/llama-3.3-70b-versatile
+      - nvidia/mistralai/mistral-medium-3.5-128b
+      - google/gemini-3.5-flash-lite
 
   # laguna-xs (nvidia) demoted below minimax 2026-07-23: repeatedly returned
   # truncated/empty streams during real sessions.
   AGENTIC:
-    - openrouter/poolside/laguna-s-2.1:free
-    - nvidia/minimaxai/minimax-m3
-    - mistral/devstral-medium-latest
-    - openrouter/poolside/laguna-xs-2.1:free
-    - nvidia/z-ai/glm-5.2
-    - nvidia/poolside/laguna-xs-2.1
-    - hf/Qwen/Qwen3-Coder-Next
-    - google/gemini-3.6-flash
+    spread_top: 2 # laguna-s and minimax-m3 are both proven strong agentic coders
+    chain:
+      - openrouter/poolside/laguna-s-2.1:free
+      - nvidia/minimaxai/minimax-m3
+      - mistral/devstral-medium-latest
+      - openrouter/poolside/laguna-xs-2.1:free
+      - nvidia/z-ai/glm-5.2
+      - nvidia/poolside/laguna-xs-2.1
+      - hf/Qwen/Qwen3-Coder-Next
+      - google/gemini-3.6-flash
 
   HARD:
-    - github/openai/gpt-4.1
-    - nvidia/deepseek-ai/deepseek-v4-pro
-    - sambanova/DeepSeek-V3.2
-    - nvidia/minimaxai/minimax-m3
-    - google/gemini-3.1-pro-preview
-    - openrouter/poolside/laguna-s-2.1:free
-    - nvidia/deepseek-ai/deepseek-v4-flash
+    # gpt-4.1 (github) is scarce (~50/day); spreading with deepseek-v4-pro (both
+    # excellent, comparable) conserves that quota instead of exhausting it daily.
+    spread_top: 2
+    chain:
+      - github/openai/gpt-4.1
+      - nvidia/deepseek-ai/deepseek-v4-pro
+      - sambanova/DeepSeek-V3.2
+      - nvidia/minimaxai/minimax-m3
+      - google/gemini-3.1-pro-preview
+      - openrouter/poolside/laguna-s-2.1:free
+      - nvidia/deepseek-ai/deepseek-v4-flash
 
   LONGCTX:
-    - google/gemini-3.6-flash
-    - nvidia/nvidia/nemotron-3-ultra-550b-a55b
-    - github/openai/gpt-4.1
-    - nvidia/minimaxai/minimax-m3
-    - openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
+    spread_top: 2 # both leads are 1M-context models of comparable quality
+    # github/openai/gpt-4.1 removed 2026-07-23: hard-capped at 8000 tokens per
+    # request on the free Models tier ("Request body too large... Max size: 8000
+    # tokens") — structurally incompatible with this lane (heuristic threshold is
+    # >60k tokens), so every real LONGCTX request would fail on it. Kept in HARD
+    # only, where request sizes are normally well under that cap.
+    chain:
+      - google/gemini-3.6-flash
+      - nvidia/nvidia/nemotron-3-ultra-550b-a55b
+      - nvidia/minimaxai/minimax-m3
+      - openrouter/nvidia/nemotron-3-ultra-550b-a55b:free

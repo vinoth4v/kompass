@@ -14,7 +14,7 @@ import {
 } from '../adapters/gemini';
 import type { KompassState, FailureKind, ReserveLimits } from '../do/state';
 import type { ProviderConfig, RouterConfig } from './config';
-import { limitsFor, parseChainEntry } from './config';
+import { limitsFor, parseChainEntry, resolveLaneChain, resolveLaneSpreadTop } from './config';
 import type { Env } from './env';
 
 // First-byte timeout: NVIDIA free-tier cold starts run past 60s, so 75s for streams
@@ -297,7 +297,8 @@ export async function routeRequest(
   body: AnthropicRequest,
   ctx: RouteContext,
 ): Promise<RouteOutcome> {
-  const chain = ctx.forced ? [ctx.forced] : (cfg.lanes[lane] ?? cfg.lanes[cfg.default_lane] ?? []);
+  const chain = ctx.forced ? [ctx.forced] : resolveLaneChain(cfg, lane);
+  const spreadTop = ctx.forced ? 1 : resolveLaneSpreadTop(cfg, lane);
   const attempts: RouteAttempt[] = [];
 
   const limitsByEntry: Record<string, { key: string; limits: ReserveLimits }> = {};
@@ -311,7 +312,7 @@ export async function routeRequest(
   let order = chain;
   if (ctx.stub && !ctx.forced) {
     try {
-      const plan = await ctx.stub.filterChain(chain, limitsByEntry, ctx.sessionId);
+      const plan = await ctx.stub.filterChain(chain, limitsByEntry, ctx.sessionId, spreadTop);
       order = plan.order;
       for (const s of plan.skipped)
         attempts.push({ entry: s.entry, status: `skipped-${s.reason}` });

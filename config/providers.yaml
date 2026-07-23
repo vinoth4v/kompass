@@ -86,6 +86,8 @@ providers:
     trains_on_data: false
     # TODO(verify): per-model daily quotas are undocumented; conservative.
     limits: { rpm: 5, rpd: 50 }
+    # Catalog lives on a different host than the inference endpoint above.
+    discovery_url: https://models.github.ai/catalog/models
 
   # ── Get a token: https://dash.cloudflare.com/profile/api-tokens (Workers AI) ─
   cfai:
@@ -95,6 +97,8 @@ providers:
     trains_on_data: false
     # TODO(verify): free tier is 10k neurons/day (not requests); conservative.
     limits: { rpm: 30, rpd: 500 }
+    # Model listing is a separate search endpoint, not {base_url}/models.
+    discovery_url: https://api.cloudflare.com/client/v4/accounts/fa8b047b0bd7d52b47a415ee6dbf3fda/ai/models/search?per_page=100&task=Text%20Generation
 
   # ── Get a free key: https://cloud.sambanova.ai ──────────────────────────────
   sambanova:

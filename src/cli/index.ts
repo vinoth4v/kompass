@@ -42,7 +42,7 @@ async function configPush() {
 }
 
 interface StatusPayload {
-  lanes: Record<string, string[]>;
+  lanes: Record<string, { chain: string[]; spread_top: number }>;
   default_lane?: string;
   providers: Record<
     string,
@@ -54,6 +54,7 @@ interface StatusPayload {
       tokens_today?: { in: number; out: number };
     }
   >;
+  perf?: Record<string, { ok: number; fail: number; rate: number }>;
   cooldowns: Record<string, string>;
   routes: Array<{
     ts: number;
@@ -98,9 +99,17 @@ async function status() {
     );
   }
   console.log('Lanes');
-  for (const [lane, chain] of Object.entries(d.lanes)) {
+  for (const [lane, l] of Object.entries(d.lanes)) {
     const mark = lane === d.default_lane ? '*' : ' ';
-    console.log(`  ${mark}${lane.padEnd(8)} ${chain.join(' → ')}`);
+    const spread = l.spread_top > 1 ? ` (spread top ${l.spread_top})` : '';
+    console.log(`  ${mark}${lane.padEnd(8)}${spread} ${l.chain.join(' → ')}`);
+  }
+  if (d.perf && Object.keys(d.perf).length) {
+    console.log('Model reliability (recent)');
+    const rows = Object.entries(d.perf).sort((a, b) => a[1].rate - b[1].rate);
+    for (const [entry, p] of rows) {
+      console.log(`  ${String(p.rate).padStart(3)}%  ${entry}  (${p.ok}/${p.fail})`);
+    }
   }
   const cds = Object.entries(d.cooldowns);
   if (cds.length) {
@@ -184,6 +193,48 @@ async function bench() {
   for (const r of rows) console.log(`| ${r.join(' | ')} |`);
 }
 
+interface DiscoveryPayload {
+  ts: number;
+  providers: Record<
+    string,
+    { liveCount: number; unconfigured: string[]; newSinceLast: string[]; error?: string }
+  >;
+}
+
+/**
+ * Prints the daily model-discovery report. `--run` triggers a fresh check instead
+ * of reading the cached one (the cron already runs this once a day automatically).
+ */
+async function discovery() {
+  const run = process.argv.includes('--run');
+  const res = await fetch(`${baseUrl()}/discovery${run ? '/run' : ''}`, {
+    method: run ? 'POST' : 'GET',
+    headers: { authorization: `Bearer ${bearer()}` },
+  });
+  if (!res.ok) {
+    console.error(`discovery failed: HTTP ${res.status}: ${await res.text()}`);
+    process.exit(1);
+  }
+  const d = (await res.json()) as DiscoveryPayload;
+  console.log(`Discovery — last run ${new Date(d.ts).toLocaleString()}`);
+  for (const [name, p] of Object.entries(d.providers)) {
+    if (p.error) {
+      console.log(`  ${name.padEnd(12)} ERROR: ${p.error}`);
+      continue;
+    }
+    console.log(`  ${name.padEnd(12)} ${p.liveCount} live models`);
+    if (p.newSinceLast.length) console.log(`    🆕 new: ${p.newSinceLast.join(', ')}`);
+    if (p.unconfigured.length)
+      console.log(
+        `    unconfigured: ${p.unconfigured.slice(0, 10).join(', ')}${p.unconfigured.length > 10 ? ' …' : ''}`,
+      );
+  }
+  console.log(
+    '\nDetect-only — nothing was added to config. Verify a candidate live (roster + tool-calling)',
+  );
+  console.log('before adding it to config/lanes.yaml and running `kompass config push`.');
+}
+
 const [, , cmd, sub] = process.argv;
 if (cmd === 'init') await (await import('./init')).init();
 else if (cmd === 'config' && sub === 'push') await configPush();
@@ -191,7 +242,10 @@ else if (cmd === 'status') await status();
 else if (cmd === 'deploy') deploy();
 else if (cmd === 'logs') logs();
 else if (cmd === 'bench') await bench();
+else if (cmd === 'discovery') await discovery();
 else {
-  console.log('Usage: kompass <init|deploy|status|logs|bench|config push> [--url <worker-url>]');
+  console.log(
+    'Usage: kompass <init|deploy|status|logs|bench|discovery [--run]|config push> [--url <worker-url>]',
+  );
   process.exit(cmd ? 1 : 0);
 }

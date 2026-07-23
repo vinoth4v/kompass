@@ -250,6 +250,82 @@ describe('M2 Durable Object ledger', () => {
     expect(status.providers.openrouter.tokens_today).toEqual({ in: 320, out: 125 });
   });
 
+  it('spread_top:1 (default) always tries chain[0] first — no behavior change', async () => {
+    // fetchMock (undici's MockAgent) is shared across every test in this file, not
+    // reset per `it()` — a `.persist()` interceptor with no body filter would keep
+    // matching in later tests too. One-shot interceptors registered exactly as many
+    // times as consumed avoid that leakage.
+    for (let i = 0; i < 5; i++) {
+      fetchMock
+        .get('https://openrouter.ai')
+        .intercept({ path: '/api/v1/chat/completions', method: 'POST' })
+        .reply(200, OK_OPENAI);
+      const res = await SELF.fetch('https://kompass.test/v1/messages', {
+        method: 'POST',
+        headers: AUTH,
+        body: msgBody(),
+      });
+      expect(res.status).toBe(200);
+    }
+    const status = (await (
+      await SELF.fetch('https://kompass.test/status', { headers: AUTH })
+    ).json()) as any;
+    // every one of the 5 trials landed on chain[0] — never spread by default
+    expect(status.routes.slice(0, 5).every((r: any) => r.entry === 'openrouter/model-a:free')).toBe(
+      true,
+    );
+  });
+
+  it('spread_top:2 weighted-picks a proven performer over a listed-first poor performer', async () => {
+    await SELF.fetch('https://kompass.test/ledger/seed-perf', {
+      method: 'POST',
+      headers: AUTH,
+      body: JSON.stringify({ entry: 'openrouter/spread-bad:free', ok: 0, fail: 20 }),
+    });
+    await SELF.fetch('https://kompass.test/ledger/seed-perf', {
+      method: 'POST',
+      headers: AUTH,
+      body: JSON.stringify({ entry: 'openrouter/spread-good:free', ok: 20, fail: 0 }),
+    });
+    const spreadCfg = cfg();
+    // 30 trials would blow the default 20 RPM ceiling mid-loop (both entries share
+    // the provider-level counter here) — raise it so RPM isn't the bottleneck.
+    spreadCfg.providers.openrouter!.limits = { rpm: 1000, rpd: 5000 };
+    spreadCfg.lanes.AGENTIC = {
+      // bad is listed FIRST (highest static priority) — pure priority order would
+      // always pick it; the weighted pick should favor good instead, most of the time.
+      chain: ['openrouter/spread-bad:free', 'openrouter/spread-good:free'],
+      spread_top: 2,
+    };
+    await env.CONFIG.put('config', JSON.stringify(spreadCfg));
+
+    let goodCount = 0;
+    const trials = 30;
+    for (let i = 0; i < trials; i++) {
+      // One-shot interceptor per trial (no persist — see note above); the reply
+      // callback inspects the actual request body so a single registration covers
+      // whichever of the two models the weighted pick sends.
+      fetchMock
+        .get('https://openrouter.ai')
+        .intercept({ path: '/api/v1/chat/completions', method: 'POST' })
+        .reply(200, (opts) => {
+          const model = (JSON.parse(opts.body as string) as { model: string }).model;
+          const content = model === 'spread-good:free' ? 'GOOD' : 'BAD';
+          return { choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop' }] };
+        });
+      const res = await SELF.fetch('https://kompass.test/v1/messages', {
+        method: 'POST',
+        headers: AUTH,
+        body: msgBody(),
+      });
+      const json = (await res.json()) as any;
+      if (json.content[0].text === 'GOOD') goodCount++;
+    }
+    // Not deterministic (weighted random), but with weights ~1.0 vs floor 0.05 the
+    // skew should be overwhelming — a generous threshold keeps this test stable.
+    expect(goodCount).toBeGreaterThan(trials * 0.7);
+  });
+
   it('sticky release endpoint works', async () => {
     const res = await SELF.fetch('https://kompass.test/session/release', {
       method: 'POST',

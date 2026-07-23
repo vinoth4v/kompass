@@ -43,10 +43,29 @@ interface StickyCell {
   lane: string;
   ts: number;
 }
+interface PerfCell {
+  ok: number;
+  fail: number;
+}
+
+export interface ProviderDiscovery {
+  liveCount: number;
+  /** live models not referenced by any lane/dispatcher entry (capped) */
+  unconfigured: string[];
+  /** live models not present in the previous snapshot (capped) */
+  newSinceLast: string[];
+  error?: string;
+}
+export interface DiscoveryReport {
+  ts: number;
+  providers: Record<string, ProviderDiscovery>;
+}
 
 export const COOLDOWN_MS = 10 * 60 * 1000; // per-model health cooldown (SPEC P0 #5)
 const STICKY_TTL_MS = 2 * 60 * 60 * 1000;
 const MAX_ROUTES = 50;
+const PERF_DECAY_CAP = 40; // halve ok/fail past this total so scoring stays recency-biased
+const PERF_FLOOR = 0.05; // never fully zero out an entry — allow self-healing retries
 
 function utcDay(now: number): string {
   return new Date(now).toISOString().slice(0, 10);
@@ -73,15 +92,52 @@ export class KompassState extends DurableObject {
     };
   }
 
+  /** Weighted-random pick among a pool, weighted by each entry's recent success rate. */
+  private async pickWeighted(pool: string[]): Promise<string> {
+    if (pool.length <= 1) return pool[0]!;
+    const weights: number[] = [];
+    for (const entry of pool) {
+      const perf = await this.ctx.storage.get<PerfCell>(`perf:${entry}`);
+      const total = (perf?.ok ?? 0) + (perf?.fail ?? 0);
+      // No data yet → optimistic weight 1 (give untested entries a fair first try).
+      weights.push(total === 0 ? 1 : Math.max(PERF_FLOOR, perf!.ok / total));
+    }
+    const sum = weights.reduce((a, b) => a + b, 0);
+    let r = Math.random() * sum;
+    for (let i = 0; i < pool.length; i++) {
+      r -= weights[i]!;
+      if (r <= 0) return pool[i]!;
+    }
+    return pool[pool.length - 1]!;
+  }
+
+  private async bumpPerf(entry: string, ok: boolean): Promise<void> {
+    const key = `perf:${entry}`;
+    const cur = (await this.ctx.storage.get<PerfCell>(key)) ?? { ok: 0, fail: 0 };
+    let { ok: okC, fail: failC } = cur;
+    if (ok) okC++;
+    else failC++;
+    if (okC + failC > PERF_DECAY_CAP) {
+      okC = Math.floor(okC / 2);
+      failC = Math.floor(failC / 2);
+    }
+    await this.ctx.storage.put(key, { ok: okC, fail: failC } satisfies PerfCell);
+  }
+
   /**
    * Order a lane chain for one request: sticky entry first (if still viable),
    * exhausted-quota and cooling-down entries skipped up front (SPEC P0 #6).
    * `limitsByEntry` carries the config limits so the DO stays config-free.
+   * When no sticky entry applies and `spreadTop` > 1, the first pick is drawn by
+   * weighted-random from the top `spreadTop` viable candidates (weighted by recent
+   * success rate) instead of always the highest-priority one — spreads load across
+   * comparable models and adapts to which ones are actually performing well.
    */
   async filterChain(
     chain: string[],
     limitsByEntry: Record<string, { key: string; limits: ReserveLimits }>,
     sessionId?: string,
+    spreadTop = 1,
   ): Promise<{ order: string[]; skipped: Array<{ entry: string; reason: string }> }> {
     const now = Date.now();
     const skipped: Array<{ entry: string; reason: string }> = [];
@@ -117,6 +173,17 @@ export class KompassState extends DurableObject {
       }
       order.push(entry);
     }
+
+    if (!sticky && spreadTop > 1 && order.length > 1) {
+      const poolSize = Math.min(spreadTop, order.length);
+      const chosen = await this.pickWeighted(order.slice(0, poolSize));
+      if (chosen !== order[0]) {
+        const rest = order.filter((e) => e !== chosen);
+        order.length = 0;
+        order.push(chosen, ...rest);
+      }
+    }
+
     return { order, skipped };
   }
 
@@ -177,6 +244,7 @@ export class KompassState extends DurableObject {
     } = {},
   ): Promise<void> {
     const now = Date.now();
+    await this.bumpPerf(entry, ok);
     if (ok) {
       if (opts.sessionId) {
         await this.ctx.storage.put(`sticky:${opts.sessionId}`, {
@@ -281,12 +349,13 @@ export class KompassState extends DurableObject {
     await this.ctx.storage.delete(`sticky:${sessionId}`);
   }
 
-  /** Raw state for /status: counters, cooldowns, token totals, recent routes. */
+  /** Raw state for /status: counters, cooldowns, token totals, perf, recent routes. */
   async snapshot(): Promise<{
     rpm: Record<string, RpmCell>;
     rpd: Record<string, RpdCell>;
     cooldowns: Record<string, number>;
     tokens: Record<string, TokenCell>;
+    perf: Record<string, PerfCell>;
     routes: RouteRecord[];
   }> {
     const now = Date.now();
@@ -294,11 +363,13 @@ export class KompassState extends DurableObject {
     const rpd: Record<string, RpdCell> = {};
     const cooldowns: Record<string, number> = {};
     const tokens: Record<string, TokenCell> = {};
+    const perf: Record<string, PerfCell> = {};
     const all = await this.ctx.storage.list();
     for (const [k, v] of all) {
       if (k.startsWith('rpm:')) rpm[k.slice(4)] = v as RpmCell;
       else if (k.startsWith('rpd:')) rpd[k.slice(4)] = v as RpdCell;
       else if (k.startsWith('tokd:')) tokens[k.slice(5)] = v as TokenCell;
+      else if (k.startsWith('perf:')) perf[k.slice(5)] = v as PerfCell;
       else if (k.startsWith('cool:') && (v as number) > now) cooldowns[k.slice(5)] = v as number;
     }
     return {
@@ -306,8 +377,35 @@ export class KompassState extends DurableObject {
       rpd,
       cooldowns,
       tokens,
+      perf,
       routes: (await this.ctx.storage.get<RouteRecord[]>('routes')) ?? [],
     };
+  }
+
+  // ── M-discovery: scheduled model-roster checking (never auto-mutates config) ──
+
+  async getRosterSnapshot(provider: string): Promise<string[]> {
+    return (await this.ctx.storage.get<string[]>(`roster:${provider}`)) ?? [];
+  }
+
+  async setRosterSnapshot(provider: string, roster: string[]): Promise<void> {
+    await this.ctx.storage.put(`roster:${provider}`, roster);
+  }
+
+  async recordDiscovery(report: DiscoveryReport): Promise<void> {
+    await this.ctx.storage.put('discovery', report);
+  }
+
+  async getDiscovery(): Promise<DiscoveryReport | null> {
+    return (await this.ctx.storage.get<DiscoveryReport>('discovery')) ?? null;
+  }
+
+  /**
+   * Test/admin helper: directly set an entry's perf counters, bypassing the
+   * cooldown/routes side effects reportOutcome would trigger on a real failure.
+   */
+  async seedPerf(entry: string, ok: number, fail: number): Promise<void> {
+    await this.ctx.storage.put(`perf:${entry}`, { ok, fail } satisfies PerfCell);
   }
 
   /**

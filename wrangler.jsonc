@@ -26,4 +26,9 @@
       "new_sqlite_classes": ["KompassState"],
     },
   ],
+  "triggers": {
+    // Daily model-discovery run (src/worker/discovery.ts) — detect-only, never
+    // mutates config. 06:00 UTC: cheap (models-list calls, no completion tokens).
+    "crons": ["0 6 * * *"],
+  },
 }
