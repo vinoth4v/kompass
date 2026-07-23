@@ -1,0 +1,769 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kompass Docs — free-model gateway documentation</title>
+    <meta
+      name="description"
+      content="Full documentation for Kompass: setup, connecting Claude Code / Codex / Cursor / Cline / Aider, routing, configuration, API and CLI reference, troubleshooting."
+    />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0a0d14;
+        --fg: #e8eaf0;
+        --muted: #8b95a7;
+        --line: #1e2433;
+        --card: #121828;
+        --amber: #f5a524;
+        --blue: #4d8dff;
+        --green: #34d399;
+        --red: #f4635e;
+        --purple: #a78bfa;
+        --code-bg: #0b0f1a;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          15.5px/1.65 -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          sans-serif;
+      }
+      a {
+        color: var(--blue);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      code,
+      pre,
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.9em;
+      }
+      code {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 5px;
+        padding: 0.08em 0.35em;
+      }
+      pre {
+        background: var(--code-bg);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.9rem 1rem;
+        overflow-x: auto;
+        line-height: 1.5;
+      }
+      pre code {
+        background: none;
+        border: none;
+        padding: 0;
+      }
+      .layout {
+        display: flex;
+        max-width: 72rem;
+        margin: 0 auto;
+      }
+      nav.side {
+        width: 230px;
+        min-width: 230px;
+        position: sticky;
+        top: 0;
+        align-self: flex-start;
+        height: 100vh;
+        overflow-y: auto;
+        padding: 1.4rem 1rem 2rem;
+        border-right: 1px solid var(--line);
+        font-size: 0.88rem;
+      }
+      nav.side .logo {
+        font-weight: 800;
+        font-size: 1.05rem;
+        display: block;
+        margin-bottom: 0.2rem;
+        color: var(--fg);
+      }
+      nav.side .logo span {
+        color: var(--amber);
+      }
+      nav.side .back {
+        font-size: 0.8rem;
+        color: var(--muted);
+        display: block;
+        margin-bottom: 1.1rem;
+      }
+      nav.side a.item {
+        display: block;
+        color: var(--muted);
+        padding: 0.28rem 0.5rem;
+        border-radius: 6px;
+      }
+      nav.side a.item:hover {
+        color: var(--fg);
+        background: var(--card);
+        text-decoration: none;
+      }
+      nav.side .group {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--amber);
+        margin: 1.1rem 0 0.3rem 0.5rem;
+        font-weight: 700;
+      }
+      main {
+        flex: 1;
+        min-width: 0;
+        padding: 2rem 2.2rem 6rem;
+      }
+      h1 {
+        font-size: 2rem;
+        margin: 0.5rem 0 0.4rem;
+      }
+      h2 {
+        font-size: 1.45rem;
+        margin-top: 3.2rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--line);
+      }
+      h3 {
+        font-size: 1.08rem;
+        margin-top: 1.8rem;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 0.8rem 0;
+        font-size: 0.9rem;
+        display: block;
+        overflow-x: auto;
+      }
+      th,
+      td {
+        border: 1px solid var(--line);
+        padding: 0.45rem 0.7rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      th {
+        background: var(--card);
+        white-space: nowrap;
+      }
+      .note {
+        border-left: 3px solid var(--amber);
+        background: #f5a5240d;
+        padding: 0.7rem 1rem;
+        border-radius: 0 8px 8px 0;
+        margin: 1rem 0;
+        font-size: 0.92rem;
+      }
+      .note.good {
+        border-color: var(--green);
+        background: #34d3990d;
+      }
+      @media (max-width: 760px) {
+        nav.side {
+          display: none;
+        }
+        main {
+          padding: 1.2rem 1.1rem 4rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <nav class="side">
+        <a class="logo" href="./">🧭 Kom<span>pass</span></a>
+        <a class="back" href="./">← back to overview</a>
+        <div class="group">Start</div>
+        <a class="item" href="#what">What is Kompass?</a>
+        <a class="item" href="#install">Install</a>
+        <div class="group">Connect your tools</div>
+        <a class="item" href="#claude-code">Claude Code</a>
+        <a class="item" href="#codex">Codex CLI</a>
+        <a class="item" href="#cursor">Cursor</a>
+        <a class="item" href="#cline">Cline / Roo / Kilo</a>
+        <a class="item" href="#continue">Continue</a>
+        <a class="item" href="#aider">Aider &amp; generic</a>
+        <a class="item" href="#ui">Web workbench</a>
+        <div class="group">Guide</div>
+        <a class="item" href="#routing">How routing works</a>
+        <a class="item" href="#models">Model names &amp; headers</a>
+        <a class="item" href="#config">Configuration</a>
+        <a class="item" href="#reliability">Reliability model</a>
+        <a class="item" href="#quota">Quota &amp; limits</a>
+        <a class="item" href="#privacy">Trust &amp; privacy</a>
+        <div class="group">Reference</div>
+        <a class="item" href="#api">API endpoints</a>
+        <a class="item" href="#cli">CLI commands</a>
+        <a class="item" href="#troubleshooting">Troubleshooting</a>
+      </nav>
+
+      <main>
+        <h1>Kompass Documentation</h1>
+        <p class="muted">
+          Everything you need to run, connect, configure and debug your Kompass gateway. Source
+          &amp; issues:
+          <a href="https://github.com/vinoth4v/kompass">github.com/vinoth4v/kompass</a>
+        </p>
+
+        <h2 id="what">What is Kompass?</h2>
+        <p>
+          Kompass is a <b>personal LLM gateway</b> you deploy to your own Cloudflare account (free
+          tier). It exposes one URL that your coding tools talk to, and routes every request across
+          <b>free model providers</b> by task complexity — so simple tasks go to fast small models,
+          hard tasks to the best free reasoning models, and your paid Claude/OpenAI quota is only
+          used when you choose to.
+        </p>
+        <pre><code>Claude Code ─(Anthropic API)──┐
+Codex CLI  ─(Responses API)──┤                       ┌► FAST     lane │ small & instant
+Cursor     ─(OpenAI API)─────┼─►  YOUR KOMPASS  ─────┼► SIMPLE   lane │ everyday edits
+Cline/Roo  ─(OpenAI API)─────┤   (CF Worker, one     ├► AGENTIC  lane │ tool-calling agents
+Continue   ─(OpenAI API)─────┤    URL, one bearer,   ├► HARD     lane │ max free reasoning
+Aider      ─(OpenAI API)─────┤    one quota ledger)  └► LONGCTX  lane │ >60k-token contexts
+kompass ui ─(local server)───┘
+        each lane = ordered fallback chain over 10 free providers</code></pre>
+        <p>Three properties define it:</p>
+        <ul>
+          <li>
+            <b>One gateway, three API dialects.</b> The same Worker speaks the Anthropic Messages
+            API, the OpenAI Chat Completions API, and the OpenAI Responses API — so virtually every
+            coding tool can connect, and they all share one quota pool.
+          </li>
+          <li>
+            <b>Failures are invisible.</b> Kompass buffers every upstream answer before replying, so
+            a provider dying mid-generation, returning an empty response, or rate-limiting just
+            falls through to the next model — your editor never sees an error and never needs a
+            manual retry.
+          </li>
+          <li>
+            <b>$0 by default.</b> Infrastructure runs on Cloudflare's free tier; every default lane
+            model is a free endpoint; paid models are blocked in code unless you opt in.
+          </li>
+        </ul>
+
+        <h2 id="install">Install</h2>
+        <p>
+          Prereqs: <a href="https://nodejs.org">Node 20+</a>, <a href="https://pnpm.io">pnpm</a>, a
+          free <a href="https://dash.cloudflare.com/sign-up">Cloudflare account</a>, and at least
+          one free provider key.
+        </p>
+        <pre><code>git clone https://github.com/vinoth4v/kompass && cd kompass && pnpm install
+export CLOUDFLARE_API_TOKEN=...   # dash.cloudflare.com → API Tokens → "Edit Cloudflare Workers" + KV edit
+pnpm kompass init                 # guided wizard: keys → KV → URL → deploy → smoke test → shell function</code></pre>
+        <p>
+          The wizard is idempotent and ends with a verified, deployed gateway plus a
+          <code>claude-free</code> shell command. Prefer copy-paste? Use the
+          <a href="./#builder">Setup Builder</a> on the landing page — it generates your
+          personalized files entirely in your browser (nothing is sent anywhere). Free keys:
+          <a href="https://openrouter.ai/keys">OpenRouter</a> ·
+          <a href="https://build.nvidia.com">NVIDIA Build</a> ·
+          <a href="https://aistudio.google.com/apikey">Google AI Studio</a> ·
+          <a href="https://console.groq.com/keys">Groq</a> ·
+          <a href="https://console.mistral.ai">Mistral</a> · GitHub Models (a PAT) · Cloudflare
+          Workers AI · <a href="https://cloud.sambanova.ai">SambaNova</a> ·
+          <a href="https://dashboard.cohere.com/api-keys">Cohere</a> ·
+          <a href="https://huggingface.co/settings/tokens">Hugging Face</a>. Any subset works —
+          providers without keys are skipped automatically.
+        </p>
+        <div class="note">
+          Throughout these docs, replace <code>kompass.&lt;you&gt;.workers.dev</code> with your
+          deployed URL and <code>&lt;bearer&gt;</code> with the <code>KOMPASS_BEARER</code> you
+          generated during setup. The bearer is the only credential any client ever needs — your
+          provider API keys stay inside Cloudflare Worker secrets.
+        </div>
+
+        <h2 id="claude-code">Connect: Claude Code</h2>
+        <p>Add to <code>~/.zshrc</code> (the wizard does this for you):</p>
+        <pre><code>claude-free() {
+  ANTHROPIC_BASE_URL="https://kompass.&lt;you&gt;.workers.dev" \
+  ANTHROPIC_AUTH_TOKEN="&lt;bearer&gt;" \
+  ANTHROPIC_MODEL="claude-sonnet-4-5" \
+  claude "$@"
+}</code></pre>
+        <p>
+          Then run <code>claude-free</code> instead of <code>claude</code> whenever you want free
+          models — same repo, same session style, zero Pro quota used. All Claude Code features
+          work: streaming, tool calls, images, long agentic sessions.
+        </p>
+
+        <h2 id="codex">Connect: Codex CLI</h2>
+        <p>
+          Codex requires the OpenAI <b>Responses API</b> (it dropped Chat Completions support in Feb
+          2026) — Kompass speaks it natively at <code>/v1/responses</code>. In
+          <code>~/.codex/config.toml</code> (user-level — Codex ignores project-local provider
+          config):
+        </p>
+        <pre><code>model = "kompass"
+model_provider = "kompass"
+
+[model_providers.kompass]
+name = "Kompass"
+base_url = "https://kompass.&lt;you&gt;.workers.dev/v1"
+env_key = "KOMPASS_API_KEY"
+wire_api = "responses"</code></pre>
+        <pre><code>export KOMPASS_API_KEY=&lt;bearer&gt;   # add to your shell profile
+codex</code></pre>
+
+        <h2 id="cursor">Connect: Cursor</h2>
+        <ol>
+          <li>Cursor Settings → <b>Models</b> → API Keys</li>
+          <li>Paste your bearer token in the <b>OpenAI API Key</b> field</li>
+          <li>
+            Enable <b>Override OpenAI Base URL</b> and set it to
+            <code>https://kompass.&lt;you&gt;.workers.dev/v1</code>
+          </li>
+          <li>
+            Add a custom model named <code>kompass</code> (or <code>kompass-hard</code> etc.) and
+            select it
+          </li>
+        </ol>
+        <div class="note">
+          Overriding the base URL affects Cursor's OpenAI-backed features only; Cursor-native
+          features that require its own hosted models (e.g. Tab autocomplete) keep using Cursor's
+          models. Chat and agent mode with the <code>kompass</code> model work normally.
+        </div>
+
+        <h2 id="cline">Connect: Cline / Roo Code / Kilo Code (VS Code)</h2>
+        <p>In the extension's settings choose the <b>OpenAI Compatible</b> provider:</p>
+        <pre><code>API Provider:  OpenAI Compatible
+Base URL:      https://kompass.&lt;you&gt;.workers.dev/v1
+API Key:       &lt;bearer&gt;
+Model ID:      kompass</code></pre>
+        <p class="muted">
+          Tool/function calling works — the agentic loop (file edits, commands) runs through
+          Kompass's AGENTIC lane models.
+        </p>
+
+        <h2 id="continue">Connect: Continue (VS Code / JetBrains)</h2>
+        <p>In <code>~/.continue/config.yaml</code>:</p>
+        <pre><code>models:
+  - name: Kompass
+    provider: openai
+    model: kompass
+    apiBase: https://kompass.&lt;you&gt;.workers.dev/v1
+    apiKey: &lt;bearer&gt;
+    roles: [chat, edit, apply]</code></pre>
+
+        <h2 id="aider">Connect: Aider &amp; anything OpenAI-compatible</h2>
+        <pre><code>export OPENAI_API_BASE=https://kompass.&lt;you&gt;.workers.dev/v1
+export OPENAI_API_KEY=&lt;bearer&gt;
+aider --model openai/kompass</code></pre>
+        <p>
+          Any other client that accepts an OpenAI-compatible base URL + key works the same way: base
+          URL <code>…/v1</code>, key = bearer, model <code>kompass</code>. Clients that validate
+          models via <code>GET /v1/models</code> will find <code>kompass</code> and the five
+          lane-pinned variants there.
+        </p>
+
+        <h2 id="ui">Web workbench (<code>kompass ui</code>)</h2>
+        <p>
+          <code>pnpm kompass ui</code> starts a local claude.ai-style interface at
+          <code>http://127.0.0.1:4876</code> with four modes, all routed through your gateway:
+        </p>
+        <table>
+          <tr>
+            <th>Mode</th>
+            <th>What it does</th>
+          </tr>
+          <tr>
+            <td><b>Chat</b></td>
+            <td>Plain conversation with markdown rendering and saved sessions.</td>
+          </tr>
+          <tr>
+            <td><b>Agent</b></td>
+            <td>
+              Claude Code-style coding agent with bash / read / write / edit / list / search tools
+              in a workspace directory you pick. Risky actions (bash, file writes) pause for an
+              Allow/Deny click — or enable auto-approve.
+            </td>
+          </tr>
+          <tr>
+            <td><b>Research</b></td>
+            <td>
+              Runs web searches (DuckDuckGo — no API key) and reads pages, then writes a sourced
+              markdown report.
+            </td>
+          </tr>
+          <tr>
+            <td><b>Slides</b></td>
+            <td>
+              Designs a deck and generates a real downloadable <code>.pptx</code> (cover, bullet
+              slides, speaker notes), optionally researching the topic first.
+            </td>
+          </tr>
+        </table>
+        <p class="muted">
+          Everything runs locally: tools execute on your machine, sessions persist under
+          <code>~/.kompass/ui/</code>, and the browser only talks to the local server — the bearer
+          never reaches the page. The sidebar shows live per-provider daily quota.
+        </p>
+
+        <h2 id="routing">How routing works</h2>
+        <ol>
+          <li>
+            <b>Heuristic pre-filter (0ms):</b> obvious signals decide instantly — huge context →
+            LONGCTX, tool-less short prompt → FAST, etc. Roughly 60% of requests short-circuit here.
+          </li>
+          <li>
+            <b>Classifier verdict:</b> otherwise a dedicated free classifier model (with its own
+            budget and fallback chain, separate from the coding lanes) labels the task FAST / SIMPLE
+            / AGENTIC / HARD in ~100–700ms; verdicts are cached in the Durable Object. If the
+            classifier is down or rate-limited, routing falls back to heuristics — it never blocks a
+            request.
+          </li>
+          <li>
+            <b>Lane chain walk:</b> each lane is an ordered list of <code>provider/model</code>
+            entries. The Durable Object pre-skips entries that are quota-exhausted or in a health
+            cooldown, keeps sessions sticky to the model that's been serving them, and (where
+            <code>spread_top</code> &gt; 1) weighted-picks the first attempt among the top N viable
+            candidates by recent success rate.
+          </li>
+          <li>
+            <b>Escalation:</b> three consecutive failed tool-turns escalate the session one lane up.
+            If a whole lane's chain is exhausted, Kompass cascades FAST→SIMPLE→AGENTIC→HARD before
+            giving up — and total exhaustion returns a friendly in-chat notice, never an error.
+          </li>
+        </ol>
+
+        <h2 id="models">Model names &amp; headers</h2>
+        <table>
+          <tr>
+            <th>Model name</th>
+            <th>Effect</th>
+          </tr>
+          <tr>
+            <td>
+              <code>kompass</code> (or any unrecognized name, e.g. <code>claude-sonnet-4-5</code>)
+            </td>
+            <td>Automatic lane routing by task complexity</td>
+          </tr>
+          <tr>
+            <td>
+              <code>kompass-fast</code> / <code>kompass-simple</code> /
+              <code>kompass-agentic</code> / <code>kompass-hard</code> /
+              <code>kompass-longctx</code>
+            </td>
+            <td>
+              Pin the request to that lane (normal fallback chain within the lane still applies)
+            </td>
+          </tr>
+        </table>
+        <table>
+          <tr>
+            <th>Header</th>
+            <th>Effect</th>
+          </tr>
+          <tr>
+            <td><code>x-kompass-lane: HARD</code></td>
+            <td>Force a lane (wins over model-name pinning)</td>
+          </tr>
+          <tr>
+            <td><code>x-kompass-model: provider/model</code></td>
+            <td>Force one exact provider/model, no fallback (testing/benchmarks)</td>
+          </tr>
+        </table>
+
+        <h2 id="config">Configuration</h2>
+        <p>
+          All routing lives in two YAML files — never in code. Push changes live with
+          <code>pnpm kompass config push</code> (hot-reload via KV, no redeploy).
+        </p>
+        <h3><code>config/providers.yaml</code></h3>
+        <pre><code>providers:
+  openrouter:
+    kind: openai            # adapter dialect: openai | gemini
+    base_url: https://openrouter.ai/api/v1
+    key_env: OPENROUTER_API_KEY   # name of the Worker secret holding the key
+    trains_on_data: true    # privacy guard keeps flagged content away from this provider
+    limits: { rpm: 20, rpd: 1000 }  # your live limits — the shared ledger enforces these
+    # optional per-model overrides:
+    model_limits:
+      some/model: { rpm: 5, rpd: 50 }</code></pre>
+        <h3><code>config/lanes.yaml</code></h3>
+        <pre><code>lanes:
+  FAST:                                # plain list = spread_top 1 (always try first entry first)
+    - google/gemini-3.5-flash-lite
+    - groq/llama-3.1-8b-instant
+  AGENTIC:                             # object form enables load spreading
+    spread_top: 2                      # weighted-pick 1st attempt among top 2 viable entries
+    chain:
+      - openrouter/poolside/laguna-s-2.1:free
+      - nvidia/minimaxai/minimax-m3
+      - mistral/devstral-medium-latest
+
+dispatcher:                            # the classifier (own budget, never a coding lane)
+  model: google/gemini-3.1-flash-lite
+  fallbacks: [groq/llama-3.1-8b-instant, mistral/mistral-small-latest]
+
+deprecated_models:                     # rewritten to the replacement at every config push
+  nvidia/old-model:
+    replaced_by: nvidia/new-model
+    note: "superseded"
+    since: "2026-07-23"
+
+privacy:                               # content matching these never reaches trains_on_data providers
+  block_patterns: ["**/secrets/**", "*.pem"]
+  block_regexes: ["-----BEGIN [A-Z ]*PRIVATE KEY-----"]
+
+allow_paid: false                      # paid models hard-blocked unless you flip this</code></pre>
+
+        <h2 id="reliability">Reliability model (why sessions never stall)</h2>
+        <p>
+          Free-tier providers fail constantly: mid-generation deaths, 200-responses with no content,
+          malformed bodies, surprise 429s. Kompass's answer is
+          <b>buffer-then-emit</b>: it always calls providers non-streaming, buffers the complete
+          answer server-side, and only then writes to your editor — synthesizing the SSE stream your
+          client expects from the finished response.
+        </p>
+        <ul>
+          <li>
+            Any failure, at any point in generation, silently falls through to the next model in the
+            chain.
+          </li>
+          <li>
+            A failing model gets a 10-minute health cooldown and loses session stickiness, so
+            retries route elsewhere.
+          </li>
+          <li>
+            If every model in every lane fails, you get a synthetic in-chat notice suggesting native
+            Claude — never a protocol error, so agentic sessions never need a manual
+            <code>--continue</code>.
+          </li>
+        </ul>
+        <div class="note">
+          The visible trade-off: responses arrive as a fast burst rather than token-by-token
+          "typing". That's deliberate — reliability over theater.
+        </div>
+
+        <h2 id="quota">Quota &amp; limits</h2>
+        <p>
+          Every provider enforces <b>RPM</b> (requests/minute) and <b>RPD</b> (requests/day) on its
+          free tier. Kompass tracks both in a shared Durable Object ledger — across all your
+          machines and all your tools — and pre-emptively skips exhausted providers instead of
+          collecting 429s. Check headroom anytime:
+        </p>
+        <pre><code>pnpm kompass status          # CLI
+https://kompass.&lt;you&gt;.workers.dev/status.html   # live dashboard</code></pre>
+        <p class="muted">
+          "Free" is a pooled, finite daily budget, not unlimited — but pooled across 10 providers it
+          comfortably covers a heavy coding day. Tip: buying $10 of OpenRouter credits once (never
+          expires) raises its <code>:free</code> cap from 50 to 1000 requests/day. The dashboard
+          also shows Kompass's own Cloudflare free-tier utilization (Worker requests, CPU per
+          request, KV, Durable Objects).
+        </p>
+
+        <h2 id="privacy">Trust &amp; privacy</h2>
+        <ul>
+          <li>
+            Your prompts transit <b>your own</b> Cloudflare Worker — only you hold the bearer.
+          </li>
+          <li>
+            Provider keys live as Cloudflare Worker secrets under your account; clients only ever
+            see the bearer.
+          </li>
+          <li>
+            Some free endpoints train on inputs. Those providers are flagged
+            <code>trains_on_data: true</code>, and the privacy guard keeps requests matching your
+            configured secret/path patterns away from them.
+          </li>
+          <li>
+            Don't point truly sensitive repos at free endpoints — that's a property of free tiers,
+            not of Kompass.
+          </li>
+        </ul>
+
+        <h2 id="api">API endpoints</h2>
+        <table>
+          <tr>
+            <th>Endpoint</th>
+            <th>Auth</th>
+            <th>Purpose</th>
+          </tr>
+          <tr>
+            <td><code>POST /v1/messages</code></td>
+            <td>bearer</td>
+            <td>Anthropic Messages API (Claude Code). Streaming + tools.</td>
+          </tr>
+          <tr>
+            <td><code>POST /v1/chat/completions</code></td>
+            <td>bearer</td>
+            <td>OpenAI Chat Completions (Cursor, Cline, Continue, Aider…). Streaming + tools.</td>
+          </tr>
+          <tr>
+            <td><code>POST /v1/responses</code></td>
+            <td>bearer</td>
+            <td>OpenAI Responses API (Codex CLI). Streaming + tools.</td>
+          </tr>
+          <tr>
+            <td><code>GET /v1/models</code></td>
+            <td>bearer</td>
+            <td>Model roster for client pickers.</td>
+          </tr>
+          <tr>
+            <td><code>POST /v1/messages/count_tokens</code></td>
+            <td>bearer</td>
+            <td>Token estimate (chars ÷ 4) for Claude Code context tracking.</td>
+          </tr>
+          <tr>
+            <td><code>GET /status</code></td>
+            <td>bearer</td>
+            <td>
+              JSON: lanes, per-provider quota, cooldowns, reliability, last 50 routes, CF
+              utilization.
+            </td>
+          </tr>
+          <tr>
+            <td><code>GET /status.html</code></td>
+            <td>token in page</td>
+            <td>Live dashboard (auto-refresh).</td>
+          </tr>
+          <tr>
+            <td><code>POST /config</code> / <code>GET /config</code></td>
+            <td>bearer</td>
+            <td>Hot-reload / read the compiled routing config.</td>
+          </tr>
+          <tr>
+            <td><code>GET /discovery</code> / <code>POST /discovery/run</code></td>
+            <td>bearer</td>
+            <td>Daily model-discovery report / trigger a fresh run.</td>
+          </tr>
+          <tr>
+            <td><code>GET /healthz</code></td>
+            <td>none</td>
+            <td>Liveness check.</td>
+          </tr>
+        </table>
+
+        <h2 id="cli">CLI commands</h2>
+        <table>
+          <tr>
+            <th>Command</th>
+            <th>Does</th>
+          </tr>
+          <tr>
+            <td><code>pnpm kompass init</code></td>
+            <td>Guided setup wizard (idempotent).</td>
+          </tr>
+          <tr>
+            <td><code>pnpm kompass ui</code></td>
+            <td>Local web workbench (chat / agent / research / slides).</td>
+          </tr>
+          <tr>
+            <td><code>pnpm kompass status</code></td>
+            <td>Lanes, quota, cooldowns, reliability, routes, CF utilization.</td>
+          </tr>
+          <tr>
+            <td><code>pnpm kompass config push</code></td>
+            <td>Compile + validate + hot-reload <code>config/*.yaml</code>.</td>
+          </tr>
+          <tr>
+            <td><code>pnpm kompass deploy</code></td>
+            <td><code>wrangler deploy</code> + bulk secret push.</td>
+          </tr>
+          <tr>
+            <td><code>pnpm kompass logs</code></td>
+            <td>Live tail of the Worker.</td>
+          </tr>
+          <tr>
+            <td><code>pnpm kompass discovery [--run]</code></td>
+            <td>Show (or refresh) the daily new-model report.</td>
+          </tr>
+          <tr>
+            <td><code>pnpm kompass deprecate &lt;old&gt; --replaced-by &lt;new&gt;</code></td>
+            <td>Register a model deprecation; auto-substituted at every push.</td>
+          </tr>
+          <tr>
+            <td><code>pnpm kompass bench</code></td>
+            <td>Run the 10-task suite across lanes.</td>
+          </tr>
+          <tr>
+            <td><code>pnpm smoke -- --url &lt;url&gt;</code></td>
+            <td>End-to-end smoke test against the deployed Worker.</td>
+          </tr>
+        </table>
+        <p class="muted">
+          Add <code>--url https://kompass.&lt;you&gt;.workers.dev</code> (or export
+          <code>KOMPASS_URL</code>) to the status/config/discovery commands.
+        </p>
+
+        <h2 id="troubleshooting">Troubleshooting</h2>
+        <table>
+          <tr>
+            <th>Symptom</th>
+            <th>Cause &amp; fix</th>
+          </tr>
+          <tr>
+            <td>"Free lanes are exhausted" notice in chat</td>
+            <td>
+              Every model in every lane failed for that one request (quota, cooldowns, or a very
+              large context). Check <code>kompass status</code> — cooldowns clear in ≤10 min and
+              quotas reset daily. Just send your next message; nothing is stuck.
+            </td>
+          </tr>
+          <tr>
+            <td>401 from any endpoint</td>
+            <td>
+              Wrong or missing bearer. It must be sent as <code>Authorization: Bearer …</code> (or
+              <code>x-api-key</code> for Anthropic clients).
+            </td>
+          </tr>
+          <tr>
+            <td>503 "no config in KV"</td>
+            <td>
+              Run <code>pnpm kompass config push --url &lt;your url&gt;</code> once after deploying.
+            </td>
+          </tr>
+          <tr>
+            <td>Response appears all at once, not word-by-word</td>
+            <td>Expected — see <a href="#reliability">Reliability model</a>.</td>
+          </tr>
+          <tr>
+            <td>A specific model keeps failing</td>
+            <td>
+              Check its reliability on the dashboard; deprecate it (<code>kompass deprecate</code>)
+              or reorder the lane chain and <code>config push</code>.
+            </td>
+          </tr>
+          <tr>
+            <td>Dashboard shows stale/odd data after a config change</td>
+            <td>
+              Hard-refresh <code>status.html</code> (old cached page JS vs new JSON shape), and
+              allow ~60s KV propagation after a push.
+            </td>
+          </tr>
+          <tr>
+            <td>Cloudflare error 1102 (CPU exceeded)</td>
+            <td>
+              Extremely large requests can exceed the free plan's ~10ms CPU budget. Kompass is
+              heavily optimized for this; if it recurs at multi-MB contexts, Workers Paid ($5/mo,
+              30s CPU) removes the ceiling.
+            </td>
+          </tr>
+        </table>
+
+        <p class="muted" style="margin-top: 3rem">
+          MIT licensed · <a href="https://github.com/vinoth4v/kompass">GitHub</a> ·
+          <a href="./">Landing page</a> · Built with Claude Code.
+        </p>
+      </main>
+    </div>
+  </body>
+</html>

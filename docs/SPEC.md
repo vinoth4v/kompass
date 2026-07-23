@@ -83,31 +83,45 @@ Developers using Claude Code on a Pro subscription hit 5-hour/weekly usage limit
 
 ## 5. User Stories (by persona, priority order)
 
+_Status legend: ✅ shipped & verified live · 🔲 not built. Updated 2026-07-23 after the
+v1 build-out (M0–M5), the reliability redesign, the multi-dialect ingress and the UI workbench._
+
 **Persona A — Pro-subscriber developer (primary):**
 
-- As a developer who constantly switches machines, I want one cloud endpoint with shared quota state so that starting on my MacBook and continuing on my work laptop uses the same rate-limit ledger and the same session's model — with nothing installed locally except two env vars.
-- As a Claude Pro developer who hit my 5-hour limit mid-feature, I want to type `claude-free` and continue the same repo work on free models so that my flow never stops.
-- As a Pro developer, I want trivial tasks (renames, docstrings, boilerplate) automatically kept off my premium quota so that Claude quota is preserved for hard problems.
-- As a Pro developer, I want a synthetic in-chat notice when free lanes can't solve my task so that I know when switching back to native Claude is worth it.
+- ✅ As a developer who constantly switches machines, I want one cloud endpoint with shared quota state so that starting on my MacBook and continuing on my work laptop uses the same rate-limit ledger and the same session's model — with nothing installed locally except two env vars.
+- ✅ As a Claude Pro developer who hit my 5-hour limit mid-feature, I want to type `claude-free` and continue the same repo work on free models so that my flow never stops.
+- ✅ As a Pro developer, I want trivial tasks (renames, docstrings, boilerplate) automatically kept off my premium quota so that Claude quota is preserved for hard problems.
+- ✅ As a Pro developer, I want a synthetic in-chat notice when free lanes can't solve my task so that I know when switching back to native Claude is worth it.
+- ✅ As a developer running long agentic sessions, I want provider failures — including mid-generation deaths and empty responses — to be completely invisible to my editor so that I never have to type `--continue` or retry manually. _(Delivered via the buffer-then-emit redesign: Kompass always resolves the complete answer server-side, cascading through every model in every lane, before writing a byte to the client. Trade-off accepted: responses arrive as a burst, not token-by-token.)_
 
 **Persona B — Zero-budget developer:**
 
-- As a developer with no AI budget, I want one command that pools OpenRouter free, NVIDIA, Gemini, and Groq quotas so that rate limits on one provider never block me.
-- As a zero-budget developer, I want the router to refuse paid models by default so that I can never be surprise-billed. _(Given `allow_paid: false`, when all free chains are exhausted, then the request fails with a clear message — never silently upgrading.)_
-- As a zero-budget developer, I want to see remaining daily quota per provider (`kompass status`) so that I can plan heavy sessions.
+- ✅ As a developer with no AI budget, I want one command that pools free quota across many providers (OpenRouter, NVIDIA, Google, Groq, Mistral, GitHub Models, Cloudflare AI, SambaNova, Cohere, Hugging Face) so that rate limits on one provider never block me.
+- ✅ As a zero-budget developer, I want the router to refuse paid models by default so that I can never be surprise-billed. _(`allow_paid: false` enforced at both config-validation and request time.)_
+- ✅ As a zero-budget developer, I want to see remaining daily quota per provider (`kompass status`, dashboard, UI sidebar) so that I can plan heavy sessions.
+- ✅ As a zero-budget developer, I want Kompass to spread load across similarly-good models (`spread_top` + success-rate weighting) so that I don't exhaust my best model's daily quota by lunchtime.
 
-**Persona C — Tinkerer / model evaluator:**
+**Persona C — Multi-editor developer:**
 
-- As a tinkerer, I want to add a brand-new free model by pasting 4 lines of YAML so that I can try releases the day they drop.
-- As a tinkerer, I want `kompass bench` to run my 10-task suite across all lanes and print a personal leaderboard so that my lane table reflects _my_ repos, not public benchmarks.
-- As a tinkerer, I want per-request logs showing lane, classifier verdict, model, latency, and fallback hops so that I can debug misroutes.
+- ✅ As a Cursor/Cline/Roo Code/Continue/Aider user, I want to point my editor's OpenAI-compatible settings at Kompass (`/v1/chat/completions`) so that every tool I use shares one free-model gateway and one quota pool.
+- ✅ As a Codex CLI user, I want Kompass to speak the OpenAI Responses API (`/v1/responses`) so that Codex works even though it dropped Chat Completions support in Feb 2026.
+- ✅ As a multi-editor user, I want model names `kompass` (auto-route) and `kompass-fast/-simple/-agentic/-hard/-longctx` (pin a lane) so that I control routing from any client's model picker without custom headers.
+- ✅ As a developer without any coding CLI installed, I want a local web workbench (`kompass ui`) with chat, an agentic coding mode (approval-gated bash/file tools), a web-research mode, and a PowerPoint generator so that the gateway is useful beyond editor integrations.
 
-**Persona D — Privacy-conscious enterprise developer:**
+**Persona D — Tinkerer / model evaluator:**
 
-- As an enterprise developer, I want a privacy guard that blocks requests containing configured path globs / secret patterns from providers flagged `trains_on_data: true` (e.g., Poolside free) so that work code never leaks into training sets.
-- As an enterprise developer, I want an optional local lane (Ollama) so that sensitive repos never leave my machine.
+- ✅ As a tinkerer, I want to add a brand-new free model by pasting 4 lines of YAML (then `kompass config push` — no redeploy) so that I can try releases the day they drop.
+- ✅ As a tinkerer, I want a daily scheduled discovery report (`/discovery`, `kompass discovery`) diffing each provider's live roster against my config so that I hear about new free models without polling — detect-only by design, never auto-added (three roster-listed models proved broken in practice).
+- ✅ As a tinkerer, I want a first-class deprecation registry (`kompass deprecate old --replaced-by new`) so that superseded models are rewritten to their replacement at every config push and can never silently go live again.
+- ✅ As a tinkerer, I want `kompass bench` to run my 10-task suite across lanes so that my lane table reflects _my_ repos, not public benchmarks.
+- ✅ As a tinkerer, I want per-request logs and a live dashboard showing lane, classifier verdict, model, latency, token usage, fallback hops, per-model reliability, and Kompass's own Cloudflare free-tier utilization so that I can debug misroutes and capacity.
 
-**Edge cases:** classifier itself rate-limited → fall through to heuristics only (never block); provider returns malformed tool-call stream → mark model unhealthy 10 min, retry next in chain; empty free roster (all 429) → exponential backoff + status page banner.
+**Persona E — Privacy-conscious enterprise developer:**
+
+- ✅ As an enterprise developer, I want a privacy guard that blocks requests containing configured path globs / secret patterns from providers flagged `trains_on_data: true` so that work code never leaks into training sets.
+- 🔲 As an enterprise developer, I want an optional local lane (Ollama) so that sensitive repos never leave my machine. _(Deliberately not built — owner opted out 2026-07-23.)_
+
+**Edge cases (all handled and regression-tested):** classifier rate-limited or returning garbage → its own fallback chain, then heuristics — never blocks; provider 200-with-empty-content or malformed body (null body, missing `choices`, tool_call without `function`) → treated as failure, falls through the chain invisibly; mid-generation provider death → invisible (response was buffered); every model in every lane exhausted → cross-lane cascade first, then a synthetic in-chat notice (never a raw protocol error); per-model 10-min health cooldown + stickiness release on failure.
 
 ## 6. Requirements
 

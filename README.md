@@ -5,7 +5,7 @@ Anthropic-compatible `/v1/messages` endpoint that routes your Claude Code traffi
 free model providers (OpenRouter `:free`, NVIDIA Build, Google AI Studio, Groq) by task
 complexity — with a shared quota ledger across every machine you code from. $0 infra, $0 models.
 
-**Website & Setup Builder:** https://kompass-iota.vercel.app · MIT · Node 20+
+**Website & Setup Builder:** https://kompass-iota.vercel.app · **Docs:** https://kompass-iota.vercel.app/docs.html · MIT · Node 20+
 
 ## Install (the easy way)
 
