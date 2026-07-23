@@ -32,6 +32,12 @@ export interface PrivacyConfig {
   block_globs?: string[]; // path globs
 }
 
+export interface DeprecatedModelEntry {
+  replaced_by: string; // chain-entry form, e.g. "openrouter/poolside/laguna-s-3.0:free"
+  note?: string;
+  since?: string; // YYYY-MM-DD
+}
+
 /**
  * A lane's chain, plainly (old shape, spread_top defaults to 1 = strict priority
  * order, unchanged behavior) or with an explicit spread_top: the router picks
@@ -60,6 +66,13 @@ export interface RouterConfig {
   lanes: Record<string, LaneConfig>;
   dispatcher?: DispatcherConfig;
   privacy?: PrivacyConfig;
+  /**
+   * Declarative deprecation registry (compile-time only — see applyDeprecations).
+   * Once an entry is listed here, it can never go live again even if it's still
+   * physically present in a lane's chain in lanes.yaml: every config compile
+   * transparently rewrites it to `replaced_by` before the config is pushed.
+   */
+  deprecated_models?: Record<string, DeprecatedModelEntry>;
 }
 
 export interface ChainEntry {
@@ -102,6 +115,23 @@ export function validateConfig(cfg: unknown): RouterConfig {
     }
   }
 
+  if (c.deprecated_models) {
+    for (const [oldEntry, info] of Object.entries(c.deprecated_models)) {
+      parseChainEntry(oldEntry); // throws on malformed "provider/model" shape
+      if (!info.replaced_by)
+        throw new Error(`deprecated_models["${oldEntry}"]: replaced_by required`);
+      const { provider, model } = parseChainEntry(info.replaced_by);
+      if (!c.providers[provider])
+        throw new Error(
+          `deprecated_models["${oldEntry}"].replaced_by references unknown provider "${provider}"`,
+        );
+      if (!c.allow_paid && provider === 'openrouter' && !model.endsWith(':free'))
+        throw new Error(
+          `deprecated_models["${oldEntry}"].replaced_by "${info.replaced_by}" is not a :free model and allow_paid=false`,
+        );
+    }
+  }
+
   for (const [lane, laneCfg] of Object.entries(c.lanes)) {
     const chain = laneChainArray(laneCfg);
     if (chain.length === 0) throw new Error(`lane ${lane}: empty chain`);
@@ -136,6 +166,44 @@ export async function loadConfig(kv: KVNamespace): Promise<RouterConfig | null> 
 
 export function limitsFor(p: ProviderConfig, model: string): ProviderLimits {
   return p.model_limits?.[model] ?? p.limits;
+}
+
+/**
+ * Rewrite every deprecated entry in every lane's chain and the dispatcher's
+ * model/fallbacks to its `replaced_by` target (follows chains of deprecations,
+ * guarding against a cycle). Mutates `cfg` in place. Returns the unique set of
+ * substitutions made, for the CLI to print. Called once at compile/push time
+ * (see compile-config.ts) — the Worker only ever sees the already-substituted
+ * config, so this never runs on the request path.
+ */
+export function applyDeprecations(cfg: RouterConfig): string[] {
+  const dep = cfg.deprecated_models;
+  if (!dep || Object.keys(dep).length === 0) return [];
+  const substitutions = new Set<string>();
+
+  const resolve = (entry: string): string => {
+    let current = entry;
+    const seen = new Set<string>();
+    let info = dep[current];
+    while (info && !seen.has(current)) {
+      seen.add(current);
+      const next = info.replaced_by;
+      substitutions.add(`${current} → ${next}`);
+      current = next;
+      info = dep[current];
+    }
+    return current;
+  };
+
+  for (const [laneName, laneCfg] of Object.entries(cfg.lanes)) {
+    const newChain = laneChainArray(laneCfg).map(resolve);
+    cfg.lanes[laneName] = Array.isArray(laneCfg) ? newChain : { ...laneCfg, chain: newChain };
+  }
+  if (cfg.dispatcher) {
+    cfg.dispatcher.model = resolve(cfg.dispatcher.model);
+    if (cfg.dispatcher.fallbacks) cfg.dispatcher.fallbacks = cfg.dispatcher.fallbacks.map(resolve);
+  }
+  return [...substitutions];
 }
 
 /** Resolve a lane name to its chain array, falling back to default_lane. */

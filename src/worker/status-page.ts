@@ -98,7 +98,17 @@ function render(d, disc) {
          '<td>' + pct(p.rpm.used, p.rpm.limit) + '</td><td>' + pct(p.rpd.used, p.rpd.limit) + '</td>' +
          '<td>' + fmtTok(tok.in) + ' / ' + fmtTok(tok.out) + '</td></tr>';
   }
-  h += '</table><h2>Lanes</h2><table><tr><th>lane</th><th>spread</th><th>chain</th></tr>';
+  h += '</table>';
+  const depEntries = Object.entries(d.deprecated_models || {});
+  if (depEntries.length) {
+    h += '<h2>Deprecated models <span style="font-weight:normal;font-size:0.75em">(auto-substituted at every config push — never live, even if still listed in a lane)</span></h2>';
+    h += '<table><tr><th>old</th><th>→ replaced by</th><th>since</th><th>note</th></tr>';
+    for (const [old, info] of depEntries) {
+      h += '<tr><td>' + esc(old) + '</td><td>' + esc(info.replaced_by) + '</td><td>' + esc(info.since || '') + '</td><td>' + esc(info.note || '') + '</td></tr>';
+    }
+    h += '</table>';
+  }
+  h += '<h2>Lanes</h2><table><tr><th>lane</th><th>spread</th><th>chain</th></tr>';
   for (const [lane, l] of Object.entries(d.lanes)) {
     h += '<tr><td>' + esc(lane) + (lane === d.default_lane ? ' *' : '') + '</td>' +
          '<td>' + (l.spread_top > 1 ? 'top ' + l.spread_top : '—') + '</td>' +

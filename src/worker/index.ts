@@ -210,6 +210,7 @@ app.get('/status', async (c) => {
     // Best-effort: null when CLOUDFLARE_API_TOKEN isn't set or the Analytics
     // API call fails — never blocks the rest of /status.
     cloudflare: await getCloudflareUsage(c.env),
+    deprecated_models: cfg?.deprecated_models ?? {},
   });
 });
 

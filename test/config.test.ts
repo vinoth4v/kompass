@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyDeprecations,
   laneChainArray,
   laneSpreadTop,
   resolveLaneChain,
@@ -70,5 +71,76 @@ describe('validateConfig with lane objects', () => {
   it('still accepts the legacy bare-array form unchanged', () => {
     const cfg = baseCfg({ AGENTIC: ['openrouter/a:free'] });
     expect(() => validateConfig(cfg)).not.toThrow();
+  });
+});
+
+describe('deprecated_models validation', () => {
+  it('rejects a replaced_by referencing an unknown provider', () => {
+    const cfg = baseCfg({ AGENTIC: ['openrouter/a:free'] });
+    cfg.deprecated_models = { 'openrouter/old:free': { replaced_by: 'ghost/new:free' } };
+    expect(() => validateConfig(cfg)).toThrow(/unknown provider/);
+  });
+
+  it('rejects a replaced_by that is a paid (non-:free) OpenRouter model when allow_paid=false', () => {
+    const cfg = baseCfg({ AGENTIC: ['openrouter/a:free'] });
+    cfg.deprecated_models = { 'openrouter/old:free': { replaced_by: 'openrouter/new-paid' } };
+    expect(() => validateConfig(cfg)).toThrow(/allow_paid/);
+  });
+
+  it('accepts a well-formed deprecation', () => {
+    const cfg = baseCfg({ AGENTIC: ['openrouter/a:free'] });
+    cfg.deprecated_models = {
+      'openrouter/old:free': {
+        replaced_by: 'openrouter/a:free',
+        note: 'superseded',
+        since: '2026-07-23',
+      },
+    };
+    expect(() => validateConfig(cfg)).not.toThrow();
+  });
+});
+
+describe('applyDeprecations', () => {
+  it('rewrites every occurrence across lanes and the dispatcher', () => {
+    const cfg = baseCfg({
+      AGENTIC: ['openrouter/old:free', 'openrouter/keep:free'],
+      SIMPLE: { chain: ['openrouter/old:free'], spread_top: 2 },
+    });
+    cfg.dispatcher = { model: 'openrouter/old:free', fallbacks: ['openrouter/keep:free'] };
+    cfg.deprecated_models = { 'openrouter/old:free': { replaced_by: 'openrouter/new:free' } };
+
+    const subs = applyDeprecations(cfg);
+
+    expect(laneChainArray(cfg.lanes.AGENTIC)).toEqual([
+      'openrouter/new:free',
+      'openrouter/keep:free',
+    ]);
+    expect(laneChainArray(cfg.lanes.SIMPLE)).toEqual(['openrouter/new:free']);
+    expect(cfg.dispatcher.model).toBe('openrouter/new:free');
+    expect(cfg.dispatcher.fallbacks).toEqual(['openrouter/keep:free']);
+    expect(subs).toEqual(['openrouter/old:free → openrouter/new:free']);
+  });
+
+  it('follows a chain of deprecations (a→b→c) and stops at a cycle instead of looping forever', () => {
+    const cfg = baseCfg({ AGENTIC: ['openrouter/a:free'] });
+    cfg.deprecated_models = {
+      'openrouter/a:free': { replaced_by: 'openrouter/b:free' },
+      'openrouter/b:free': { replaced_by: 'openrouter/c:free' },
+    };
+    applyDeprecations(cfg);
+    expect(laneChainArray(cfg.lanes.AGENTIC)).toEqual(['openrouter/c:free']);
+
+    const cyclic = baseCfg({ AGENTIC: ['openrouter/x:free'] });
+    cyclic.deprecated_models = {
+      'openrouter/x:free': { replaced_by: 'openrouter/y:free' },
+      'openrouter/y:free': { replaced_by: 'openrouter/x:free' },
+    };
+    expect(() => applyDeprecations(cyclic)).not.toThrow();
+  });
+
+  it('is a no-op when deprecated_models is absent or empty', () => {
+    const cfg = baseCfg({ AGENTIC: ['openrouter/a:free'] });
+    expect(applyDeprecations(cfg)).toEqual([]);
+    expect(laneChainArray(cfg.lanes.AGENTIC)).toEqual(['openrouter/a:free']);
   });
 });

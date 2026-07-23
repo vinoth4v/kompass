@@ -86,6 +86,7 @@ interface StatusPayload {
       storageLimit: number;
     };
   } | null;
+  deprecated_models?: Record<string, { replaced_by: string; note?: string; since?: string }>;
 }
 
 function fmtTok(n?: number): string {
@@ -147,6 +148,13 @@ async function status() {
     console.log(
       `  ${name.padEnd(12)} ${state.padEnd(9)} rpm ${p.rpm.used}/${p.rpm.limit}  rpd ${p.rpd.used}/${p.rpd.limit}${tok}`,
     );
+  }
+  const depEntries = Object.entries(d.deprecated_models ?? {});
+  if (depEntries.length) {
+    console.log('Deprecated models (auto-substituted at every config push)');
+    for (const [old, info] of depEntries) {
+      console.log(`  ${old} → ${info.replaced_by}${info.note ? `  (${info.note})` : ''}`);
+    }
   }
   console.log('Lanes');
   for (const [lane, l] of Object.entries(d.lanes)) {
@@ -293,9 +301,11 @@ else if (cmd === 'deploy') deploy();
 else if (cmd === 'logs') logs();
 else if (cmd === 'bench') await bench();
 else if (cmd === 'discovery') await discovery();
+else if (cmd === 'deprecate')
+  (await import('./deprecate')).deprecateModel(flag('config-dir') ?? 'config');
 else {
   console.log(
-    'Usage: kompass <init|deploy|status|logs|bench|discovery [--run]|config push> [--url <worker-url>]',
+    'Usage: kompass <init|deploy|status|logs|bench|discovery [--run]|deprecate <old> --replaced-by <new>|config push> [--url <worker-url>]',
   );
   process.exit(cmd ? 1 : 0);
 }
