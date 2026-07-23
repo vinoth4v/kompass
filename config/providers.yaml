@@ -64,3 +64,72 @@ providers:
     limits: { rpm: 30, rpd: 1000 }
     model_limits:
       llama-3.1-8b-instant: { rpm: 30, rpd: 14400 }
+
+  # ── Get a free key: https://console.mistral.ai (Experiment tier) ────────────
+  # NOTE: the free Experiment tier trains on your data → trains_on_data: true,
+  # so the privacy guard keeps flagged content away. ~1B tokens/month.
+  mistral:
+    kind: openai
+    base_url: https://api.mistral.ai/v1
+    key_env: MISTRAL_API_KEY
+    trains_on_data: true
+    # TODO(verify): Experiment tier ~1 req/s; conservative values.
+    limits: { rpm: 30, rpd: 5000 }
+
+  # ── Get a token: https://github.com/settings/personal-access-tokens ────────
+  # Fine-grained PAT with "Models: read". Free access to frontier models with
+  # small per-model daily caps (tier-gated; gpt-5* not available on free).
+  github:
+    kind: openai
+    base_url: https://models.github.ai/inference
+    key_env: GITHUB_MODELS_KEY
+    trains_on_data: false
+    # TODO(verify): per-model daily quotas are undocumented; conservative.
+    limits: { rpm: 5, rpd: 50 }
+
+  # ── Get a token: https://dash.cloudflare.com/profile/api-tokens (Workers AI) ─
+  cfai:
+    kind: openai
+    base_url: https://api.cloudflare.com/client/v4/accounts/fa8b047b0bd7d52b47a415ee6dbf3fda/ai/v1
+    key_env: CF_WORKERS_AI_KEY
+    trains_on_data: false
+    # TODO(verify): free tier is 10k neurons/day (not requests); conservative.
+    limits: { rpm: 30, rpd: 500 }
+
+  # ── Get a free key: https://cloud.sambanova.ai ──────────────────────────────
+  sambanova:
+    kind: openai
+    base_url: https://api.sambanova.ai/v1
+    key_env: SAMBANOVA_API_KEY
+    trains_on_data: false
+    # TODO(verify): free-tier RPM per model varies; conservative.
+    limits: { rpm: 10, rpd: 500 }
+
+  # ── Get a trial key: https://dashboard.cohere.com/api-keys ──────────────────
+  # Trial keys are ~1000 calls/month and may be used for improvement → trains true.
+  cohere:
+    kind: openai
+    base_url: https://api.cohere.ai/compatibility/v1
+    key_env: COHERE_API_KEY
+    trains_on_data: true
+    limits: { rpm: 10, rpd: 30 }
+
+  # ── https://cloud.cerebras.ai — key valid but API says "payment required":
+  # activate the free plan in their Billing tab, then set enabled: true.
+  cerebras:
+    kind: openai
+    base_url: https://api.cerebras.ai/v1
+    key_env: CEREBRAS_API_KEY
+    enabled: false
+    trains_on_data: false
+    limits: { rpm: 30, rpd: 1000 }
+
+  # ── https://huggingface.co/settings/tokens — regenerate the token with the
+  # "Make calls to Inference Providers" permission, then set enabled: true.
+  hf:
+    kind: openai
+    base_url: https://router.huggingface.co/v1
+    key_env: HF_API_KEY
+    enabled: false
+    trains_on_data: true
+    limits: { rpm: 10, rpd: 500 }

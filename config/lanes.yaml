@@ -49,13 +49,16 @@ lanes:
     - google/gemini-3.5-flash-lite
     - groq/llama-3.1-8b-instant
     - nvidia/stepfun-ai/step-3.7-flash
+    - cfai/@cf/meta/llama-3.3-70b-instruct-fp8-fast
     - openrouter/poolside/laguna-xs-2.1:free
     - nvidia/nvidia/llama-3.3-nemotron-super-49b-v1
 
   SIMPLE:
     - openrouter/poolside/laguna-xs-2.1:free
     - nvidia/poolside/laguna-xs-2.1
+    - mistral/codestral-2508
     - nvidia/nvidia/llama-3.3-nemotron-super-49b-v1
+    - sambanova/Meta-Llama-3.3-70B-Instruct
     - groq/llama-3.3-70b-versatile
     - nvidia/mistralai/mistral-medium-3.5-128b
     - google/gemini-3.5-flash-lite
@@ -65,13 +68,16 @@ lanes:
   AGENTIC:
     - openrouter/poolside/laguna-s-2.1:free
     - nvidia/minimaxai/minimax-m3
+    - mistral/devstral-medium-latest
     - openrouter/poolside/laguna-xs-2.1:free
     - nvidia/z-ai/glm-5.2
     - nvidia/poolside/laguna-xs-2.1
     - google/gemini-3.6-flash
 
   HARD:
+    - github/openai/gpt-4.1
     - nvidia/deepseek-ai/deepseek-v4-pro
+    - sambanova/DeepSeek-V3.2
     - nvidia/minimaxai/minimax-m3
     - google/gemini-3.1-pro-preview
     - openrouter/poolside/laguna-s-2.1:free
@@ -80,5 +86,6 @@ lanes:
   LONGCTX:
     - google/gemini-3.6-flash
     - nvidia/nvidia/nemotron-3-ultra-550b-a55b
+    - github/openai/gpt-4.1
     - nvidia/minimaxai/minimax-m3
     - openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
