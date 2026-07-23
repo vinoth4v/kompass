@@ -532,6 +532,94 @@
         font-size: 0.95rem;
       }
 
+      /* dashboard mock */
+      .dash {
+        margin-top: 2rem;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: var(--code-bg);
+        overflow: hidden;
+        box-shadow: 0 20px 60px #00000055;
+      }
+      .dash-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 1.1rem;
+        border-bottom: 1px solid var(--line);
+        background: #ffffff05;
+      }
+      .dash-title {
+        font:
+          700 0.9rem ui-monospace,
+          Menlo,
+          monospace;
+      }
+      .dash-live {
+        display: inline-flex;
+        gap: 0.45rem;
+        align-items: center;
+        font:
+          0.75rem ui-monospace,
+          Menlo,
+          monospace;
+        color: var(--muted);
+      }
+      .dash-live .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--green);
+        box-shadow: 0 0 8px var(--green);
+        animation: pulse 2s infinite;
+      }
+      .dash-body {
+        padding: 0.9rem 1.1rem 1.2rem;
+        overflow-x: auto;
+      }
+      .dash-sec {
+        font:
+          700 0.68rem ui-monospace,
+          Menlo,
+          monospace;
+        letter-spacing: 0.14em;
+        color: var(--muted);
+        margin: 0.9rem 0 0.3rem;
+      }
+      .dash-t {
+        width: 100%;
+        border-collapse: collapse;
+        font:
+          0.8rem ui-monospace,
+          Menlo,
+          monospace;
+        white-space: nowrap;
+      }
+      .dash-t th,
+      .dash-t td {
+        text-align: left;
+        padding: 0.32rem 0.7rem 0.32rem 0;
+        border-bottom: 1px solid #ffffff0a;
+      }
+      .dash-t th {
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .dash-t .ok {
+        color: var(--green);
+      }
+      .dash-t .bad {
+        color: var(--red);
+      }
+      .dash-t .bar {
+        display: inline-block;
+        height: 7px;
+        border-radius: 3px;
+        background: var(--blue);
+        vertical-align: middle;
+        margin-right: 0.4rem;
+      }
+
       details {
         margin: 0.7rem 0;
         border: 1px solid var(--line);
@@ -760,6 +848,7 @@
 
           <!-- wires lanes → providers -->
           <path id="p1" class="wire" d="M588,45 C640,45 640,75 690,75" marker-end="url(#arr)" />
+          <path id="p2" class="wire" d="M588,105 C640,105 640,125 690,125" marker-end="url(#arr)" />
           <path
             id="p3"
             class="wire"
@@ -836,6 +925,16 @@
             <circle r="3" fill="#34d399" opacity="0.9">
               <animateMotion dur="3.4s" begin="2.6s" repeatCount="indefinite">
                 <mpath href="#p1" />
+              </animateMotion>
+            </circle>
+            <circle r="3" fill="#2dd4bf" opacity="0.9">
+              <animateMotion dur="3.8s" begin="0.4s" repeatCount="indefinite">
+                <mpath href="#w2" />
+              </animateMotion>
+            </circle>
+            <circle r="3" fill="#2dd4bf" opacity="0.9">
+              <animateMotion dur="3.8s" begin="1.3s" repeatCount="indefinite">
+                <mpath href="#p2" />
               </animateMotion>
             </circle>
             <circle r="3" fill="#a78bfa" opacity="0.9">
@@ -1147,6 +1246,118 @@
           </p>
         </div>
       </div>
+
+      <!-- ============ OBSERVABILITY ============ -->
+      <p class="kicker">Full visibility</p>
+      <h2>Know exactly what served every turn</h2>
+      <p class="muted">
+        Claude Code always shows "Sonnet 4.5" — that's just the requested alias. Your Kompass
+        dashboard (<code>/status.html</code> on your Worker, or <code>kompass status</code> in the
+        terminal) shows the truth: which free model actually answered, the lane the classifier
+        picked, latency, <b>tokens in/out per request</b>, per-provider daily token totals,
+        remaining quota, and active cooldowns. Auto-refreshes every 15 seconds.
+      </p>
+
+      <div class="dash" aria-hidden="true">
+        <div class="dash-head">
+          <span class="dash-title">🧭 Kompass status</span>
+          <span class="dash-live"><span class="dot"></span> live · refreshes 15s</span>
+        </div>
+        <div class="dash-body">
+          <div class="dash-sec">PROVIDERS</div>
+          <table class="dash-t">
+            <tr>
+              <th>provider</th>
+              <th>state</th>
+              <th>RPD</th>
+              <th>tokens today (in / out)</th>
+            </tr>
+            <tr>
+              <td>openrouter</td>
+              <td class="ok">live</td>
+              <td><span class="bar" style="width: 34px"></span> 17/50</td>
+              <td>212.4k / 38.1k</td>
+            </tr>
+            <tr>
+              <td>nvidia</td>
+              <td class="ok">live</td>
+              <td><span class="bar" style="width: 8px"></span> 41/5000</td>
+              <td>486.9k / 92.6k</td>
+            </tr>
+            <tr>
+              <td>google</td>
+              <td class="ok">live</td>
+              <td><span class="bar" style="width: 12px"></span> 29/500</td>
+              <td>103.2k / 21.7k</td>
+            </tr>
+          </table>
+          <div class="dash-sec">LAST ROUTES</div>
+          <table class="dash-t">
+            <tr>
+              <th>time</th>
+              <th>lane</th>
+              <th>model</th>
+              <th></th>
+              <th>ms</th>
+              <th>tokens</th>
+            </tr>
+            <tr>
+              <td>14:32:08</td>
+              <td>
+                <span class="lanechip" style="background: #f5a52422; color: #f5a524">AGENTIC</span>
+              </td>
+              <td>openrouter/poolside/laguna-s-2.1:free</td>
+              <td class="ok">✓</td>
+              <td>1,146</td>
+              <td>48.2k / 1.9k</td>
+            </tr>
+            <tr>
+              <td>14:31:52</td>
+              <td>
+                <span class="lanechip" style="background: #34d39922; color: #34d399">FAST</span>
+              </td>
+              <td>google/gemini-3.5-flash-lite</td>
+              <td class="ok">✓</td>
+              <td>397</td>
+              <td>212 / 64</td>
+            </tr>
+            <tr>
+              <td>14:31:40</td>
+              <td>
+                <span class="lanechip" style="background: #f5a52422; color: #f5a524">AGENTIC</span>
+              </td>
+              <td>nvidia/z-ai/glm-5.2</td>
+              <td class="bad">✗</td>
+              <td>90,013</td>
+              <td class="muted">timeout → cooldown 10m</td>
+            </tr>
+            <tr>
+              <td>14:31:39</td>
+              <td>
+                <span class="lanechip" style="background: #f5a52422; color: #f5a524">AGENTIC</span>
+              </td>
+              <td>nvidia/poolside/laguna-xs-2.1</td>
+              <td class="ok">✓</td>
+              <td>1,744</td>
+              <td>47.8k / 2.3k</td>
+            </tr>
+            <tr>
+              <td>14:30:12</td>
+              <td>
+                <span class="lanechip" style="background: #a78bfa22; color: #a78bfa">LONGCTX</span>
+              </td>
+              <td>google/gemini-3.6-flash</td>
+              <td class="ok">✓</td>
+              <td>2,891</td>
+              <td>184.6k / 4.1k</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+      <p class="muted" style="font-size: 0.85rem">
+        The failed row is the system working: the timeout put that model in a 10-minute cooldown and
+        the next model in the chain served the request — the session never noticed.
+      </p>
 
       <!-- ============ QUICKSTART ============ -->
       <p class="kicker" id="quickstart">Get started</p>
