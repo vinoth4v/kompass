@@ -196,6 +196,7 @@ export function openAIStreamToAnthropicStream(
   upstream: ReadableStream<Uint8Array>,
   requestedModel: string,
   onFinal?: (usage: { input_tokens: number; output_tokens: number }) => void,
+  onAbnormalEnd?: () => void,
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -208,6 +209,9 @@ export function openAIStreamToAnthropicStream(
   let stopReason: AnthropicStopReason | null = null;
   let usage = { input_tokens: 0, output_tokens: 0 };
   let finished = false;
+  // Explicit end = finish_reason or [DONE]. A clean EOF without either means the
+  // provider truncated mid-answer — surfaced as an error so the client retries.
+  let sawExplicitFinish = false;
   const msgId = `msg_${crypto.randomUUID().replaceAll('-', '').slice(0, 24)}`;
 
   function emitStart(controller: TransformStreamDefaultController<Uint8Array>) {
@@ -244,11 +248,29 @@ export function openAIStreamToAnthropicStream(
     }
   }
 
-  function finish(controller: TransformStreamDefaultController<Uint8Array>) {
+  function finish(controller: TransformStreamDefaultController<Uint8Array>, abnormal = false) {
     if (finished) return;
     finished = true;
     emitStart(controller);
     closeBlock(controller);
+    if (abnormal) {
+      // Anthropic-protocol in-stream error: the client (Claude Code) discards the
+      // partial turn and retries — by then the router has cooled this model and
+      // released stickiness, so the retry lands elsewhere.
+      controller.enqueue(
+        encoder.encode(
+          sseEvent('error', {
+            type: 'error',
+            error: {
+              type: 'overloaded_error',
+              message: 'upstream provider ended the stream unexpectedly — please retry',
+            },
+          }),
+        ),
+      );
+      onAbnormalEnd?.();
+      return;
+    }
     controller.enqueue(
       encoder.encode(
         sseEvent('message_delta', {
@@ -370,6 +392,7 @@ export function openAIStreamToAnthropicStream(
 
     if (choice.finish_reason) {
       stopReason = mapFinishReason(choice.finish_reason);
+      sawExplicitFinish = true;
     }
   }
 
@@ -384,6 +407,7 @@ export function openAIStreamToAnthropicStream(
         if (!line.startsWith('data:')) continue;
         const payload = line.slice(5).trim();
         if (payload === '[DONE]') {
+          sawExplicitFinish = true;
           finish(controller);
           continue;
         }
@@ -395,7 +419,7 @@ export function openAIStreamToAnthropicStream(
       }
     },
     flush(controller) {
-      finish(controller);
+      finish(controller, !sawExplicitFinish);
     },
   });
 

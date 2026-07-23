@@ -230,4 +230,28 @@ describe('openAIStreamToAnthropicStream', () => {
     const events = await collectSSE(openAIStreamToAnthropicStream(openAISSE([]), 'm'));
     expect(events.map((e) => e.event)).toEqual(['message_start', 'message_delta', 'message_stop']);
   });
+
+  it('truncated stream (content then EOF without finish/[DONE]) → in-stream error, no message_stop', async () => {
+    // provider died cleanly mid-answer: the client must retry, not accept the turn
+    const enc = new TextEncoder();
+    const truncated = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(
+          enc.encode(
+            `data: ${JSON.stringify({ choices: [{ delta: { role: 'assistant', content: 'partial answ' } }] })}\n\n`,
+          ),
+        );
+        c.close(); // clean EOF — no finish_reason, no [DONE]
+      },
+    });
+    let aborted = false;
+    const events = await collectSSE(
+      openAIStreamToAnthropicStream(truncated, 'm', undefined, () => (aborted = true)),
+    );
+    const kinds = events.map((e) => e.event);
+    expect(kinds).toContain('error');
+    expect(kinds).not.toContain('message_stop');
+    expect(events.find((e) => e.event === 'error')!.data.error.type).toBe('overloaded_error');
+    expect(aborted).toBe(true);
+  });
 });

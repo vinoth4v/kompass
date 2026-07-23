@@ -310,6 +310,7 @@ export function geminiStreamToAnthropicStream(
   upstream: ReadableStream<Uint8Array>,
   requestedModel: string,
   onFinal?: (usage: { input_tokens: number; output_tokens: number }) => void,
+  onAbnormalEnd?: () => void,
 ): ReadableStream<Uint8Array> {
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -462,6 +463,24 @@ export function geminiStreamToAnthropicStream(
     finished = true;
     emitStart(controller);
     closeBlock(controller);
+    // Gemini's last chunk carries finishReason; a stream that ends without one was
+    // truncated upstream — emit an in-stream error so the client retries (the
+    // router has already cooled the model and released stickiness by then).
+    if (finishReason === undefined) {
+      controller.enqueue(
+        encoder.encode(
+          sseEvent('error', {
+            type: 'error',
+            error: {
+              type: 'overloaded_error',
+              message: 'upstream provider ended the stream unexpectedly — please retry',
+            },
+          }),
+        ),
+      );
+      onAbnormalEnd?.();
+      return;
+    }
     controller.enqueue(
       encoder.encode(
         sseEvent('message_delta', {

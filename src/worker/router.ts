@@ -262,8 +262,8 @@ async function tryChainEntry(
       }
       const stream =
         p.kind === 'gemini'
-          ? geminiStreamToAnthropicStream(gated, body.model, onStreamUsage)
-          : openAIStreamToAnthropicStream(gated, body.model, onStreamUsage);
+          ? geminiStreamToAnthropicStream(gated, body.model, onStreamUsage, onMidStreamError)
+          : openAIStreamToAnthropicStream(gated, body.model, onStreamUsage, onMidStreamError);
       attempts.push({ entry, status: 200 });
       return new Response(stream, { headers: SSE_HEADERS });
     }
