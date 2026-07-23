@@ -1,5 +1,17 @@
 import { Hono } from 'hono';
-import type { AnthropicRequest } from '../adapters/types';
+import type { Context } from 'hono';
+import type { AnthropicRequest, AnthropicResponse } from '../adapters/types';
+import {
+  anthropicToChatResponse,
+  anthropicToChatSSE,
+  anthropicToResponsesResponse,
+  anthropicToResponsesSSE,
+  chatRequestToAnthropic,
+  laneFromModel,
+  responsesRequestToAnthropic,
+  type ChatCompletionRequest,
+  type ResponsesRequest,
+} from '../adapters/ingress';
 import { bearerAuth } from './auth';
 import { getCloudflareUsage } from './cf-usage';
 import { CONFIG_KV_KEY, laneChainArray, laneSpreadTop, loadConfig, validateConfig } from './config';
@@ -40,17 +52,19 @@ function stateStub(env: Env) {
   return env.KOMPASS_STATE.get(env.KOMPASS_STATE.idFromName('global'));
 }
 
-app.post('/v1/messages', async (c) => {
-  // Read the raw text ONCE and reuse it for token estimates and the privacy scan —
-  // Claude Code contexts reach megabytes and repeated stringify passes were blowing
-  // the free plan's ~10ms CPU budget (Cloudflare error 1102).
-  const raw = await c.req.text();
-  let body: AnthropicRequest;
-  try {
-    body = JSON.parse(raw) as AnthropicRequest;
-  } catch {
-    return anthropicError('invalid_request_error', 'body must be JSON', 400);
-  }
+/**
+ * Shared routing core for every ingress dialect. Takes an Anthropic-shaped
+ * request (native /v1/messages, or one translated from an OpenAI dialect in
+ * ingress.ts), runs dispatch → route → cross-lane escalation, and returns the
+ * final Anthropic-shaped Response. `raw` is the original request text, reused
+ * for token estimates and the privacy scan (single-read CPU budget rule).
+ */
+async function handleAnthropic(
+  c: Context<{ Bindings: Env }>,
+  body: AnthropicRequest,
+  raw: string,
+  laneOverride?: string,
+): Promise<Response> {
   const cfg = await loadConfig(c.env.CONFIG);
   if (!cfg) {
     return anthropicError('api_error', 'no config in KV — run `kompass config push`', 503);
@@ -59,7 +73,7 @@ app.post('/v1/messages', async (c) => {
   const stub = stateStub(c.env);
   // M3 dispatcher: heuristics → cached/live classifier verdict → safe fallback.
   const verdict = await dispatch(c.env, cfg, body, stub, raw.length);
-  let lane = c.req.header('x-kompass-lane') ?? verdict.lane;
+  let lane = c.req.header('x-kompass-lane') ?? laneOverride ?? verdict.lane;
 
   // Claude Code stamps a stable per-session metadata.user_id — the stickiness key.
   const sessionId = body.metadata?.user_id;
@@ -144,6 +158,104 @@ app.post('/v1/messages', async (c) => {
     });
   }
   return c.json(syntheticNotice(body.model));
+}
+
+app.post('/v1/messages', async (c) => {
+  // Read the raw text ONCE and reuse it for token estimates and the privacy scan —
+  // Claude Code contexts reach megabytes and repeated stringify passes were blowing
+  // the free plan's ~10ms CPU budget (Cloudflare error 1102).
+  const raw = await c.req.text();
+  let body: AnthropicRequest;
+  try {
+    body = JSON.parse(raw) as AnthropicRequest;
+  } catch {
+    return anthropicError('invalid_request_error', 'body must be JSON', 400);
+  }
+  return handleAnthropic(c, body, raw);
+});
+
+// ---- OpenAI-compatible ingress (Cursor, Cline, Roo Code, Continue, Aider …) ----
+
+function openaiError(message: string, status: number): Response {
+  return Response.json({ error: { message, type: 'api_error', code: null } }, { status });
+}
+
+/** Run a translated Anthropic request through the core and give back the parsed
+ *  AnthropicResponse (always non-streaming internally — see router.ts), or the
+ *  error Response as-is for the caller to reshape. */
+async function routeTranslated(
+  c: Context<{ Bindings: Env }>,
+  anth: AnthropicRequest,
+  raw: string,
+  lane: string | undefined,
+): Promise<AnthropicResponse | Response> {
+  const res = await handleAnthropic(c, anth, raw, lane);
+  if (!res.ok) return res;
+  return (await res.json()) as AnthropicResponse;
+}
+
+const SSE_OUT = { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache' };
+
+app.post('/v1/chat/completions', async (c) => {
+  const raw = await c.req.text();
+  let body: ChatCompletionRequest;
+  try {
+    body = JSON.parse(raw) as ChatCompletionRequest;
+  } catch {
+    return openaiError('body must be JSON', 400);
+  }
+  const model = body.model ?? 'kompass';
+  const result = await routeTranslated(c, chatRequestToAnthropic(body), raw, laneFromModel(model));
+  if (result instanceof Response) {
+    return openaiError(`kompass: ${(await result.text()).slice(0, 300)}`, result.status);
+  }
+  if (body.stream) {
+    return new Response(
+      anthropicToChatSSE(result, model, body.stream_options?.include_usage === true),
+      { headers: SSE_OUT },
+    );
+  }
+  return c.json(anthropicToChatResponse(result, model));
+});
+
+app.post('/v1/responses', async (c) => {
+  const raw = await c.req.text();
+  let body: ResponsesRequest;
+  try {
+    body = JSON.parse(raw) as ResponsesRequest;
+  } catch {
+    return openaiError('body must be JSON', 400);
+  }
+  const model = body.model ?? 'kompass';
+  const result = await routeTranslated(
+    c,
+    responsesRequestToAnthropic(body),
+    raw,
+    laneFromModel(model),
+  );
+  if (result instanceof Response) {
+    return openaiError(`kompass: ${(await result.text()).slice(0, 300)}`, result.status);
+  }
+  if (body.stream) {
+    return new Response(anthropicToResponsesSSE(result, model), { headers: SSE_OUT });
+  }
+  return c.json(anthropicToResponsesResponse(result, model));
+});
+
+// Model roster for client pickers/validation (Cursor and others call this).
+app.get('/v1/models', (c) => {
+  const ids = [
+    'kompass',
+    'kompass-fast',
+    'kompass-simple',
+    'kompass-agentic',
+    'kompass-hard',
+    'kompass-longctx',
+  ];
+  return c.json({
+    object: 'list',
+    data: ids.map((id) => ({ id, object: 'model', created: 0, owned_by: 'kompass' })),
+  });
 });
 
 app.post('/v1/messages/count_tokens', async (c) => {

@@ -93,6 +93,57 @@ Then `claude-free` anywhere. Hit your Claude Pro limit mid-feature? Type `claude
 keep going on free models. Works identically from every machine — the quota ledger,
 session stickiness, and health state live in one Durable Object, not on your laptop.
 
+## Or point any other coding tool at it
+
+The same Worker speaks three API dialects from one URL — all sharing the same lanes,
+fallback chains and quota ledger. Your `KOMPASS_BEARER` is the API key everywhere.
+Model name `kompass` = auto lane routing; `kompass-fast|-simple|-agentic|-hard|-longctx`
+pins a lane. `GET /v1/models` lists them for client pickers.
+
+| Dialect                     | Endpoint               | Used by                                               |
+| --------------------------- | ---------------------- | ----------------------------------------------------- |
+| Anthropic Messages API      | `/v1/messages`         | Claude Code                                           |
+| OpenAI Chat Completions API | `/v1/chat/completions` | Cursor, Cline, Roo Code, Continue, Aider, most others |
+| OpenAI Responses API        | `/v1/responses`        | Codex CLI                                             |
+
+**Codex CLI** (`~/.codex/config.toml`):
+
+```toml
+model = "kompass"
+model_provider = "kompass"
+
+[model_providers.kompass]
+name = "Kompass"
+base_url = "https://kompass.<you>.workers.dev/v1"
+env_key = "KOMPASS_API_KEY"   # export KOMPASS_API_KEY=<your bearer>
+wire_api = "responses"
+```
+
+**Cursor**: Settings → Models → API Keys → paste the bearer as OpenAI API key, enable
+"Override OpenAI Base URL" → `https://kompass.<you>.workers.dev/v1`, add custom model `kompass`.
+
+**Cline / Roo Code / Kilo Code**: provider "OpenAI Compatible", base URL
+`https://kompass.<you>.workers.dev/v1`, API key = bearer, model ID `kompass`.
+
+**Continue** (`config.yaml`):
+
+```yaml
+models:
+  - name: Kompass
+    provider: openai
+    model: kompass
+    apiBase: https://kompass.<you>.workers.dev/v1
+    apiKey: <your bearer token>
+```
+
+**Aider**:
+
+```sh
+export OPENAI_API_BASE=https://kompass.<you>.workers.dev/v1
+export OPENAI_API_KEY=<your bearer token>
+aider --model openai/kompass
+```
+
 ## Day-to-day
 
 | Command                                | Does                                                |

@@ -697,8 +697,8 @@
         <h1>Kompass</h1>
         <p class="tag">
           Keep coding when your <b>Claude limits</b> hit. One Cloudflare Worker routes
-          <b>Claude&nbsp;Code</b> across free model providers by task complexity —
-          <b>$0 infra, $0 models</b>, and your API keys never leave your machines.
+          <b>Claude&nbsp;Code, Codex, Cursor, Cline &amp; more</b> across free model providers by
+          task complexity — <b>$0 infra, $0 models</b>, and your API keys never leave your machines.
         </p>
         <span class="pill"
           ><span class="dot"></span> 10 free providers: OpenRouter · NVIDIA · Google · Groq ·
@@ -1557,6 +1557,100 @@ claude-free        # Claude Code, now riding free models through your Worker</co
         </div>
       </div>
 
+      <!-- ============ EVERY TOOL ============ -->
+      <p class="kicker" id="tools">One gateway, every editor</p>
+      <h2>Works with every coding tool you use</h2>
+      <p class="muted">
+        Kompass speaks three API dialects from one URL: the <b>Anthropic Messages API</b> (<span
+          class="mono"
+          >/v1/messages</span
+        >
+        — Claude Code), the <b>OpenAI Chat Completions API</b> (<span class="mono"
+          >/v1/chat/completions</span
+        >
+        — Cursor, Cline, Roo&nbsp;Code, Continue, Aider, and virtually every OpenAI-compatible
+        client), and the <b>OpenAI Responses API</b> (<span class="mono">/v1/responses</span> —
+        Codex CLI). Same lanes, same fallback chains, same quota ledger for all of them. Your bearer
+        token is the API key everywhere. Model name <span class="mono">kompass</span> = auto-routing
+        by task complexity;
+        <span class="mono">kompass-fast / -simple / -agentic / -hard / -longctx</span>
+        pin a lane.
+      </p>
+
+      <div class="step">
+        <div class="n">⌘</div>
+        <div>
+          <b>Codex CLI</b> <span class="muted">— add a provider in ~/.codex/config.toml</span>
+          <pre><code>model = "kompass"
+model_provider = "kompass"
+
+[model_providers.kompass]
+name = "Kompass"
+base_url = "https://kompass.&lt;you&gt;.workers.dev/v1"
+env_key = "KOMPASS_API_KEY"        # export KOMPASS_API_KEY=&lt;your bearer&gt;
+wire_api = "responses"</code><button class="copybtn">copy</button></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">▮</div>
+        <div>
+          <b>Cursor</b>
+          <span class="muted"
+            >— Settings → Models → API Keys: paste your bearer as the OpenAI API key, enable
+            "Override OpenAI Base URL", then add <span class="mono">kompass</span> as a custom model
+            name</span
+          >
+          <pre><code>Override OpenAI Base URL:  https://kompass.&lt;you&gt;.workers.dev/v1
+OpenAI API Key:            &lt;your bearer token&gt;
+Custom model:              kompass</code><button class="copybtn">copy</button></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">✦</div>
+        <div>
+          <b>Cline / Roo Code / Kilo Code (VS Code)</b>
+          <span class="muted">— pick the "OpenAI Compatible" provider</span>
+          <pre><code>API Provider:  OpenAI Compatible
+Base URL:      https://kompass.&lt;you&gt;.workers.dev/v1
+API Key:       &lt;your bearer token&gt;
+Model ID:      kompass</code><button class="copybtn">copy</button></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">➜</div>
+        <div>
+          <b>Continue (VS Code / JetBrains)</b>
+          <span class="muted">— one models block in config.yaml</span>
+          <pre><code>models:
+  - name: Kompass
+    provider: openai
+    model: kompass
+    apiBase: https://kompass.&lt;you&gt;.workers.dev/v1
+    apiKey: &lt;your bearer token&gt;
+    roles: [chat, edit, apply]</code><button class="copybtn">copy</button></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">$</div>
+        <div>
+          <b>Aider</b> <span class="muted">— two env vars and go</span>
+          <pre><code>export OPENAI_API_BASE=https://kompass.&lt;you&gt;.workers.dev/v1
+export OPENAI_API_KEY=&lt;your bearer token&gt;
+aider --model openai/kompass</code><button class="copybtn">copy</button></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">…</div>
+        <div>
+          <b>Anything else that speaks OpenAI</b>
+          <span class="muted"
+            >— point the base URL at <span class="mono">/v1</span>, use the bearer as the key. The
+            gateway also answers <span class="mono">GET /v1/models</span> for client pickers, and
+            streaming + tool calling work in all three dialects.</span
+          >
+        </div>
+      </div>
+
       <!-- ============ DAY TO DAY ============ -->
       <p class="kicker">Daily driver</p>
       <h2>Day to day</h2>
@@ -1592,6 +1686,16 @@ https://kompass.&lt;you&gt;.workers.dev/status.html   # live dashboard in the br
           account. Note: free endpoints may train on inputs — Kompass flags those providers and its
           privacy guard keeps requests matching your secret/path patterns away from them. Don't
           point truly sensitive repos at free endpoints.
+        </p>
+      </details>
+      <details>
+        <summary>Can I use it outside Claude Code — Cursor, Codex, Cline, Aider?</summary>
+        <p class="muted">
+          Yes. The same Worker exposes the Anthropic Messages API for Claude Code, OpenAI Chat
+          Completions for Cursor/Cline/Roo Code/Continue/Aider and any OpenAI-compatible client, and
+          the OpenAI Responses API for Codex CLI. See the "Works with every coding tool" section
+          above for copy-paste setup per tool. All dialects share the same lanes, fallback chains
+          and quota ledger — so your daily free budget is one pool no matter which editor you're in.
         </p>
       </details>
       <details>
