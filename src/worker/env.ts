@@ -1,3 +1,5 @@
+import type { KompassState } from '../do/state';
+
 export interface Env {
   KOMPASS_BEARER: string;
   OPENROUTER_API_KEY?: string;
@@ -5,4 +7,5 @@ export interface Env {
   GOOGLE_AI_KEY?: string;
   GROQ_API_KEY?: string;
   CONFIG: KVNamespace;
+  KOMPASS_STATE: DurableObjectNamespace<KompassState>;
 }

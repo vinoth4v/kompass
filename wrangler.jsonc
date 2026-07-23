@@ -12,4 +12,18 @@
       "id": "45e10070376d4b8986fbb559ed3ecef9",
     },
   ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "KOMPASS_STATE",
+        "class_name": "KompassState",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["KompassState"],
+    },
+  ],
 }
