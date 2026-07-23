@@ -12,8 +12,10 @@ allow_paid: false
 # M3 dispatcher (SPEC §4): fast free reasoning model returning a strict-JSON verdict.
 # Model id verified live in the v1beta models list on 2026-07-23 (see DECISIONS.md);
 # pinned rather than the gemini-flash-lite-latest alias to avoid surprise swaps.
+# Dedicated dispatch model (2026-07-23): NOT present in any lane, so coding
+# traffic can never starve the classifier's budget. Probed live: strict-JSON ✓.
 dispatcher:
-  model: google/gemini-3.5-flash-lite
+  model: google/gemini-3.1-flash-lite
   timeout_ms: 1500
   cache_ttl_s: 300
   confidence_floor: 0.6
@@ -58,12 +60,14 @@ lanes:
     - nvidia/mistralai/mistral-medium-3.5-128b
     - google/gemini-3.5-flash-lite
 
+  # laguna-xs (nvidia) demoted below minimax 2026-07-23: repeatedly returned
+  # truncated/empty streams during real sessions.
   AGENTIC:
     - openrouter/poolside/laguna-s-2.1:free
-    - nvidia/poolside/laguna-xs-2.1
-    - nvidia/z-ai/glm-5.2
-    - openrouter/poolside/laguna-xs-2.1:free
     - nvidia/minimaxai/minimax-m3
+    - openrouter/poolside/laguna-xs-2.1:free
+    - nvidia/z-ai/glm-5.2
+    - nvidia/poolside/laguna-xs-2.1
     - google/gemini-3.6-flash
 
   HARD:

@@ -45,6 +45,8 @@ providers:
       # classifier: SPEC cites ~1,500/day free for flash-lite; TODO(verify) exact
       # current numbers in the AI Studio dashboard (not published in docs anymore).
       gemini-3.5-flash-lite: { rpm: 15, rpd: 1000 }
+      # dedicated dispatcher model — own counter, no coding lane uses it
+      gemini-3.1-flash-lite: { rpm: 15, rpd: 1000 }
 
   # ── Get a free key: https://console.groq.com/keys ──────────────────────────
   # Create a Groq account → "Create API Key" → copy the gsk_… value into
