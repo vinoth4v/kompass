@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { AnthropicRequest } from '../adapters/types';
 import { bearerAuth } from './auth';
+import { getCloudflareUsage } from './cf-usage';
 import { CONFIG_KV_KEY, laneChainArray, laneSpreadTop, loadConfig, validateConfig } from './config';
 import { dispatch } from './dispatcher';
 import { runDiscovery } from './discovery';
@@ -206,6 +207,9 @@ app.get('/status', async (c) => {
       Object.entries(snap.cooldowns).map(([k, v]) => [k, `${Math.round((v - now) / 1000)}s`]),
     ),
     routes: snap.routes.slice().reverse(),
+    // Best-effort: null when CLOUDFLARE_API_TOKEN isn't set or the Analytics
+    // API call fails — never blocks the rest of /status.
+    cloudflare: await getCloudflareUsage(c.env),
   });
 });
 

@@ -13,8 +13,10 @@ export const STATUS_HTML = `<!doctype html>
   h1 { font-size: 1.2rem; } h2 { font-size: 1rem; margin-top: 1.6rem; }
   table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
   th, td { text-align: left; padding: 0.25rem 0.6rem; border-bottom: 1px solid #8884; }
-  .ok { color: #2a2; } .bad { color: #d33; }
+  .ok { color: #2a2; } .bad { color: #d33; } .warn { color: #c90; } .muted { opacity: 0.65; font-size: 0.85em; }
   .bar { display: inline-block; height: 0.6rem; background: #48f; vertical-align: middle; }
+  .ubar { display: inline-block; width: 10rem; height: 0.6rem; background: #8882; border-radius: 3px; overflow: hidden; vertical-align: middle; margin-right: 0.4rem; }
+  .ufill { display: block; height: 100%; } .ufill.ok2 { background: #2a2; } .ufill.warn { background: #c90; } .ufill.bad { background: #d33; }
   input { font: inherit; padding: 0.3rem; width: 24rem; max-width: 100%; }
   button { font: inherit; padding: 0.3rem 0.8rem; }
   #err { color: #d33; }
@@ -55,8 +57,39 @@ function fmtTok(n) {
   if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
   return String(n ?? 0);
 }
+function fmtBytes(n) {
+  if (n >= 1e9) return (n / 1e9).toFixed(2) + ' GB';
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + ' MB';
+  if (n >= 1e3) return (n / 1e3).toFixed(1) + ' kB';
+  return (n ?? 0) + ' B';
+}
+function usageBar(used, limit) {
+  const pct = limit ? Math.min(100, (used / limit) * 100) : 0;
+  const cls = pct >= 90 ? 'bad' : pct >= 70 ? 'warn' : 'ok2';
+  return '<span class="ubar"><span class="ufill ' + cls + '" style="width:' + pct.toFixed(1) + '%"></span></span> ' +
+    fmtTok(used) + ' / ' + fmtTok(limit) + ' <span class="muted">(' + pct.toFixed(1) + '%)</span>';
+}
 function render(d, disc) {
-  let h = '<h2>Providers</h2><table><tr><th>provider</th><th>state</th><th>RPM</th><th>RPD</th><th>tokens today (in / out)</th></tr>';
+  let h = '';
+  if (d.cloudflare) {
+    const cf = d.cloudflare;
+    const cpuBad = cf.workers.cpuTimeMsP99 >= cf.workers.cpuMsPerRequestLimit;
+    h += '<h2>Cloudflare platform utilization <span style="font-weight:normal;font-size:0.75em">(Kompass’s own free-plan headroom — today, UTC)</span></h2>';
+    h += '<table><tr><th></th><th>today</th><th>free-plan limit</th></tr>';
+    h += '<tr><td>Workers requests</td><td colspan="2">' + usageBar(cf.workers.requests, cf.workers.requestsLimit) + '</td></tr>';
+    h += '<tr><td>Worker CPU time / request</td><td colspan="2">p50 ' + cf.workers.cpuTimeMsP50 + 'ms · p99 ' +
+      '<span class="' + (cpuBad ? 'bad' : '') + '">' + cf.workers.cpuTimeMsP99 + 'ms</span> (limit ' + cf.workers.cpuMsPerRequestLimit + 'ms/request)' +
+      (cpuBad ? ' <span class="bad">⚠ some requests are hitting the CPU ceiling</span>' : '') + '</td></tr>';
+    h += '<tr><td>Worker errors / subrequests today</td><td colspan="2">' + cf.workers.errors + ' errors, ' + cf.workers.subrequests + ' subrequests</td></tr>';
+    h += '<tr><td>Durable Object requests</td><td colspan="2">' + fmtTok(cf.durableObjects.requests) + ' (' + cf.durableObjects.errors + ' errors), ' + (cf.durableObjects.wallTimeMsTotal / 1000).toFixed(1) + 's cumulative wall time</td></tr>';
+    h += '<tr><td>KV reads</td><td colspan="2">' + usageBar(cf.kv.reads, cf.kv.readsLimit) + '</td></tr>';
+    h += '<tr><td>KV writes</td><td colspan="2">' + usageBar(cf.kv.writes, cf.kv.writesLimit) + '</td></tr>';
+    h += '<tr><td>KV storage</td><td colspan="2">' + fmtBytes(cf.kv.storageBytes) + ' / ' + fmtBytes(cf.kv.storageLimit) + '</td></tr>';
+    h += '</table>';
+  } else {
+    h += '<h2>Cloudflare platform utilization</h2><p style="opacity:0.7">Not configured — set CLOUDFLARE_API_TOKEN (Account Analytics:Read scope) as a Worker secret to enable.</p>';
+  }
+  h += '<h2>Providers</h2><table><tr><th>provider</th><th>state</th><th>RPM</th><th>RPD</th><th>tokens today (in / out)</th></tr>';
   for (const [name, p] of Object.entries(d.providers)) {
     const state = !p.enabled ? 'disabled' : !p.has_key ? 'no key' : 'live';
     const pct = (u, l) => '<span class="bar" style="width:' + Math.min(100, (u / l) * 100) * 0.9 + 'px"></span> ' + u + '/' + l;

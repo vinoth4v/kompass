@@ -66,6 +66,26 @@ interface StatusPayload {
     tin?: number;
     tout?: number;
   }>;
+  cloudflare: {
+    workers: {
+      requests: number;
+      cpuTimeMsP50: number;
+      cpuTimeMsP99: number;
+      errors: number;
+      subrequests: number;
+      requestsLimit: number;
+      cpuMsPerRequestLimit: number;
+    };
+    durableObjects: { requests: number; errors: number; wallTimeMsTotal: number };
+    kv: {
+      reads: number;
+      writes: number;
+      storageBytes: number;
+      readsLimit: number;
+      writesLimit: number;
+      storageLimit: number;
+    };
+  } | null;
 }
 
 function fmtTok(n?: number): string {
@@ -87,6 +107,36 @@ async function status() {
   if (process.argv.includes('--json')) {
     console.log(JSON.stringify(d, null, 2));
     return;
+  }
+  if (d.cloudflare) {
+    const cf = d.cloudflare;
+    const pct = (u: number, l: number) => `${((u / l) * 100).toFixed(1)}%`;
+    console.log("Cloudflare platform utilization (Kompass's own free-plan headroom, today UTC)");
+    console.log(
+      `  Workers requests   ${cf.workers.requests}/${cf.workers.requestsLimit} (${pct(cf.workers.requests, cf.workers.requestsLimit)})`,
+    );
+    console.log(
+      `  Worker CPU/request  p50 ${cf.workers.cpuTimeMsP50}ms · p99 ${cf.workers.cpuTimeMsP99}ms (limit ${cf.workers.cpuMsPerRequestLimit}ms)${cf.workers.cpuTimeMsP99 >= cf.workers.cpuMsPerRequestLimit ? '  ⚠ hitting the CPU ceiling' : ''}`,
+    );
+    console.log(
+      `  Worker errors       ${cf.workers.errors} (${cf.workers.subrequests} subrequests)`,
+    );
+    console.log(
+      `  Durable Objects     ${cf.durableObjects.requests} requests, ${cf.durableObjects.errors} errors, ${(cf.durableObjects.wallTimeMsTotal / 1000).toFixed(1)}s wall time`,
+    );
+    console.log(
+      `  KV reads            ${cf.kv.reads}/${cf.kv.readsLimit} (${pct(cf.kv.reads, cf.kv.readsLimit)})`,
+    );
+    console.log(
+      `  KV writes           ${cf.kv.writes}/${cf.kv.writesLimit} (${pct(cf.kv.writes, cf.kv.writesLimit)})`,
+    );
+    console.log(
+      `  KV storage          ${(cf.kv.storageBytes / 1e6).toFixed(2)}MB / ${(cf.kv.storageLimit / 1e9).toFixed(0)}GB`,
+    );
+  } else {
+    console.log(
+      'Cloudflare platform utilization: not configured (set CLOUDFLARE_API_TOKEN secret)',
+    );
   }
   console.log('Providers');
   for (const [name, p] of Object.entries(d.providers)) {

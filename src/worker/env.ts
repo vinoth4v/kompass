@@ -13,6 +13,10 @@ export interface Env {
   COHERE_API_KEY?: string;
   CEREBRAS_API_KEY?: string;
   HF_API_KEY?: string;
+  /** Account Analytics:Read scope — powers the /status Cloudflare-utilization panel. */
+  CLOUDFLARE_API_TOKEN?: string;
+  CLOUDFLARE_ACCOUNT_ID: string;
+  CLOUDFLARE_KV_NAMESPACE_ID: string;
   CONFIG: KVNamespace;
   KOMPASS_STATE: DurableObjectNamespace<KompassState>;
 }

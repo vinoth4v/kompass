@@ -6,6 +6,12 @@
   "observability": {
     "enabled": true,
   },
+  "vars": {
+    // Not secret (account IDs/namespace IDs aren't sensitive) — power the
+    // /status Cloudflare-utilization panel (src/worker/cf-usage.ts).
+    "CLOUDFLARE_ACCOUNT_ID": "fa8b047b0bd7d52b47a415ee6dbf3fda",
+    "CLOUDFLARE_KV_NAMESPACE_ID": "45e10070376d4b8986fbb559ed3ecef9",
+  },
   "kv_namespaces": [
     {
       "binding": "CONFIG",
