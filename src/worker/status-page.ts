@@ -1,3 +1,20 @@
+// Kompass logo: compass needle on a sky→indigo ring. Served publicly at
+// /favicon.svg (data-free, like /healthz) and inlined in the page header.
+export const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<defs><linearGradient id="kg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#38bdf8"/><stop offset="1" stop-color="#6366f1"/></linearGradient></defs>
+<circle cx="32" cy="32" r="30" fill="url(#kg)"/>
+<circle cx="32" cy="32" r="24" fill="#0f172a"/>
+<g stroke="#7dd3fc" stroke-width="2.5" stroke-linecap="round">
+<line x1="32" y1="11" x2="32" y2="15" transform="rotate(45 32 32)"/>
+<line x1="32" y1="11" x2="32" y2="15" transform="rotate(135 32 32)"/>
+<line x1="32" y1="11" x2="32" y2="15" transform="rotate(225 32 32)"/>
+<line x1="32" y1="11" x2="32" y2="15" transform="rotate(315 32 32)"/>
+</g>
+<polygon points="32,12 39,32 25,32" fill="#f43f5e"/>
+<polygon points="32,52 25,32 39,32" fill="#e2e8f0"/>
+<circle cx="32" cy="32" r="3.5" fill="#0f172a" stroke="#e2e8f0" stroke-width="1.5"/>
+</svg>`;
+
 // Read-only status page (SPEC P1 #10). The shell below contains zero data and no
 // secrets — the bearer token is entered in-page, kept in localStorage, and every
 // data fetch goes to the authenticated /status endpoint. See DECISIONS.md.
@@ -7,10 +24,13 @@ export const STATUS_HTML = `<!doctype html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Kompass status</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <style>
   :root { color-scheme: light dark; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   body { margin: 2rem auto; max-width: 72rem; padding: 0 1rem; }
-  h1 { font-size: 1.2rem; } h2 { font-size: 1rem; margin-top: 1.6rem; }
+  h1 { font-size: 1.2rem; display: flex; align-items: center; gap: 0.5rem; }
+  h1 img { width: 1.6rem; height: 1.6rem; }
+  h2 { font-size: 1rem; margin-top: 1.6rem; }
   table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
   th, td { text-align: left; padding: 0.25rem 0.6rem; border-bottom: 1px solid #8884; }
   .ok { color: #2a2; } .bad { color: #d33; } .warn { color: #c90; } .muted { opacity: 0.65; font-size: 0.85em; }
@@ -23,7 +43,7 @@ export const STATUS_HTML = `<!doctype html>
 </style>
 </head>
 <body>
-<h1>🧭 Kompass status</h1>
+<h1><img src="/favicon.svg" alt="" /> Kompass status</h1>
 <div id="login">
   <p>Bearer token (stored only in this browser's localStorage):</p>
   <input id="token" type="password" placeholder="KOMPASS_BEARER" />

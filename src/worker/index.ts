@@ -27,7 +27,7 @@ import {
 } from './escalation';
 import { compilePrivacyGuard, privacyMatch } from './privacy';
 import { routeRequest } from './router';
-import { STATUS_HTML } from './status-page';
+import { FAVICON_SVG, STATUS_HTML } from './status-page';
 
 export { KompassState } from '../do/state';
 
@@ -38,6 +38,16 @@ app.get('/healthz', (c) => c.json({ ok: true, service: 'kompass' }));
 // Data-free static shell (like /healthz): the token is entered in-page and all
 // data flows through the authenticated /status endpoint (DECISIONS.md).
 app.get('/status.html', (c) => c.html(STATUS_HTML));
+
+// Logo/tab icon — data-free, so public like /healthz. Also answered at
+// /favicon.ico for browsers that probe the default path.
+const serveFavicon = (c: Context) =>
+  c.body(FAVICON_SVG, 200, {
+    'content-type': 'image/svg+xml',
+    'cache-control': 'public, max-age=86400',
+  });
+app.get('/favicon.svg', serveFavicon);
+app.get('/favicon.ico', serveFavicon);
 
 app.use('*', bearerAuth);
 
