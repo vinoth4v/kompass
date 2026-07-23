@@ -70,6 +70,6 @@ lanes:
 
   LONGCTX:
     - google/gemini-3.6-flash
-    - nvidia/nemotron-3-ultra-550b-a55b
+    - nvidia/nvidia/nemotron-3-ultra-550b-a55b
     - nvidia/minimaxai/minimax-m3
     - openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
