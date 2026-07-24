@@ -222,6 +222,8 @@ export async function init(): Promise<void> {
   // 5. Deploy + secrets + config ----------------------------------------------
   console.log(`\n${bold('5/6 Deploy')}`);
   execSync('pnpm exec wrangler deploy', { stdio: 'inherit' });
+  ok(`gateway live → ${url}`);
+  console.log(`  Dashboard: ${bold(url + '/status.html')}  (bookmark this — enter your bearer once)`);
   execSync(`pnpm exec wrangler secret bulk ${secretsPath}`, { stdio: 'inherit' });
   // Secrets need a moment to propagate to the live worker before config push
   // can authenticate. Retry up to 5 times with 4-second gaps (~20s total).
