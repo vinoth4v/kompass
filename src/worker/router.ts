@@ -14,12 +14,13 @@
 // complete answer is resolved server-side first and the client-facing SSE
 // stream (when asked for) is synthesized via messageToAnthropicSSE.
 import type { AnthropicRequest, AnthropicResponse, OpenAIResponse } from '../adapters/types';
-import { anthropicToOpenAI, openAIToAnthropic } from '../adapters/openai';
+import { anthropicToOpenAI, hasMalformedToolCall, openAIToAnthropic } from '../adapters/openai';
 import { anthropicToGemini, geminiToAnthropic, type GeminiResponse } from '../adapters/gemini';
 import type { KompassState, FailureKind, ReserveLimits } from '../do/state';
 import type { ProviderConfig, RouterConfig } from './config';
 import {
   isModelDisabled,
+  laneOverrides,
   limitsFor,
   parseChainEntry,
   resolveLaneChain,
@@ -28,6 +29,7 @@ import {
 import type { Env } from './env';
 import { filterChainByFit, largestCtx as fitLargestCtx, recordActualTokens } from './fit';
 import { tryLiveEntry, type LiveUsage } from './live';
+import { PENALTY } from './score';
 
 // Free-tier cold starts (NVIDIA especially) run past 60s — 90s covers that with room.
 const TIMEOUT_MS = 90_000;
@@ -41,6 +43,12 @@ export interface RouteAttempt {
    *  for entries skipped before ever being tried (fit filter, quota, disabled…) —
    *  populated by routeRequest's main loop, used by the M7 trace store. */
   ms?: number;
+  /** M8: the translated response's stop_reason, when known synchronously
+   *  (buffered path only — live streams resolve this later via LiveUsage). */
+  stopReason?: string;
+  /** M8: a tool call's arguments failed to parse (buffered OpenAI-format path,
+   *  or a truncated tool call dropped by the live path — see live.ts). */
+  malformedToolCall?: boolean;
 }
 
 export interface RouteOutcome {
@@ -189,7 +197,7 @@ async function tryChainEntry(
   const { provider, model } = parseChainEntry(entry);
   const p = cfg.providers[provider];
   if (!p) {
-    attempts.push({ entry, status: 'error', detail: 'unknown provider' });
+    attempts.push({ entry, status: 'skipped-unknown-provider', detail: 'unknown provider' });
     return null;
   }
   if (p.enabled === false) {
@@ -221,12 +229,20 @@ async function tryChainEntry(
   }
   // Guardrail §6.8, enforced at request time as well as config-validation time.
   if (!cfg.allow_paid && provider === 'openrouter' && !model.endsWith(':free')) {
-    attempts.push({ entry, status: 'error', detail: 'paid model blocked (allow_paid=false)' });
+    attempts.push({
+      entry,
+      status: 'skipped-paid-blocked',
+      detail: 'paid model blocked (allow_paid=false)',
+    });
     return null;
   }
 
   try {
     let translated: AnthropicResponse | null = null;
+    // M8: malformed-tool-call detection is scoped to the buffered OpenAI-format
+    // path (Gemini delivers args as an already-parsed object, structurally
+    // can't have this failure mode the same way — see docs/DECISIONS.md).
+    let malformedToolCall = false;
 
     if (live && body.stream === true) {
       const r = await tryLiveEntry(p, key, body, model);
@@ -241,6 +257,7 @@ async function tryChainEntry(
           p.kind === 'gemini'
             ? geminiToAnthropic(r.json as GeminiResponse, body.model)
             : openAIToAnthropic(r.json as OpenAIResponse, body.model);
+        if (p.kind !== 'gemini') malformedToolCall = hasMalformedToolCall(r.json as OpenAIResponse);
       } else {
         // A non-429 4xx may just mean "this provider rejects streaming
         // requests" — retry the same entry buffered before giving up on it.
@@ -269,6 +286,7 @@ async function tryChainEntry(
         p.kind === 'gemini'
           ? geminiToAnthropic(json as GeminiResponse, body.model)
           : openAIToAnthropic(json as OpenAIResponse, body.model);
+      if (p.kind !== 'gemini') malformedToolCall = hasMalformedToolCall(json as OpenAIResponse);
     }
 
     // The original dataforge-local bug: a provider can return 200 with a
@@ -280,7 +298,13 @@ async function tryChainEntry(
       return null;
     }
 
-    attempts.push({ entry, status: 200, usage: translated.usage });
+    attempts.push({
+      entry,
+      status: 200,
+      usage: translated.usage,
+      stopReason: translated.stop_reason ?? undefined,
+      malformedToolCall,
+    });
 
     if (body.stream) {
       return {
@@ -336,6 +360,17 @@ export async function routeRequest(
     laneLargestCtx = fitLargestCtx(cfg, chain);
   }
 
+  // M8: `ban: true` beats a perfect score — excluded before ANY scoring or
+  // selection, the same way disabled_models is (guardrail §6.15), even for a
+  // forced/pinned request. `pin:` only affects weighting, applied further down.
+  const overrides = laneOverrides(cfg.lanes[lane] ?? cfg.lanes[cfg.default_lane]);
+  const pins: Record<string, number | undefined> = {};
+  for (const [entry, o] of Object.entries(overrides)) pins[entry] = o.pin;
+  for (const entry of fitChain) {
+    if (overrides[entry]?.ban) attempts.push({ entry, status: 'skipped-banned' });
+  }
+  fitChain = fitChain.filter((entry) => !overrides[entry]?.ban);
+
   const limitsByEntry: Record<string, { key: string; limits: ReserveLimits }> = {};
   for (const entry of fitChain) {
     const { provider, model } = parseChainEntry(entry);
@@ -347,7 +382,14 @@ export async function routeRequest(
   let order = fitChain;
   if (ctx.stub && !ctx.forced) {
     try {
-      const plan = await ctx.stub.filterChain(fitChain, limitsByEntry, ctx.sessionId, spreadTop);
+      const plan = await ctx.stub.filterChain(
+        lane,
+        fitChain,
+        limitsByEntry,
+        ctx.sessionId,
+        spreadTop,
+        pins,
+      );
       order = plan.order;
       for (const s of plan.skipped)
         attempts.push({ entry: s.entry, status: `skipped-${s.reason}` });
@@ -403,21 +445,51 @@ export async function routeRequest(
       // request actually cost, off the response path — never blocks the reply.
       const { provider } = parseChainEntry(entry);
       const stub = ctx.stub;
+      const pin = pins[entry];
       if (res.usageLater) {
-        // Live streams learn their token counts only at stream end — patch the
-        // ledger and the routes log after the fact, off the response path.
+        // Live streams learn their token counts (and, for M8, truncation/
+        // malformed-tool-call) only at stream end — score once the real
+        // outcome is known, off the response path.
         ctx.waitUntil(
           res.usageLater
             .then((u) => {
               recordActualTokens(provider, estBytes, u.input_tokens);
+              const penalty =
+                (u.truncated ? PENALTY.empty_or_truncated : 0) +
+                (u.malformedToolCall ? PENALTY.malformed_tool_call : 0);
+              stub
+                ?.recordScoreAttempt(lane, entry, !u.truncated, penalty, pin)
+                .catch((e) => console.log(`score event failed: ${String(e)}`));
               return stub?.recordUsage(entry, u);
             })
             .catch((e) => console.log(`DO recordUsage failed: ${String(e)}`)),
         );
-      } else if (last?.usage) {
-        recordActualTokens(provider, estBytes, last.usage.input_tokens);
+      } else {
+        if (last?.usage) recordActualTokens(provider, estBytes, last.usage.input_tokens);
+        const truncated = last?.stopReason === 'max_tokens';
+        const penalty =
+          (truncated ? PENALTY.empty_or_truncated : 0) +
+          (last?.malformedToolCall ? PENALTY.malformed_tool_call : 0);
+        if (stub) {
+          await stub
+            .recordScoreAttempt(lane, entry, !truncated, penalty, pin)
+            .catch((e) => console.log(`score event failed: ${String(e)}`));
+        }
       }
       return { response: res.response, attempts, used: entry };
+    }
+    // M8: score only entries that genuinely reached a provider (a real dispatch
+    // attempt) — every pre-dispatch skip (disabled, privacy, multimodal,
+    // no-key, unknown-provider, paid-blocked, quota/cooldown/fit/ban) pushes a
+    // `skipped-*` status and `continue`s above before ever reaching this line.
+    if (
+      ctx.stub &&
+      last &&
+      !(typeof last.status === 'string' && last.status.startsWith('skipped-'))
+    ) {
+      await ctx.stub
+        .recordScoreAttempt(lane, entry, false, 0, pins[entry])
+        .catch((e) => console.log(`score event failed: ${String(e)}`));
     }
   }
   return { response: null, attempts, allSkippedTooLarge, largestCtx: laneLargestCtx };

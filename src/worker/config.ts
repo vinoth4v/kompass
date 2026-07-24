@@ -63,23 +63,71 @@ export interface DeprecatedModelEntry {
 }
 
 /**
+ * M8 quality signal config (SPEC_V2 §5/§9). Corrective-turn detection is off
+ * by default — SPEC_V2 §9 flags it as possibly too noisy to trust: "the user
+ * pushed back" is inferred from a declared regex list against the newest
+ * user turn, not a ground-truth signal.
+ */
+export interface QualityConfig {
+  corrective_turn_detection?: boolean;
+  corrective_patterns?: string[]; // regexes; required (non-empty) when detection is on
+}
+
+/**
+ * A chain entry is plainly "provider/model", or an object carrying a human
+ * override (M8, SPEC_V2 §5): `ban: true` excludes it from ever being
+ * dispatched in this lane (beats a perfect adaptive score); `pin: <float>`
+ * floors its score (beats a terrible one). Human judgment always wins over
+ * the adaptive score — guardrail §6.15.
+ */
+export type ChainEntryConfig = string | { model: string; ban?: boolean; pin?: number };
+
+export function chainEntryModel(entry: ChainEntryConfig): string {
+  return typeof entry === 'string' ? entry : entry.model;
+}
+
+export function chainEntryBan(entry: ChainEntryConfig): boolean {
+  return typeof entry === 'object' && entry.ban === true;
+}
+
+export function chainEntryPin(entry: ChainEntryConfig): number | undefined {
+  return typeof entry === 'object' ? entry.pin : undefined;
+}
+
+/**
  * A lane's chain, plainly (old shape, spread_top defaults to 1 = strict priority
  * order, unchanged behavior) or with an explicit spread_top: the router picks
  * randomly among the top `spread_top` healthy candidates — weighted by each
- * entry's recent success rate — instead of always trying #1 first. This spreads
- * load across comparable models (avoiding one model's RPM ceiling under bursty/
- * parallel use) and lets outcomes adapt lane order without touching YAML.
+ * entry's adaptive quality score — instead of always trying #1 first. This
+ * spreads load across comparable models (avoiding one model's RPM ceiling
+ * under bursty/parallel use) and lets outcomes adapt lane order without
+ * touching YAML.
  */
-export type LaneConfig = string[] | { chain: string[]; spread_top?: number };
+export type LaneConfig = ChainEntryConfig[] | { chain: ChainEntryConfig[]; spread_top?: number };
 
-export function laneChainArray(entry: LaneConfig | undefined): string[] {
+export function laneChainConfigs(entry: LaneConfig | undefined): ChainEntryConfig[] {
   if (!entry) return [];
   return Array.isArray(entry) ? entry : entry.chain;
+}
+
+export function laneChainArray(entry: LaneConfig | undefined): string[] {
+  return laneChainConfigs(entry).map(chainEntryModel);
 }
 
 export function laneSpreadTop(entry: LaneConfig | undefined, fallback = 1): number {
   if (!entry || Array.isArray(entry)) return fallback;
   return entry.spread_top ?? fallback;
+}
+
+/** Per-entry `pin`/`ban` overrides for a lane, keyed by plain "provider/model". */
+export function laneOverrides(
+  entry: LaneConfig | undefined,
+): Record<string, { ban: boolean; pin?: number }> {
+  const out: Record<string, { ban: boolean; pin?: number }> = {};
+  for (const e of laneChainConfigs(entry)) {
+    if (typeof e === 'object') out[e.model] = { ban: chainEntryBan(e), pin: e.pin };
+  }
+  return out;
 }
 
 /** Non-chat capability served by its own ordered fallback chain (images, embeddings). */
@@ -95,6 +143,10 @@ export interface RouterConfig {
   lanes: Record<string, LaneConfig>;
   dispatcher?: DispatcherConfig;
   privacy?: PrivacyConfig;
+  /** M8 adaptive scoring config — see QualityConfig. Optional/defaulted: an
+   *  unmodified pre-M8 config has none of this, and corrective-turn
+   *  detection is off, matching the SPEC_V2 §9 default. */
+  quality?: QualityConfig;
   /** Image generation chain for POST /v1/images/generations (optional capability). */
   images?: CapabilityConfig;
   /** Embeddings chain for POST /v1/embeddings (optional capability). */
@@ -209,19 +261,43 @@ export function validateConfig(cfg: unknown): RouterConfig {
   }
 
   for (const [lane, laneCfg] of Object.entries(c.lanes)) {
-    const chain = laneChainArray(laneCfg);
-    if (chain.length === 0) throw new Error(`lane ${lane}: empty chain`);
+    const chainConfigs = laneChainConfigs(laneCfg);
+    if (chainConfigs.length === 0) throw new Error(`lane ${lane}: empty chain`);
     if (!Array.isArray(laneCfg) && laneCfg.spread_top !== undefined) {
       if (!Number.isInteger(laneCfg.spread_top) || laneCfg.spread_top < 1)
         throw new Error(`lane ${lane}: spread_top must be a positive integer`);
     }
-    for (const entry of chain) {
+    for (const chainEntry of chainConfigs) {
+      const entry = chainEntryModel(chainEntry);
       const { provider, model } = parseChainEntry(entry);
       if (!c.providers[provider]) throw new Error(`lane ${lane}: unknown provider "${provider}"`);
       // Guardrail §6.8: no paid model callable unless allow_paid. With a free-tier
       // OpenRouter key, only :free slugs are $0 — enforce in code, not convention.
       if (!c.allow_paid && provider === 'openrouter' && !model.endsWith(':free'))
         throw new Error(`lane ${lane}: ${entry} is not a :free model and allow_paid=false`);
+      // M8: pin/ban are only meaningful on the object form.
+      if (typeof chainEntry === 'object') {
+        if (chainEntry.ban !== undefined && typeof chainEntry.ban !== 'boolean')
+          throw new Error(`lane ${lane}: ${entry} ban must be a boolean`);
+        if (
+          chainEntry.pin !== undefined &&
+          (typeof chainEntry.pin !== 'number' || chainEntry.pin < 0 || chainEntry.pin > 1)
+        )
+          throw new Error(`lane ${lane}: ${entry} pin must be a number in [0, 1]`);
+      }
+    }
+  }
+
+  if (c.quality?.corrective_turn_detection) {
+    const patterns = c.quality.corrective_patterns ?? [];
+    if (patterns.length === 0)
+      throw new Error('quality.corrective_turn_detection is on but corrective_patterns is empty');
+    for (const p of patterns) {
+      try {
+        new RegExp(p);
+      } catch {
+        throw new Error(`quality.corrective_patterns: invalid regex "${p}"`);
+      }
     }
   }
   return c;
@@ -276,8 +352,14 @@ export function applyDeprecations(cfg: RouterConfig): string[] {
     return current;
   };
 
+  // M8: object-form entries carry pin/ban metadata that a plain resolve() over
+  // laneChainArray's flattened strings would silently drop — resolve the model
+  // id while preserving whatever wrapper shape (string vs {model,ban,pin}) it
+  // already had.
+  const resolveEntry = (e: ChainEntryConfig): ChainEntryConfig =>
+    typeof e === 'string' ? resolve(e) : { ...e, model: resolve(e.model) };
   for (const [laneName, laneCfg] of Object.entries(cfg.lanes)) {
-    const newChain = laneChainArray(laneCfg).map(resolve);
+    const newChain = laneChainConfigs(laneCfg).map(resolveEntry);
     cfg.lanes[laneName] = Array.isArray(laneCfg) ? newChain : { ...laneCfg, chain: newChain };
   }
   if (cfg.dispatcher) {

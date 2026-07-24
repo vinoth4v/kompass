@@ -258,15 +258,30 @@ describe('M2 Durable Object ledger', () => {
   });
 
   it('spread_top:2 weighted-picks a proven performer over a listed-first poor performer', async () => {
-    await SELF.fetch('https://kompass.test/ledger/seed-perf', {
+    // M8: spread-selection weighting reads score:<lane>:<entry>, not perf:<entry>
+    // (perf:* stays as a separate, display-only counter since M8) — seed the
+    // adaptive score cells directly, mirroring the old seed-perf helper.
+    await SELF.fetch('https://kompass.test/ledger/seed-score', {
       method: 'POST',
       headers: AUTH,
-      body: JSON.stringify({ entry: 'openrouter/spread-bad:free', ok: 0, fail: 20 }),
+      body: JSON.stringify({
+        lane: 'AGENTIC',
+        entry: 'openrouter/spread-bad:free',
+        health: 0.05,
+        penalties: 0,
+        attempts: 20,
+      }),
     });
-    await SELF.fetch('https://kompass.test/ledger/seed-perf', {
+    await SELF.fetch('https://kompass.test/ledger/seed-score', {
       method: 'POST',
       headers: AUTH,
-      body: JSON.stringify({ entry: 'openrouter/spread-good:free', ok: 20, fail: 0 }),
+      body: JSON.stringify({
+        lane: 'AGENTIC',
+        entry: 'openrouter/spread-good:free',
+        health: 1,
+        penalties: 0,
+        attempts: 20,
+      }),
     });
     const spreadCfg = cfg();
     // 30 trials would blow the default 20 RPM ceiling mid-loop (both entries share

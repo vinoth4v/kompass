@@ -3,6 +3,15 @@
 // last-N route log. One instance ("global") backs every client machine, so two
 // laptops draw down the same OpenRouter daily budget.
 import { DurableObject } from 'cloudflare:workers';
+import {
+  applyAttempt,
+  applyPenalty,
+  effectiveQuality,
+  effectiveScore,
+  newScoreCell,
+  spreadWeight,
+  type ScoreCell,
+} from '../worker/score';
 import { isExpired, pushTrace, type TraceRecord } from './trace';
 
 export interface ReserveLimits {
@@ -80,7 +89,6 @@ const STICKY_TTL_MS = 2 * 60 * 60 * 1000;
 const MAX_ROUTES = 50;
 const HISTORY_DAYS = 60; // daily aggregates retained (covers this month + last)
 const PERF_DECAY_CAP = 40; // halve ok/fail past this total so scoring stays recency-biased
-const PERF_FLOOR = 0.05; // never fully zero out an entry — allow self-healing retries
 
 function utcDay(now: number): string {
   return new Date(now).toISOString().slice(0, 10);
@@ -107,17 +115,31 @@ export class KompassState extends DurableObject {
     };
   }
 
-  /** Weighted-random pick among a pool, weighted by each entry's recent success rate. */
-  private async pickWeighted(pool: string[]): Promise<string> {
+  private async getScoreCell(lane: string, entry: string): Promise<ScoreCell> {
+    return (await this.ctx.storage.get<ScoreCell>(`score:${lane}:${entry}`)) ?? newScoreCell();
+  }
+
+  /**
+   * Weighted-random pick among a pool, weighted by each entry's adaptive
+   * quality score² (M8 — was raw success rate pre-M8; PerfCell/`perf:*` stays
+   * as a separate, simpler ok/fail counter purely for the /status dashboard's
+   * "recent reliability" display, unrelated to selection since M8).
+   */
+  private async pickWeighted(
+    lane: string,
+    pool: string[],
+    pins: Record<string, number | undefined>,
+  ): Promise<string> {
     if (pool.length <= 1) return pool[0]!;
     const weights: number[] = [];
     for (const entry of pool) {
-      const perf = await this.ctx.storage.get<PerfCell>(`perf:${entry}`);
-      const total = (perf?.ok ?? 0) + (perf?.fail ?? 0);
-      // No data yet → optimistic weight 1 (give untested entries a fair first try).
-      weights.push(total === 0 ? 1 : Math.max(PERF_FLOOR, perf!.ok / total));
+      const cell = await this.getScoreCell(lane, entry);
+      const quality = effectiveQuality(cell.penalties, cell.attempts);
+      const score = effectiveScore(cell.health, quality, pins[entry]);
+      weights.push(spreadWeight(score));
     }
     const sum = weights.reduce((a, b) => a + b, 0);
+    if (sum <= 0) return pool[0]!; // every candidate scored exactly 0 — fall back to priority order
     let r = Math.random() * sum;
     for (let i = 0; i < pool.length; i++) {
       r -= weights[i]!;
@@ -144,15 +166,20 @@ export class KompassState extends DurableObject {
    * exhausted-quota and cooling-down entries skipped up front (SPEC P0 #6).
    * `limitsByEntry` carries the config limits so the DO stays config-free.
    * When no sticky entry applies and `spreadTop` > 1, the first pick is drawn by
-   * weighted-random from the top `spreadTop` viable candidates (weighted by recent
-   * success rate) instead of always the highest-priority one — spreads load across
-   * comparable models and adapts to which ones are actually performing well.
+   * weighted-random from the top `spreadTop` viable candidates (weighted by
+   * adaptive quality score, M8) instead of always the highest-priority one —
+   * spreads load across comparable models and adapts to which ones are
+   * actually performing well. M8: entries auto-demoted for sustained low
+   * quality sink to the tail (excluded from the weighted pool, but still an
+   * ordinary fallback — "stays in the chain tail, still reachable").
    */
   async filterChain(
+    lane: string,
     chain: string[],
     limitsByEntry: Record<string, { key: string; limits: ReserveLimits }>,
     sessionId?: string,
     spreadTop = 1,
+    pins: Record<string, number | undefined> = {},
   ): Promise<{ order: string[]; skipped: Array<{ entry: string; reason: string }> }> {
     const now = Date.now();
     const skipped: Array<{ entry: string; reason: string }> = [];
@@ -190,12 +217,23 @@ export class KompassState extends DurableObject {
     }
 
     if (!sticky && spreadTop > 1 && order.length > 1) {
-      const poolSize = Math.min(spreadTop, order.length);
-      const chosen = await this.pickWeighted(order.slice(0, poolSize));
-      if (chosen !== order[0]) {
-        const rest = order.filter((e) => e !== chosen);
-        order.length = 0;
-        order.push(chosen, ...rest);
+      const nonDemoted: string[] = [];
+      const demoted: string[] = [];
+      for (const entry of order) {
+        const cell = await this.getScoreCell(lane, entry);
+        (cell.demoted ? demoted : nonDemoted).push(entry);
+      }
+      order.length = 0;
+      order.push(...nonDemoted, ...demoted);
+
+      if (nonDemoted.length > 1) {
+        const poolSize = Math.min(spreadTop, nonDemoted.length);
+        const chosen = await this.pickWeighted(lane, nonDemoted.slice(0, poolSize), pins);
+        if (chosen !== order[0]) {
+          const rest = order.filter((e) => e !== chosen);
+          order.length = 0;
+          order.push(chosen, ...rest);
+        }
       }
     }
 
@@ -417,9 +455,80 @@ export class KompassState extends DurableObject {
     await this.ctx.storage.delete(`toolerr:${sessionId}`);
   }
 
-  /** Drop stickiness for a session (used on lane escalation / explicit model switch). */
-  async releaseSticky(sessionId: string): Promise<void> {
+  /** Drop stickiness for a session (used on lane escalation / explicit model
+   *  switch). Returns the entry (and ITS OWN lane, for correct score-cell
+   *  attribution) that WAS sticky, or null — M8 uses this to attribute an
+   *  escalation quality-penalty to the model that was serving the session
+   *  when it started failing (SPEC_V2 §5 "escalation attributed to m"). */
+  async releaseSticky(sessionId: string): Promise<{ entry: string; lane: string } | null> {
+    const cell = await this.ctx.storage.get<StickyCell>(`sticky:${sessionId}`);
     await this.ctx.storage.delete(`sticky:${sessionId}`);
+    return cell ? { entry: cell.entry, lane: cell.lane } : null;
+  }
+
+  /** Read-only: the session's current sticky entry+lane, without releasing it
+   *  — M8's opt-in corrective-turn detection uses this as a best-effort proxy
+   *  for "which model answered the turn the user is reacting to." */
+  async peekSticky(sessionId: string): Promise<{ entry: string; lane: string } | null> {
+    const cell = await this.ctx.storage.get<StickyCell>(`sticky:${sessionId}`);
+    return cell ? { entry: cell.entry, lane: cell.lane } : null;
+  }
+
+  // ── M8 quality signal & adaptive weights (SPEC_V2 §5) ──
+
+  /**
+   * A real dispatch attempt (health-affecting): `healthy` reflects the
+   * protocol-level outcome (5xx/429/timeout/truncated all count as
+   * unhealthy, matching SPEC_V2 §5's health formula); `inlinePenalty` covers
+   * a quality issue that's part of THIS SAME attempt (truncated completion,
+   * malformed tool call). Logs to the route log when demotion state changes
+   * (guardrail §6.15 — every demotion is inspectable/reversible).
+   */
+  async recordScoreAttempt(
+    lane: string,
+    entry: string,
+    healthy: boolean,
+    inlinePenalty: number,
+    pin: number | undefined,
+  ): Promise<void> {
+    const key = `score:${lane}:${entry}`;
+    const cell = await this.getScoreCell(lane, entry);
+    const next = applyAttempt(cell, healthy, inlinePenalty, pin);
+    await this.ctx.storage.put(key, next);
+    await this.logScoreChange(lane, entry, cell, next);
+  }
+
+  /** A retroactive quality penalty (escalation attribution, corrective turn)
+   *  — see score.ts's applyPenalty for why this doesn't touch health/attempts. */
+  async recordScorePenalty(
+    lane: string,
+    entry: string,
+    penalty: number,
+    pin: number | undefined,
+  ): Promise<void> {
+    const key = `score:${lane}:${entry}`;
+    const cell = await this.getScoreCell(lane, entry);
+    const next = applyPenalty(cell, penalty, pin);
+    await this.ctx.storage.put(key, next);
+    await this.logScoreChange(lane, entry, cell, next);
+  }
+
+  private async logScoreChange(
+    lane: string,
+    entry: string,
+    prev: ScoreCell,
+    next: ScoreCell,
+  ): Promise<void> {
+    if (next.demoted === prev.demoted) return;
+    const reason = next.demoted
+      ? `demoted: health=${next.health.toFixed(2)} penalties=${next.penalties.toFixed(2)} attempts=${next.attempts}`
+      : 'recovered: a probe attempt succeeded';
+    console.log(
+      JSON.stringify({ quality_demotion: { lane, entry, demoted: next.demoted, reason } }),
+    );
+    const routes = (await this.ctx.storage.get<RouteRecord[]>('routes')) ?? [];
+    routes.push({ ts: Date.now(), lane, entry, ok: !next.demoted, detail: reason });
+    await this.ctx.storage.put('routes', routes.slice(-MAX_ROUTES));
   }
 
   /** Raw state for /status: counters, cooldowns, token totals, perf, recent routes. */
@@ -429,6 +538,7 @@ export class KompassState extends DurableObject {
     cooldowns: Record<string, number>;
     tokens: Record<string, TokenCell>;
     perf: Record<string, PerfCell>;
+    scores: Record<string, ScoreCell>;
     routes: RouteRecord[];
     history: Record<string, DayHistory>;
   }> {
@@ -438,6 +548,7 @@ export class KompassState extends DurableObject {
     const cooldowns: Record<string, number> = {};
     const tokens: Record<string, TokenCell> = {};
     const perf: Record<string, PerfCell> = {};
+    const scores: Record<string, ScoreCell> = {};
     const history: Record<string, DayHistory> = {};
     const all = await this.ctx.storage.list();
     for (const [k, v] of all) {
@@ -445,6 +556,7 @@ export class KompassState extends DurableObject {
       else if (k.startsWith('rpd:')) rpd[k.slice(4)] = v as RpdCell;
       else if (k.startsWith('tokd:')) tokens[k.slice(5)] = v as TokenCell;
       else if (k.startsWith('perf:')) perf[k.slice(5)] = v as PerfCell;
+      else if (k.startsWith('score:')) scores[k.slice(6)] = v as ScoreCell;
       else if (k.startsWith('hist:')) history[k.slice(5)] = v as DayHistory;
       else if (k.startsWith('cool:') && (v as number) > now) cooldowns[k.slice(5)] = v as number;
     }
@@ -454,6 +566,7 @@ export class KompassState extends DurableObject {
       cooldowns,
       tokens,
       perf,
+      scores,
       routes: (await this.ctx.storage.get<RouteRecord[]>('routes')) ?? [],
       history,
     };
@@ -483,6 +596,15 @@ export class KompassState extends DurableObject {
    */
   async seedPerf(entry: string, ok: number, fail: number): Promise<void> {
     await this.ctx.storage.put(`perf:${entry}`, { ok, fail } satisfies PerfCell);
+  }
+
+  /**
+   * Test/admin helper (M8): directly set an entry's (lane, entry) score cell,
+   * bypassing the normal event-application flow — the M8 analogue of
+   * seedPerf, since spread-selection weighting moved from perf:* to score:*.
+   */
+  async seedScore(lane: string, entry: string, cell: Partial<ScoreCell>): Promise<void> {
+    await this.ctx.storage.put(`score:${lane}:${entry}`, { ...newScoreCell(), ...cell });
   }
 
   /**

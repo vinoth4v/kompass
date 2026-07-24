@@ -320,6 +320,29 @@ async function testTraceStore() {
   check('trace store: /traces lists recent entries', traces.length > 0, `n=${traces.length}`);
 }
 
+async function testAdaptiveScoring() {
+  // M8: /status exposes a per-(lane,entry) adaptive score cell for every
+  // model that has actually been dispatched — sanity-check the shape after
+  // the tool round-trip above has already exercised at least one real route.
+  const res = await fetch(`${BASE_URL}/status`, { headers: HEADERS });
+  if (res.status !== 200) {
+    check('adaptive scoring', false, `GET /status → HTTP ${res.status}`);
+    return;
+  }
+  const { scores } = (await res.json()) as {
+    scores: Record<string, { health: number; attempts: number; demoted: boolean }>;
+  };
+  const entries = Object.entries(scores ?? {});
+  const wellFormed = entries.every(
+    ([k, v]) => k.includes(':') && typeof v.health === 'number' && typeof v.demoted === 'boolean',
+  );
+  check(
+    'adaptive scoring: /status exposes well-formed score cells',
+    entries.length > 0 && wellFormed,
+    `${entries.length} cells`,
+  );
+}
+
 console.log(`Smoke target: ${BASE_URL}`);
 await testAuth();
 await testStreaming();
@@ -327,6 +350,7 @@ await testToolRoundTrip();
 await testDispatchLatency();
 await testLongContext();
 await testTraceStore();
+await testAdaptiveScoring();
 // M1 acceptance: identical toy tool-call task on one OpenAI-format and one Gemini model.
 const adapterTargets = (process.env.SMOKE_ADAPTER_MODELS ?? '').split(',').filter(Boolean);
 for (const target of adapterTargets) await testToolRoundTrip(target);

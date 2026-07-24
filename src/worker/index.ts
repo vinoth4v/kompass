@@ -19,6 +19,7 @@ import { getCloudflareUsage } from './cf-usage';
 import {
   CONFIG_KV_KEY,
   laneChainArray,
+  laneOverrides,
   laneSpreadTop,
   loadConfig,
   resolveLaneChain,
@@ -45,6 +46,7 @@ import {
 } from './escalation';
 import { compilePrivacyGuard, privacyMatch } from './privacy';
 import { routeRequest, type RouteAttempt } from './router';
+import { compileQualityPatterns, isCorrectiveTurn, PENALTY } from './score';
 import { FAVICON_SVG, STATUS_HTML } from './status-page';
 
 export { KompassState } from '../do/state';
@@ -142,6 +144,30 @@ async function handleAnthropic(
   // Claude Code stamps a stable per-session metadata.user_id — the stickiness key.
   const sessionId = body.metadata?.user_id;
 
+  // M8 opt-in corrective-turn detection (off by default — SPEC_V2 §9): the
+  // user's newest turn reads as "that was wrong" → attribute a quality
+  // penalty to whichever model is (best-effort) still sticky for the
+  // session, i.e. presumably the one that produced the turn being reacted
+  // to. Runs BEFORE escalation below, which can release stickiness.
+  if (sessionId && cfg.quality?.corrective_turn_detection) {
+    try {
+      const patterns = compileQualityPatterns(cfg);
+      if (patterns.length && isCorrectiveTurn(body, patterns)) {
+        const sticky = await stub.peekSticky(sessionId);
+        if (sticky) {
+          const pin = laneOverrides(cfg.lanes[sticky.lane] ?? cfg.lanes[cfg.default_lane])[
+            sticky.entry
+          ]?.pin;
+          await stub
+            .recordScorePenalty(sticky.lane, sticky.entry, PENALTY.corrective_turn, pin)
+            .catch((e) => console.log(`score event failed: ${String(e)}`));
+        }
+      }
+    } catch (e) {
+      console.log(`corrective-turn detection unavailable: ${String(e)}`);
+    }
+  }
+
   // M5 escalation: ≥3 consecutive failed tool iterations → one lane up, stickiness released.
   let escalated = false;
   if (sessionId) {
@@ -151,7 +177,19 @@ async function handleAnthropic(
         const up = laneUp(lane);
         escalated = true;
         await stub.resetToolErrors(sessionId);
-        await stub.releaseSticky(sessionId);
+        // M8: attribute an escalation quality-penalty to whichever model was
+        // serving the session when it started failing (SPEC_V2 §5) — uses the
+        // released cell's OWN stored lane, not necessarily this request's
+        // current `lane`, in case they've already diverged.
+        const released = await stub.releaseSticky(sessionId);
+        if (released) {
+          const pin = laneOverrides(cfg.lanes[released.lane] ?? cfg.lanes[cfg.default_lane])[
+            released.entry
+          ]?.pin;
+          await stub
+            .recordScorePenalty(released.lane, released.entry, PENALTY.escalation, pin)
+            .catch((e) => console.log(`score event failed: ${String(e)}`));
+        }
         if (up && cfg.lanes[up]) {
           console.log(JSON.stringify({ escalate: { from: lane, to: up, session: sessionId } }));
           lane = up;
@@ -558,6 +596,9 @@ app.get('/status', async (c) => {
     default_lane: cfg?.default_lane,
     providers,
     perf,
+    // M8: adaptive quality score per "lane:entry" — health/quality/attempts/
+    // demoted, backing spread-selection weighting (see src/worker/score.ts).
+    scores: snap.scores,
     cooldowns: Object.fromEntries(
       Object.entries(snap.cooldowns).map(([k, v]) => [k, `${Math.round((v - now) / 1000)}s`]),
     ),
@@ -615,6 +656,29 @@ app.post('/ledger/seed-perf', async (c) => {
     return anthropicError('invalid_request_error', 'need {entry, ok, fail}', 400);
   }
   await stateStub(c.env).seedPerf(entry, ok, fail);
+  return c.json({ ok: true });
+});
+
+// Test/admin helper (M8): directly seed an entry's (lane, entry) adaptive
+// score cell — bypasses the normal event-application flow.
+app.post('/ledger/seed-score', async (c) => {
+  const body = (await c.req.json()) as {
+    lane?: string;
+    entry?: string;
+    health?: number;
+    penalties?: number;
+    attempts?: number;
+    demoted?: boolean;
+  };
+  if (!body.lane || !body.entry) {
+    return anthropicError('invalid_request_error', 'need {lane, entry, ...}', 400);
+  }
+  await stateStub(c.env).seedScore(body.lane, body.entry, {
+    health: body.health,
+    penalties: body.penalties,
+    attempts: body.attempts,
+    demoted: body.demoted,
+  });
   return c.json({ ok: true });
 });
 

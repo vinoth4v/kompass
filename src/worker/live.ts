@@ -37,6 +37,13 @@ const IDLE_TIMEOUT_MS = 45_000;
 export interface LiveUsage {
   input_tokens: number;
   output_tokens: number;
+  /** M8 quality signal: stop reason was 'length' — a real success at the
+   *  route level (the client still gets an answer), but health/quality-
+   *  negative per SPEC_V2 §5. */
+  truncated: boolean;
+  /** M8: a tool call's argument JSON never completed/parsed and was dropped
+   *  (see finalTools() below). */
+  malformedToolCall: boolean;
 }
 
 export type LiveResult =
@@ -175,7 +182,8 @@ export async function tryLiveEntry(
   let text = '';
   const tools: ToolAcc[] = [];
   let finish: string | undefined;
-  let usage: LiveUsage | undefined;
+  let usage: { input_tokens: number; output_tokens: number } | undefined;
+  let malformedToolCall = false;
 
   /** Fold one parsed SSE chunk into the accumulators; returns its text delta. */
   const handleChunk = (obj: unknown): string => {
@@ -234,6 +242,7 @@ export async function tryLiveEntry(
             input = JSON.parse(t.args) as Record<string, unknown>;
           } catch {
             console.log(`live: dropping truncated tool_use "${t.name ?? ''}"`);
+            malformedToolCall = true; // M8 quality signal
             continue;
           }
         }
@@ -248,13 +257,19 @@ export async function tryLiveEntry(
     return out;
   };
 
-  const finalUsage = (): LiveUsage =>
-    usage ?? {
+  const finalUsage = (): LiveUsage => ({
+    ...(usage ?? {
       input_tokens: 0,
       output_tokens: Math.ceil(
         (text.length + tools.reduce((n, t) => n + (t?.args.length ?? 0), 0)) / 4,
       ),
-    };
+    }),
+    // finalTools() must run before this is trusted — it's the only thing that
+    // sets malformedToolCall, and both buildMessage() and close() call it
+    // before ever reading finalUsage()'s result.
+    truncated: finish === 'length',
+    malformedToolCall,
+  });
 
   const stopReason = (toolBlocks: number): AnthropicStopReason =>
     toolBlocks > 0 ? 'tool_use' : mapFinishReason(finish);

@@ -294,6 +294,52 @@ tab) but is skipped everywhere it would otherwise be tried: chat lanes, the
 sibling of `kompass deprecate` (which permanently rewrites an entry to a
 replacement at every config push).
 
+## Adaptive quality scoring, and human overrides (`pin`/`ban`)
+
+Kompass tracks a per-`(model, lane)` adaptive score — `health` (an EWMA over
+protocol-level outcomes: success, 5xx/429/timeout, truncated) × `quality`
+(a penalty-based signal covering escalation attribution, malformed tool
+calls, truncated/empty completions, and an opt-in corrective-turn heuristic).
+A model that's technically healthy (200 OK, non-empty) but subjectively bad —
+the exact FAST/8b case in this repo's own history, "vague/hedging answers
+even though it was healthy" — gets caught by quality even when health alone
+never would. Below 10 real attempts, quality isn't trusted yet (health-only,
+no demotion) so a model isn't punished on thin data. A model that's
+consistently bad demotes out of the `spread_top` weighted pool (it stays in
+the chain as an ordinary fallback, still reachable) and auto-recovers the
+next time it succeeds. Every demotion/recovery is logged to the route log
+(`kompass status`) with its reason — nothing happens silently.
+
+Your judgment always wins over the adaptive score — object-form chain
+entries in `lanes.yaml` add per-entry overrides:
+
+```yaml
+AGENTIC:
+  spread_top: 2
+  chain:
+    - openrouter/poolside/laguna-s-2.1:free
+    - { model: nvidia/some-flaky-model, ban: true } # never dispatched, regardless of score
+    - { model: mistral/a-model-you-trust, pin: 0.9 } # score floor — protects it from demotion
+```
+
+`ban: true` excludes an entry from ever being dispatched in that lane — the
+same effect as `kompass models disable`, but scoped to one chain position
+instead of every lane. `pin: <0..1>` floors the entry's effective score, so a
+temporarily-struggling model you trust never gets demoted out from under you.
+
+**Corrective-turn detection is opt-in and off by default** (it infers "the
+user pushed back" from a regex list against the newest turn — a heuristic,
+not a ground-truth signal):
+
+```yaml
+# lanes.yaml
+quality:
+  corrective_turn_detection: true
+  corrective_patterns:
+    - "that'?s (not )?(right|correct|wrong)"
+    - 'try again'
+```
+
 ## Design, game & creative coding work
 
 The lanes cover creative _coding_ — web/UI design, CSS/WebGL animation, game code
@@ -327,13 +373,20 @@ Studio key — free-quota-gated at ship time; see `BUILD_PLAN.md` §8.
 
 ## How routing works
 
-1. **Heuristics (0ms):** <1k tokens & no tools → FAST; >60k tokens → LONGCTX.
+1. **Heuristics (0ms):** <1k tokens & no tools → FAST; a huge context → LONGCTX (threshold
+   is derived from the smallest declared context window in the AGENTIC chain, falling back
+   to 60k tokens if none is declared).
 2. **Classifier:** otherwise a compressed task digest goes to a fast free reasoning model
    (Gemini Flash-Lite) returning strict JSON `{"lane":"AGENTIC","confidence":0.87}`.
    Verdicts are cached 5 min; confidence <0.6 or any classifier failure → AGENTIC. Never blocks.
-3. **Ledger:** exhausted (RPM/RPD) and cooling-down (10 min after a failure) models are
-   skipped up front; fallback walks the chain on 429/5xx/timeout. Zero-429 handoffs.
-4. **Stickiness:** a session stays on its model between turns to preserve coherence.
+3. **Fit filter:** a chain entry whose declared context window the request would exceed is
+   skipped before it ever burns a provider's quota (unknown windows are never hard-dropped).
+4. **Ledger + adaptive scoring:** exhausted (RPM/RPD) and cooling-down (10 min after a
+   failure) models are skipped up front; the top `spread_top` candidates are then picked by
+   weighted-random on their [adaptive quality score](#adaptive-quality-scoring-and-human-overrides-pinban),
+   not just static priority order. Fallback walks the rest of the chain on 429/5xx/timeout.
+   Zero-429 handoffs.
+5. **Stickiness:** a session stays on its model between turns to preserve coherence.
 
 **Paid models can never be called** unless you set `allow_paid: true` in `lanes.yaml`
 (enforced in code at config-push _and_ request time; default false).

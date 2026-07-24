@@ -169,6 +169,30 @@ function safeParseJSON(s: string | undefined): Record<string, unknown> {
   }
 }
 
+/**
+ * M8 quality signal (SPEC_V2 §5): true when at least one tool call's
+ * `arguments` string failed to parse as JSON — `safeParseJSON` above
+ * silently falls back to `{}` so the response still translates, but a
+ * malformed call is a real quality issue worth penalizing. Deliberately a
+ * separate, independent scan (not threaded through the main translation
+ * return value) so it never touches the wire-format response shape. Gemini
+ * has no equivalent failure mode — its function-call args arrive as an
+ * already-parsed object, never a string to fail parsing.
+ */
+export function hasMalformedToolCall(rawRes: OpenAIResponse): boolean {
+  const res = rawRes && typeof rawRes === 'object' ? rawRes : ({} as OpenAIResponse);
+  for (const tc of res.choices?.[0]?.message?.tool_calls ?? []) {
+    const args = tc.function?.arguments;
+    if (typeof args !== 'string' || !args.trim()) continue; // no/empty args is valid for a no-arg tool
+    try {
+      JSON.parse(args);
+    } catch {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Translate a non-streaming OpenAI response into an Anthropic Messages response. */
 export function openAIToAnthropic(
   rawRes: OpenAIResponse,
