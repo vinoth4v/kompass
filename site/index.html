@@ -859,7 +859,7 @@
         <div class="term" aria-hidden="true">
           <div class="bar"><i></i><i></i><i></i></div>
           <pre><code><span class="t-dim">~/dataforge</span> $ <span class="t-amber">claude-free</span>
-<span class="t-dim">✻ Claude Code · Sonnet 4.5 · via kompass.you.workers.dev</span>
+<span class="t-dim">✻ Claude Code · kompass-free-model-1.0 · via kompass.you.workers.dev</span>
 
 <span class="t-blue">&gt;</span> run the tests and fix whatever fails
 
@@ -1530,7 +1530,7 @@
       <p class="kicker">Full visibility</p>
       <h2>Know exactly what served every turn</h2>
       <p class="muted">
-        Claude Code always shows "Sonnet 4.5" — that's just the requested alias.
+        Claude Code always shows "kompass-free-model-1.0" — that's just the requested alias.
         <code>/status.html</code> (or <code>kompass status</code>) shows the truth, live, refreshed
         every 15s:
       </p>
@@ -2191,7 +2191,7 @@ https://kompass.&lt;you&gt;.workers.dev/status.html   # live dashboard in the br
         $('o-shell').textContent = `claude-free() {
   ANTHROPIC_BASE_URL="${url}" \\
   ANTHROPIC_AUTH_TOKEN="${secrets.KOMPASS_BEARER}" \\
-  ANTHROPIC_MODEL="claude-sonnet-4-5" \\
+  ANTHROPIC_MODEL="kompass-free-model-1.0" \\
   claude "$@"
 }`;
         $('o-cmds').textContent = `# in the cloned kompass repo, with CLOUDFLARE_API_TOKEN exported:
