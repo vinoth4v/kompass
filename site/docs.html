@@ -8,7 +8,15 @@
       name="description"
       content="Full documentation for Kompass: setup, connecting Claude Code / Codex / Cursor / Cline / Aider, routing, configuration, API and CLI reference, troubleshooting."
     />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='kg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2338bdf8'/%3E%3Cstop offset='1' stop-color='%236366f1'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='30' fill='url(%23kg)'/%3E%3Ccircle cx='32' cy='32' r='24' fill='%230f172a'/%3E%3Cg stroke='%237dd3fc' stroke-width='2.5' stroke-linecap='round'%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(45 32 32)'/%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(135 32 32)'/%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(225 32 32)'/%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(315 32 32)'/%3E%3C/g%3E%3Cpolygon points='32,12 39,32 25,32' fill='%23f43f5e'/%3E%3Cpolygon points='32,52 25,32 39,32' fill='%23e2e8f0'/%3E%3Ccircle cx='32' cy='32' r='3.5' fill='%230f172a' stroke='%23e2e8f0' stroke-width='1.5'/%3E%3C/svg%3E" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='kg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2338bdf8'/%3E%3Cstop offset='1' stop-color='%236366f1'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='30' fill='url(%23kg)'/%3E%3Ccircle cx='32' cy='32' r='24' fill='%230f172a'/%3E%3Cg stroke='%237dd3fc' stroke-width='2.5' stroke-linecap='round'%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(45 32 32)'/%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(135 32 32)'/%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(225 32 32)'/%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(315 32 32)'/%3E%3C/g%3E%3Cpolygon points='32,12 39,32 25,32' fill='%23f43f5e'/%3E%3Cpolygon points='32,52 25,32 39,32' fill='%23e2e8f0'/%3E%3Ccircle cx='32' cy='32' r='3.5' fill='%230f172a' stroke='%23e2e8f0' stroke-width='1.5'/%3E%3C/svg%3E"
+    />
+    <!-- Safari doesn't render SVG favicons — PNG/ICO fallbacks below -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <style>
       :root {
         color-scheme: dark;
@@ -200,14 +208,18 @@
         <a class="item" href="#claude-code">Claude Code</a>
         <a class="item" href="#codex">Codex CLI</a>
         <a class="item" href="#cursor">Cursor</a>
-        <a class="item" href="#cline">Cline / Roo / Kilo</a>
-        <a class="item" href="#continue">Continue</a>
+        <a class="item" href="#vscode">VS Code</a>
+        <a class="item" href="#cline">↳ Cline / Roo / Kilo</a>
+        <a class="item" href="#continue">↳ Continue</a>
         <a class="item" href="#aider">Aider &amp; generic</a>
+        <a class="item" href="#direct-api">Direct API (SDKs &amp; curl)</a>
         <a class="item" href="#ui">Web workbench</a>
+        <a class="item" href="#kompass-ai">Kompass AI (hosted)</a>
         <div class="group">Guide</div>
         <a class="item" href="#routing">How routing works</a>
         <a class="item" href="#models">Model names &amp; headers</a>
         <a class="item" href="#config">Configuration</a>
+        <a class="item" href="#creative">Design &amp; media models</a>
         <a class="item" href="#reliability">Reliability model</a>
         <a class="item" href="#quota">Quota &amp; limits</a>
         <a class="item" href="#privacy">Trust &amp; privacy</a>
@@ -342,19 +354,91 @@ codex</code></pre>
           models. Chat and agent mode with the <code>kompass</code> model work normally.
         </div>
 
-        <h2 id="cline">Connect: Cline / Roo Code / Kilo Code (VS Code)</h2>
-        <p>In the extension's settings choose the <b>OpenAI Compatible</b> provider:</p>
+        <h2 id="vscode">Connect: VS Code</h2>
+        <p>
+          VS Code has <b>no built-in AI chat or agent</b> — every "AI coding in VS Code" experience
+          comes from a free extension you install first, then point at Kompass exactly like Cursor
+          above. Pick one:
+        </p>
+        <table>
+          <tr>
+            <th>Extension</th>
+            <th>What it's like</th>
+            <th>Pick it if…</th>
+          </tr>
+          <tr>
+            <td><b>Cline</b></td>
+            <td>agentic file editor + terminal, the original of this family</td>
+            <td>you want the most widely-used, battle-tested option</td>
+          </tr>
+          <tr>
+            <td><b>Roo&nbsp;Code</b></td>
+            <td>a Cline fork with extra modes (Architect, Debug, Ask)</td>
+            <td>you want task-specific personas without switching tools</td>
+          </tr>
+          <tr>
+            <td><b>Kilo&nbsp;Code</b></td>
+            <td>another Cline fork, merges Cline + Roo Code features</td>
+            <td>you want the newest feature set of the three</td>
+          </tr>
+          <tr>
+            <td><b>Continue</b></td>
+            <td>chat/edit/autocomplete sidebar, config-file driven</td>
+            <td>
+              you want fine-grained control (separate models per role) or you also use JetBrains
+            </td>
+          </tr>
+        </table>
+        <p class="muted">
+          All four speak the OpenAI Chat Completions API, so all four work identically well with
+          Kompass — this is a taste choice, not a compatibility one.
+        </p>
+
+        <h2 id="cline">↳ Cline / Roo Code / Kilo Code</h2>
+        <ol>
+          <li>
+            Open the Extensions panel (<code>⇧⌘X</code> on Mac, <code>Ctrl+Shift+X</code> on
+            Windows/Linux), search "<b>Cline</b>" (or "Roo Code" / "Kilo Code"), click
+            <b>Install</b>.
+          </li>
+          <li>
+            Click the extension's icon in the Activity Bar (left edge), then the
+            <b>gear/settings</b> icon in its panel — or it'll prompt you to configure a provider on
+            first run.
+          </li>
+          <li>Set <b>API Provider</b> to <b>OpenAI Compatible</b> and fill in:</li>
+        </ol>
         <pre><code>API Provider:  OpenAI Compatible
 Base URL:      https://kompass.&lt;you&gt;.workers.dev/v1
 API Key:       &lt;bearer&gt;
 Model ID:      kompass</code></pre>
+        <ol start="4">
+          <li>Click <b>Save</b>, start a new task, and ask it something.</li>
+        </ol>
+        <div class="note good">
+          <b>Verify it's working:</b> open
+          <code>https://kompass.&lt;you&gt;.workers.dev/status.html</code>
+          right after — the "Last routes" table should show a fresh request. The extension's own UI
+          always shows the model name you typed ("kompass"); the dashboard shows which free model
+          actually answered.
+        </div>
         <p class="muted">
-          Tool/function calling works — the agentic loop (file edits, commands) runs through
+          Tool/function calling works — the agentic loop (file edits, running commands) runs through
           Kompass's AGENTIC lane models.
         </p>
 
-        <h2 id="continue">Connect: Continue (VS Code / JetBrains)</h2>
-        <p>In <code>~/.continue/config.yaml</code>:</p>
+        <h2 id="continue">↳ Continue</h2>
+        <ol>
+          <li>
+            Extensions panel (<code>⇧⌘X</code> / <code>Ctrl+Shift+X</code>) → search
+            "<b>Continue</b>" → <b>Install</b>.
+          </li>
+          <li>
+            Open its config: click the <b>gear icon</b> in the Continue sidebar, or Command Palette
+            (<code>⇧⌘P</code> / <code>Ctrl+Shift+P</code>) → "<b>Continue: Open config.yaml</b>".
+          </li>
+          <li>Add a models entry:</li>
+        </ol>
         <pre><code>models:
   - name: Kompass
     provider: openai
@@ -362,6 +446,19 @@ Model ID:      kompass</code></pre>
     apiBase: https://kompass.&lt;you&gt;.workers.dev/v1
     apiKey: &lt;bearer&gt;
     roles: [chat, edit, apply]</code></pre>
+        <ol start="4">
+          <li>
+            Save the file, reload the window if prompted, then pick <b>Kompass</b> from the model
+            dropdown at the bottom of the Continue chat panel.
+          </li>
+        </ol>
+        <div class="note good">
+          <b>Verify it's working:</b> send a chat message, then check <code>/status.html</code> on
+          your Worker — you should see the request land with the lane the classifier picked.
+        </div>
+        <p class="muted">
+          Same config file (and same steps 2–4) if you use Continue in JetBrains instead of VS Code.
+        </p>
 
         <h2 id="aider">Connect: Aider &amp; anything OpenAI-compatible</h2>
         <pre><code>export OPENAI_API_BASE=https://kompass.&lt;you&gt;.workers.dev/v1
@@ -373,6 +470,70 @@ aider --model openai/kompass</code></pre>
           models via <code>GET /v1/models</code> will find <code>kompass</code> and the five
           lane-pinned variants there.
         </p>
+
+        <h2 id="direct-api">Connect: Your own code (direct API)</h2>
+        <p>
+          Kompass is a drop-in replacement for the Anthropic (or OpenAI) API — point any SDK at your
+          Worker URL and use the bearer as the API key. Auth is accepted on either
+          <code>Authorization: Bearer &lt;bearer&gt;</code> or
+          <code>x-api-key: &lt;bearer&gt;</code>, so both SDK auth styles work unchanged. All
+          dialects share the same lanes, fallback chains and quota ledger.
+        </p>
+        <p><b>Anthropic SDK</b> (TypeScript):</p>
+        <pre><code>import Anthropic from "@anthropic-ai/sdk";
+
+const client = new Anthropic({
+  baseURL: "https://kompass.&lt;you&gt;.workers.dev",
+  authToken: process.env.KOMPASS_BEARER,
+});
+
+const res = await client.messages.create({
+  model: "kompass",              // auto routing — or kompass-fast/-simple/-agentic/-hard/-longctx
+  max_tokens: 1024,
+  messages: [{ role: "user", content: "Hello" }],
+});</code></pre>
+        <p><b>Anthropic SDK</b> (Python):</p>
+        <pre><code>from anthropic import Anthropic
+
+client = Anthropic(
+    base_url="https://kompass.&lt;you&gt;.workers.dev",
+    auth_token=os.environ["KOMPASS_BEARER"],
+)
+res = client.messages.create(
+    model="kompass", max_tokens=1024,
+    messages=[{"role": "user", "content": "Hello"}],
+)</code></pre>
+        <p><b>OpenAI SDK</b> (any language — note the <code>/v1</code> suffix):</p>
+        <pre><code>import OpenAI from "openai";
+
+const client = new OpenAI({
+  baseURL: "https://kompass.&lt;you&gt;.workers.dev/v1",
+  apiKey: process.env.KOMPASS_BEARER,
+});
+const res = await client.chat.completions.create({
+  model: "kompass",
+  messages: [{ role: "user", content: "Hello" }],
+});</code></pre>
+        <p><b>Raw curl</b>:</p>
+        <pre><code>curl https://kompass.&lt;you&gt;.workers.dev/v1/messages \
+  -H "x-api-key: &lt;bearer&gt;" \
+  -H "content-type: application/json" \
+  -d '{"model": "kompass", "max_tokens": 256,
+       "messages": [{"role": "user", "content": "Hi"}]}'</code></pre>
+        <p>
+          <b>Environment variables</b> — anything that reads the Anthropic env vars (Claude Code
+          included) redirects without code changes:
+        </p>
+        <pre><code>export ANTHROPIC_BASE_URL="https://kompass.&lt;you&gt;.workers.dev"
+export ANTHROPIC_AUTH_TOKEN="&lt;bearer&gt;"</code></pre>
+        <div class="note">
+          Kompass routes to <b>free upstream models</b>, not to Anthropic — so Anthropic-specific
+          features (extended thinking blocks, beta headers, prompt-caching semantics) behave per
+          whatever model serves the lane. Model names: any unrecognized name (e.g.
+          <code>claude-sonnet-4-5</code>) auto-routes; <code>kompass-&lt;lane&gt;</code>
+          pins a lane and skips the classifier. See
+          <a href="#models">Model names &amp; headers</a>.
+        </div>
 
         <h2 id="ui">Web workbench (<code>kompass ui</code>)</h2>
         <p>
@@ -417,6 +578,27 @@ aider --model openai/kompass</code></pre>
           never reaches the page. The sidebar shows live per-provider daily quota.
         </p>
 
+        <h2 id="kompass-ai">Kompass AI — hosted chat app (<code>chat/</code>)</h2>
+        <p>
+          Prefer a gateway UI reachable from any device, not just your laptop? <code>chat/</code> is
+          a standalone Next.js app you deploy to your own Vercel account — login <i>is</i>
+          the bearer token (entered once, validated live, stored only in that browser's
+          localStorage). Chat (vision attachments, markdown/code rendering, served-by/lane
+          provenance on every reply), Image generation, and Research (a real tool-use loop against
+          two small serverless routes) — all routed through your Worker exactly like every other
+          client here. Live reference deploy:
+          <a href="https://kompass-chat.vercel.app">kompass-chat.vercel.app</a> (point it at your
+          own Worker + bearer). Deploy your own:
+        </p>
+        <pre><code>cd chat && npm install && npm run build
+vercel link && vercel deploy --prod</code></pre>
+        <p class="muted">
+          Requires the Worker's CORS support (ships by default) so a different origin can call
+          <code>/v1/messages</code>, <code>/v1/images/generations</code>, etc. Agent (bash/file
+          tools) and Slides stay <code>kompass ui</code>-only — no filesystem in a hosted serverless
+          context.
+        </p>
+
         <h2 id="routing">How routing works</h2>
         <ol>
           <li>
@@ -424,11 +606,10 @@ aider --model openai/kompass</code></pre>
             LONGCTX, tool-less short prompt → FAST, etc. Roughly 60% of requests short-circuit here.
           </li>
           <li>
-            <b>Classifier verdict:</b> otherwise a dedicated free classifier model (with its own
-            budget and fallback chain, separate from the coding lanes) labels the task FAST / SIMPLE
-            / AGENTIC / HARD in ~100–700ms; verdicts are cached in the Durable Object. If the
-            classifier is down or rate-limited, routing falls back to heuristics — it never blocks a
-            request.
+            <b>Classifier verdict:</b> otherwise a dedicated free classifier model (its own budget,
+            separate from every coding lane) labels the task FAST / SIMPLE / AGENTIC / HARD in
+            ~100–700ms; verdicts are cached in the Durable Object. If the classifier is down or
+            rate-limited, routing falls back to heuristics — it never blocks a request.
           </li>
           <li>
             <b>Lane chain walk:</b> each lane is an ordered list of <code>provider/model</code>
@@ -520,11 +701,81 @@ deprecated_models:                     # rewritten to the replacement at every c
     note: "superseded"
     since: "2026-07-23"
 
+disabled_models:                       # temporarily off, no replacement — reversible anytime
+  - openrouter/poolside/flaky-model:free  # manage via `kompass models disable/enable`, not by hand
+
 privacy:                               # content matching these never reaches trains_on_data providers
   block_patterns: ["**/secrets/**", "*.pem"]
   block_regexes: ["-----BEGIN [A-Z ]*PRIVATE KEY-----"]
 
 allow_paid: false                      # paid models hard-blocked unless you flip this</code></pre>
+        <p>
+          <b>Enable/disable a model</b> without hand-editing YAML:
+          <code>kompass models disable &lt;provider/model&gt;</code> /
+          <code>kompass models enable &lt;provider/model&gt;</code> /
+          <code>kompass models list</code> (✓/✗ status for every configured entry). Edits
+          <code>disabled_models</code> in place (preserving comments) and validates before writing.
+          A disabled entry stays visible in its lane's chain — struck through on the status
+          dashboard's <a href="#cli">Config tab</a> — but is skipped everywhere it would otherwise
+          be tried (chat lanes, <code>/v1/images</code>, <code>/v1/embeddings</code>, the
+          classifier). Reversible, unlike <code>kompass deprecate</code> — no replacement, flip it
+          back on anytime.
+        </p>
+
+        <h2 id="creative">Design, game &amp; creative work — and media generation</h2>
+        <p>
+          The lanes cover creative <b>coding</b>: web/UI design, CSS/WebGL animation, game code
+          (three.js, Phaser, Godot). A 2026-07-23 tool-probe pass added models picked for exactly
+          this traffic — <code>poolside/laguna-m.1:free</code> and
+          <code>nvidia/nemotron-3-super-120b-a12b:free</code> to AGENTIC,
+          <code>mistralai/mistral-small-4-119b-2603</code> to SIMPLE. Every candidate is probed for
+          a real tool-calling round trip before it's wired in; probe results and exclusions live in
+          <code>config/lanes.yaml</code> comments and <code>docs/DECISIONS.md</code>.
+        </p>
+        <p>
+          <b>Image generation is built in</b> (2026-07-24):
+          <code>POST /v1/images/generations</code> (OpenAI Images API-compatible) routes free
+          Workers AI models — flux-1-schnell with an SDXL-lightning fallback — through the same
+          quota ledger. <b>Embeddings too</b>: <code>POST /v1/embeddings</code> (bge-m3, Gemini
+          fallback) works with Continue indexing and RAG pipelines. Chains live in
+          <code>config/lanes.yaml</code> (<code>images:</code> / <code>embeddings:</code>); see
+          <a href="#api">API endpoints</a>. And chat requests carrying images/PDFs now have
+          non-Google vision fallbacks (<code>multimodal_models</code> in
+          <code>providers.yaml</code>) — a Gemini quota-out no longer blocks image traffic.
+        </p>
+        <p>
+          Still <i>direct-only</i> (no gateway endpoint yet — free-quota-gated at ship time), on the
+          same keys in your secrets file:
+        </p>
+        <table>
+          <tr>
+            <th>Provider (your existing key)</th>
+            <th>Free media models</th>
+          </tr>
+          <tr>
+            <td>Google AI Studio</td>
+            <td>
+              <code>imagen-4.0-*</code> (images) · <code>gemini-*-image</code> (image gen + editing)
+              · <code>veo-3.1-*</code> (video) · <code>lyria-3</code> (music) ·
+              <code>gemini-*-tts</code> (speech)
+            </td>
+          </tr>
+          <tr>
+            <td>Cloudflare Workers AI</td>
+            <td>
+              <code>flux-2-dev</code> / <code>flux-2-klein</code> / <code>flux-1-schnell</code> ·
+              SDXL variants · Leonardo <code>phoenix-1.0</code> / <code>lucid-origin</code>
+              (against your daily free neurons)
+            </td>
+          </tr>
+        </table>
+        <p class="muted">
+          A <code>/v1/images</code> endpoint on the Worker is tracked as post-v1 backlog (<code
+            >BUILD_PLAN.md</code
+          >
+          §8). Vision <i>input</i> (images/PDFs in chat requests) is already routed — multimodal
+          requests skip text-only providers automatically.
+        </p>
 
         <h2 id="reliability">Reliability model (why sessions never stall)</h2>
         <p>
@@ -614,6 +865,24 @@ https://kompass.&lt;you&gt;.workers.dev/status.html   # live dashboard</code></p
             <td>OpenAI Responses API (Codex CLI). Streaming + tools.</td>
           </tr>
           <tr>
+            <td><code>POST /v1/images/generations</code></td>
+            <td>bearer</td>
+            <td>
+              OpenAI Images API-compatible image generation — <code>{prompt}</code> →
+              <code>{data: [{b64_json}]}</code>. Free Workers AI chain (flux → SDXL fallback), same
+              quota ledger.
+            </td>
+          </tr>
+          <tr>
+            <td><code>POST /v1/embeddings</code></td>
+            <td>bearer</td>
+            <td>
+              OpenAI-compatible embeddings — <code>{input}</code> → vectors. Workers AI bge-m3
+              (1024d) with Gemini fallback (3072d); response <code>model</code>
+              says which served it.
+            </td>
+          </tr>
+          <tr>
             <td><code>GET /v1/models</code></td>
             <td>bearer</td>
             <td>Model roster for client pickers.</td>
@@ -690,6 +959,14 @@ https://kompass.&lt;you&gt;.workers.dev/status.html   # live dashboard</code></p
           <tr>
             <td><code>pnpm kompass deprecate &lt;old&gt; --replaced-by &lt;new&gt;</code></td>
             <td>Register a model deprecation; auto-substituted at every push.</td>
+          </tr>
+          <tr>
+            <td><code>pnpm kompass models disable|enable &lt;provider/model&gt;</code></td>
+            <td>Reversible on/off switch — no replacement, unlike deprecate.</td>
+          </tr>
+          <tr>
+            <td><code>pnpm kompass models list</code></td>
+            <td>✓/✗ status for every configured model entry.</td>
           </tr>
           <tr>
             <td><code>pnpm kompass bench</code></td>

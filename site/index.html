@@ -8,7 +8,15 @@
       name="description"
       content="Keep coding when your Claude limits hit. One Cloudflare Worker routes Claude Code across free model providers by task complexity — $0 infra, $0 models, your keys stay yours."
     />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='kg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2338bdf8'/%3E%3Cstop offset='1' stop-color='%236366f1'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='30' fill='url(%23kg)'/%3E%3Ccircle cx='32' cy='32' r='24' fill='%230f172a'/%3E%3Cg stroke='%237dd3fc' stroke-width='2.5' stroke-linecap='round'%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(45 32 32)'/%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(135 32 32)'/%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(225 32 32)'/%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(315 32 32)'/%3E%3C/g%3E%3Cpolygon points='32,12 39,32 25,32' fill='%23f43f5e'/%3E%3Cpolygon points='32,52 25,32 39,32' fill='%23e2e8f0'/%3E%3Ccircle cx='32' cy='32' r='3.5' fill='%230f172a' stroke='%23e2e8f0' stroke-width='1.5'/%3E%3C/svg%3E" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='kg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2338bdf8'/%3E%3Cstop offset='1' stop-color='%236366f1'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='30' fill='url(%23kg)'/%3E%3Ccircle cx='32' cy='32' r='24' fill='%230f172a'/%3E%3Cg stroke='%237dd3fc' stroke-width='2.5' stroke-linecap='round'%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(45 32 32)'/%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(135 32 32)'/%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(225 32 32)'/%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(315 32 32)'/%3E%3C/g%3E%3Cpolygon points='32,12 39,32 25,32' fill='%23f43f5e'/%3E%3Cpolygon points='32,52 25,32 39,32' fill='%23e2e8f0'/%3E%3Ccircle cx='32' cy='32' r='3.5' fill='%230f172a' stroke='%23e2e8f0' stroke-width='1.5'/%3E%3C/svg%3E"
+    />
+    <!-- Safari doesn't render SVG favicons — PNG/ICO fallbacks below -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <style>
       :root {
         color-scheme: dark;
@@ -656,11 +664,139 @@
           transform: none;
         }
       }
+
+      /* top nav */
+      .topnav {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        gap: 1.4rem;
+        padding: 0.7rem 1.25rem;
+        background: #0a0d14cc;
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--line);
+        flex-wrap: wrap;
+      }
+      .topnav .brand {
+        font-weight: 800;
+        color: var(--fg);
+        margin-right: auto;
+        white-space: nowrap;
+      }
+      .topnav .links {
+        display: flex;
+        gap: 1.1rem;
+        flex-wrap: wrap;
+        font-size: 0.86rem;
+      }
+      .topnav .links a {
+        color: var(--muted);
+      }
+      .topnav .links a:hover {
+        color: var(--fg);
+        text-decoration: none;
+      }
+      .topnav .navcta {
+        display: flex;
+        gap: 0.6rem;
+      }
+      .topnav .navcta .btn {
+        padding: 0.4rem 0.85rem;
+        font-size: 0.84rem;
+      }
+
+      /* chip strip (stat / provider badges) */
+      .chiprow {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        justify-content: center;
+        margin: 1rem auto 0;
+        max-width: 40rem;
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        border: 1px solid var(--line);
+        background: #ffffff08;
+        border-radius: 999px;
+        padding: 0.28rem 0.75rem;
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+      .chip b {
+        color: var(--fg);
+      }
+
+      /* capability badges inside tables */
+      .cap {
+        display: inline-block;
+        border-radius: 5px;
+        padding: 0.05rem 0.4rem;
+        font-size: 0.72rem;
+        font-weight: 700;
+        margin-right: 0.3rem;
+        white-space: nowrap;
+      }
+      .cap.vision {
+        background: #a78bfa22;
+        color: var(--purple);
+      }
+      .cap.ctx {
+        background: #4d8dff22;
+        color: var(--blue);
+      }
+      .cap.reason {
+        background: #f4635e22;
+        color: var(--red);
+      }
+      .stat-strip {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+        gap: 0.8rem;
+        margin: 2rem 0;
+      }
+      .stat {
+        text-align: center;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 1rem 0.6rem;
+        background: linear-gradient(160deg, var(--card2), var(--card));
+      }
+      .stat b {
+        display: block;
+        font-size: 1.55rem;
+        background: linear-gradient(100deg, var(--amber), var(--pink));
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      .stat span {
+        font-size: 0.78rem;
+        color: var(--muted);
+      }
     </style>
   </head>
   <body>
+    <nav class="topnav">
+      <a class="brand" href="#top">🧭 Kompass</a>
+      <div class="links">
+        <a href="#models">Models</a>
+        <a href="#how">How it works</a>
+        <a href="#tools">Tools</a>
+        <a href="#quickstart">Setup</a>
+        <a href="#faq">FAQ</a>
+      </div>
+      <div class="navcta">
+        <a class="btn ghost" href="https://kompass-chat.vercel.app">Kompass AI ↗</a>
+        <a class="btn ghost" href="https://github.com/vinoth4v/kompass">GitHub ↗</a>
+      </div>
+    </nav>
     <main>
-      <header class="hero">
+      <header class="hero" id="top">
         <!-- animated compass -->
         <svg class="compass" viewBox="0 0 120 120" aria-hidden="true">
           <defs>
@@ -697,19 +833,27 @@
         </svg>
         <h1>Kompass</h1>
         <p class="tag">
-          Keep coding when your <b>Claude limits</b> hit. One Cloudflare Worker routes
-          <b>Claude&nbsp;Code, Codex, Cursor, Cline &amp; more</b> across free model providers by
-          task complexity — <b>$0 infra, $0 models</b>, and your API keys never leave your machines.
+          Stop losing momentum when your <b>AI coding limits</b> hit — on any tool. One Cloudflare
+          Worker routes <b>Claude&nbsp;Code, Codex, Cursor, Cline &amp; more</b> across free model
+          providers by task complexity — <b>$0 infra, $0 models</b>, and your API keys never leave
+          your machines.
         </p>
         <span class="pill"
-          ><span class="dot"></span> 10 free providers: OpenRouter · NVIDIA · Google · Groq ·
-          Mistral · GitHub Models · Cloudflare AI · SambaNova · Cohere · Hugging Face</span
+          ><span class="dot"></span> live on the free tier — 30+ models, 10 providers</span
         >
         <div class="cta">
           <a class="btn primary" href="#quickstart">Install in 10 minutes</a>
+          <a class="btn ghost" href="https://kompass-chat.vercel.app">Try Kompass AI ↗</a>
           <a class="btn ghost" href="docs.html">Documentation</a>
           <a class="btn ghost" href="#builder">Setup Builder</a>
           <a class="btn ghost" href="https://github.com/vinoth4v/kompass">GitHub ↗</a>
+        </div>
+
+        <div class="stat-strip">
+          <div class="stat"><b>30+</b><span>free models</span></div>
+          <div class="stat"><b>10</b><span>providers pooled</span></div>
+          <div class="stat"><b>5</b><span>complexity lanes</span></div>
+          <div class="stat"><b>$0</b><span>infra &amp; models</span></div>
         </div>
 
         <div class="term" aria-hidden="true">
@@ -727,7 +871,7 @@
       </header>
 
       <!-- ============ THE JOURNEY ============ -->
-      <p class="kicker">How it works</p>
+      <p class="kicker" id="how">How it works</p>
       <h2>The 30-millisecond journey of a request</h2>
       <p class="muted">
         Claude Code speaks its normal Anthropic protocol. Kompass classifies each turn, checks the
@@ -959,56 +1103,121 @@
         </svg>
       </div>
 
+      <!-- ============ MODELS ============ -->
+      <p class="kicker" id="models">The roster</p>
+      <h2>30+ free models, picked by what the task needs</h2>
+      <p class="muted">
+        Live from <code>config/lanes.yaml</code> — edit the YAML, <code>kompass config push</code>,
+        done. No redeploy.
+      </p>
+      <div class="chiprow">
+        <span class="chip">🧩 <b>OpenRouter</b></span>
+        <span class="chip">🟢 <b>NVIDIA</b></span>
+        <span class="chip">🔷 <b>Google</b></span>
+        <span class="chip">⚡ <b>Groq</b></span>
+        <span class="chip">🌬️ <b>Mistral</b></span>
+        <span class="chip">🐙 <b>GitHub Models</b></span>
+        <span class="chip">☁️ <b>Cloudflare AI</b></span>
+        <span class="chip">🧠 <b>SambaNova</b></span>
+        <span class="chip">✨ <b>Cohere</b></span>
+        <span class="chip">🤗 <b>Hugging Face</b></span>
+      </div>
+
       <table class="lanes-table">
         <tr>
           <th>Lane</th>
           <th>Serves</th>
-          <th>Spread</th>
-          <th>Default chain (hot-editable YAML)</th>
+          <th>Capability</th>
+          <th>Top of chain</th>
         </tr>
         <tr>
           <td><span class="lanechip" style="background: #34d39922; color: #34d399">FAST</span></td>
           <td>quick lookups, renames, one-liners</td>
-          <td class="mono muted">— (quality-first)</td>
-          <td class="mono muted">gemini-flash-lite → llama-8b-instant (groq) → step-3.7-flash</td>
+          <td class="muted">7-deep, quality-pinned</td>
+          <td class="mono muted">
+            gemini-3.5-flash-lite → llama-3.1-8b-instant (groq) → mistral-small → step-3.7-flash
+            (nvidia)
+          </td>
         </tr>
         <tr>
           <td>
             <span class="lanechip" style="background: #2dd4bf22; color: #2dd4bf">SIMPLE</span>
           </td>
           <td>single-file edits, docstrings</td>
-          <td class="mono muted">top 2</td>
-          <td class="mono muted">laguna-xs → codestral (mistral) → nemotron-49b</td>
+          <td class="muted">11-deep, spread top 2</td>
+          <td class="mono muted">
+            laguna-xs-2.1 → codestral (mistral) → nemotron-49b (nvidia) → mistral-small-4 (nvidia)
+          </td>
         </tr>
         <tr>
           <td>
             <span class="lanechip" style="background: #f5a52422; color: #f5a524">AGENTIC</span>
           </td>
           <td>multi-step tool work (default)</td>
-          <td class="mono muted">top 2</td>
-          <td class="mono muted">laguna-s → minimax-m3 → devstral → qwen3-coder (hf)</td>
+          <td class="muted">10-deep, spread top 2</td>
+          <td class="mono muted">
+            laguna-s-2.1 → minimax-m3 (nvidia) → laguna-m.1 → devstral-medium (mistral)
+          </td>
         </tr>
         <tr>
           <td><span class="lanechip" style="background: #f4635e22; color: #f4635e">HARD</span></td>
           <td>deep debugging, architecture</td>
-          <td class="mono muted">top 2</td>
-          <td class="mono muted">gpt-4.1 (github) → deepseek-v4-pro → deepseek-v3.2</td>
+          <td><span class="cap reason">🧠 frontier</span></td>
+          <td class="mono muted">
+            gpt-4.1 (github) → deepseek-v4-pro (nvidia) → deepseek-v3.2 (sambanova) → minimax-m3
+          </td>
         </tr>
         <tr>
           <td>
             <span class="lanechip" style="background: #a78bfa22; color: #a78bfa">LONGCTX</span>
           </td>
           <td>&gt;60k-token contexts</td>
-          <td class="mono muted">top 2</td>
-          <td class="mono muted">gemini-flash (1M) → nemotron-ultra (1M)</td>
+          <td><span class="cap ctx">📏 1M ctx</span></td>
+          <td class="mono muted">
+            gemini-3.6-flash (1M) → nemotron-3-ultra-550b (nvidia, 1M) → minimax-m3
+          </td>
         </tr>
       </table>
-      <p class="muted" style="font-size: 0.85rem">
-        Chains hot-reload from YAML with <code>kompass config push</code> — no redeploy. "Spread"
-        lanes pick their first attempt by weighted-random among the top N candidates (weighted by
-        each model's live success rate) instead of always #1 — spreads load and adapts to reality
-        without touching YAML. Paid models are unreachable unless you explicitly set
-        <code>allow_paid: true</code> (enforced in code).
+      <p class="muted" style="font-size: 0.85rem; margin-top: 0.6rem">
+        <span class="cap vision" style="margin-right: 0.4rem">👁 vision</span> every lane's chain
+        includes a Google entry, which reads images/PDFs natively — so image/PDF requests are
+        handled no matter which lane the classifier picks. SIMPLE and HARD additionally carry a
+        second, non-Google vision model as backup, so a Google outage or exhausted quota doesn't
+        stop image requests in those two lanes.
+      </p>
+
+      <table class="lanes-table" style="margin-top: 1.6rem">
+        <tr>
+          <th>Beyond chat</th>
+          <th>Serves</th>
+          <th>Chain</th>
+        </tr>
+        <tr>
+          <td>
+            <span class="lanechip" style="background: #f472b622; color: #f472b6">IMAGES</span>
+          </td>
+          <td class="muted">image generation</td>
+          <td class="mono muted">flux-1-schnell (cfai) → sdxl-lightning (cfai)</td>
+        </tr>
+        <tr>
+          <td>
+            <span class="lanechip" style="background: #4d8dff22; color: #4d8dff">EMBEDDINGS</span>
+          </td>
+          <td class="muted">vector search / RAG</td>
+          <td class="mono muted">bge-m3 (cfai) → gemini-embedding-001 (google)</td>
+        </tr>
+      </table>
+
+      <p class="muted" style="font-size: 0.85rem; margin-top: 1rem">
+        "Spread" lanes pick their first attempt by weighted-random among the top candidates
+        (weighted by live success rate) instead of always #1, so load spreads across comparable
+        models instead of hammering one RPM ceiling. Every chain is a live fallback: a dead model
+        gets a 10-minute cooldown and the next one in line answers instead. Paid models are
+        unreachable unless you explicitly set <code>allow_paid: true</code> (enforced in code) — see
+        the full, always-current roster in
+        <a href="https://github.com/vinoth4v/kompass/blob/main/config/lanes.yaml"
+          >config/lanes.yaml</a
+        >.
       </p>
 
       <!-- ============ FEATURES with mini-viz ============ -->
@@ -1260,18 +1469,79 @@
         </div>
       </div>
 
+      <!-- ============ COMPETITIVE POSITIONING ============ -->
+      <p class="kicker">Not the only option</p>
+      <h2>Why not just use OpenRouter, LiteLLM, or claude-code-router?</h2>
+      <p class="muted">
+        The free-tier-stacking space got crowded fast — hosted aggregators, self-hosted proxies,
+        static routers, local gateways. Most of them are good at one thing. Kompass is the one
+        that's
+        <b>always on, shared across every machine, and routes by what the task actually needs</b> —
+        not just whichever key answers first.
+      </p>
+      <table class="lanes-table">
+        <tr>
+          <th>Tool</th>
+          <th>Good at</th>
+          <th>Where Kompass differs</th>
+        </tr>
+        <tr>
+          <td><b>OpenRouter</b> <span class="mono muted">:free / auto</span></td>
+          <td class="muted">one key, huge model catalog, availability-based switching</td>
+          <td class="muted">
+            pools OpenRouter <i>alongside</i> NVIDIA, Google, Groq, Mistral, GitHub Models &amp;
+            more — one dead provider doesn't stall your whole day
+          </td>
+        </tr>
+        <tr>
+          <td><b>claude-code-router</b></td>
+          <td class="muted">static rules, fallback chains, custom-router hook</td>
+          <td class="muted">
+            a semantic classifier picks the lane by task complexity, not fixed rules — and it isn't
+            Claude-Code-only: same routing for Codex, Cursor, Cline, Aider
+          </td>
+        </tr>
+        <tr>
+          <td><b>LiteLLM proxy</b></td>
+          <td class="muted">100+ provider adapters, budgets, full self-hosted control</td>
+          <td class="muted">
+            nothing to run or patch — a Cloudflare Worker on the free tier <i>is</i> the server,
+            always on, with free-tier quota pooling built in from day one
+          </td>
+        </tr>
+        <tr>
+          <td>
+            <b>Local free-stacking proxies</b> <span class="mono muted">(9Router, etc.)</span>
+          </td>
+          <td class="muted">stack many free tiers behind one local endpoint</td>
+          <td class="muted">
+            lives at the edge, not on your laptop — a Durable Object ledger is shared by every
+            machine you code from, so quota tracking survives closing the lid
+          </td>
+        </tr>
+      </table>
+      <p class="muted" style="margin-top: 1rem">
+        Kompass isn't chasing the biggest catalog or the most config knobs — it's the thin layer
+        that gets out of the way: deploy once to your own Cloudflare account, point whatever editor
+        you use at it, and keep coding on free capacity no matter which machine or tool you're in.
+      </p>
+
       <!-- ============ OBSERVABILITY ============ -->
       <p class="kicker">Full visibility</p>
       <h2>Know exactly what served every turn</h2>
       <p class="muted">
-        Claude Code always shows "Sonnet 4.5" — that's just the requested alias. Your Kompass
-        dashboard (<code>/status.html</code> on your Worker, or <code>kompass status</code> in the
-        terminal) shows the truth: which free model actually answered, the lane the classifier
-        picked, latency, <b>tokens in/out per request</b>, per-provider daily token totals, live
-        success-rate per model, remaining quota, active cooldowns — and Kompass's <b>own</b>
-        Cloudflare Workers/KV/Durable-Object usage against the free-plan ceilings, so you see
-        infrastructure headroom, not just LLM quota. Auto-refreshes every 15 seconds.
+        Claude Code always shows "Sonnet 4.5" — that's just the requested alias.
+        <code>/status.html</code> (or <code>kompass status</code>) shows the truth, live, refreshed
+        every 15s:
       </p>
+      <div class="chiprow" style="margin-top: 0.6rem">
+        <span class="chip">✅ model that actually answered</span>
+        <span class="chip">🎯 classifier lane + confidence</span>
+        <span class="chip">📊 tokens in/out per request</span>
+        <span class="chip">📈 live success-rate per model</span>
+        <span class="chip">⏳ remaining quota + cooldowns</span>
+        <span class="chip">☁️ Worker/KV/DO free-plan headroom</span>
+      </div>
 
       <div class="dash" aria-hidden="true">
         <div class="dash-head">
@@ -1538,6 +1808,69 @@ claude-free        # Claude Code, now riding free models through your Worker</co
           ></label
         >
         <input id="f-gq" placeholder="gsk_…" />
+        <label for="f-mi"
+          >Mistral API key
+          <span class="muted"
+            >(optional) ·
+            <a href="https://console.mistral.ai" target="_blank" rel="noopener"
+              >create key ↗</a
+            ></span
+          ></label
+        >
+        <input id="f-mi" placeholder="Experiment tier key…" />
+        <label for="f-gh"
+          >GitHub Models token
+          <span class="muted"
+            >(optional) ·
+            <a
+              href="https://github.com/settings/personal-access-tokens"
+              target="_blank"
+              rel="noopener"
+              >create token ↗</a
+            ></span
+          ></label
+        >
+        <input id="f-gh" placeholder="github_pat_… (fine-grained, Models: read)" />
+        <label for="f-cf"
+          >Cloudflare Workers AI token
+          <span class="muted"
+            >(optional) ·
+            <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener"
+              >create token ↗</a
+            ></span
+          ></label
+        >
+        <input id="f-cf" placeholder="Workers AI token…" />
+        <label for="f-sn"
+          >SambaNova API key
+          <span class="muted"
+            >(optional) ·
+            <a href="https://cloud.sambanova.ai" target="_blank" rel="noopener"
+              >create key ↗</a
+            ></span
+          ></label
+        >
+        <input id="f-sn" placeholder="SambaNova key…" />
+        <label for="f-co"
+          >Cohere trial key
+          <span class="muted"
+            >(optional) ·
+            <a href="https://dashboard.cohere.com/api-keys" target="_blank" rel="noopener"
+              >create key ↗</a
+            ></span
+          ></label
+        >
+        <input id="f-co" placeholder="Cohere trial key…" />
+        <label for="f-hf"
+          >Hugging Face token
+          <span class="muted"
+            >(optional) ·
+            <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener"
+              >create token ↗</a
+            ></span
+          ></label
+        >
+        <input id="f-hf" placeholder="hf_… (Inference Providers)" />
 
         <div class="rowbtns">
           <button class="primary" id="buildbtn">Build my setup</button>
@@ -1610,26 +1943,29 @@ Custom model:              kompass</code><button class="copybtn">copy</button></
       <div class="step">
         <div class="n">✦</div>
         <div>
-          <b>Cline / Roo Code / Kilo Code (VS Code)</b>
-          <span class="muted">— pick the "OpenAI Compatible" provider</span>
+          <b>VS Code</b>
+          <span class="muted"
+            >— VS Code has no built-in AI backend; install a free extension first, then point it at
+            Kompass. Step-by-step for all four options:
+            <a href="docs.html#vscode">VS Code setup guide →</a></span
+          >
+          <ol style="margin: 0.5rem 0 0.8rem; padding-left: 1.3rem; color: var(--muted)">
+            <li>
+              Extensions panel (<span class="mono">⇧⌘X</span>) → install <b>Cline</b>,
+              <b>Roo Code</b>, or <b>Kilo Code</b>
+            </li>
+            <li>Open its settings → API Provider: <b>OpenAI Compatible</b></li>
+          </ol>
           <pre><code>API Provider:  OpenAI Compatible
 Base URL:      https://kompass.&lt;you&gt;.workers.dev/v1
 API Key:       &lt;your bearer token&gt;
 Model ID:      kompass</code><button class="copybtn">copy</button></pre>
-        </div>
-      </div>
-      <div class="step">
-        <div class="n">➜</div>
-        <div>
-          <b>Continue (VS Code / JetBrains)</b>
-          <span class="muted">— one models block in config.yaml</span>
-          <pre><code>models:
-  - name: Kompass
-    provider: openai
-    model: kompass
-    apiBase: https://kompass.&lt;you&gt;.workers.dev/v1
-    apiKey: &lt;your bearer token&gt;
-    roles: [chat, edit, apply]</code><button class="copybtn">copy</button></pre>
+          <p class="muted" style="font-size: 0.85rem; margin: 0.6rem 0 0">
+            Prefer <b>Continue</b> instead (VS Code or JetBrains)? Same values, one
+            <span class="mono">models:</span> block in
+            <span class="mono">~/.continue/config.yaml</span> —
+            <a href="docs.html#continue">Continue setup →</a>
+          </p>
         </div>
       </div>
       <div class="step">
@@ -1639,6 +1975,38 @@ Model ID:      kompass</code><button class="copybtn">copy</button></pre>
           <pre><code>export OPENAI_API_BASE=https://kompass.&lt;you&gt;.workers.dev/v1
 export OPENAI_API_KEY=&lt;your bearer token&gt;
 aider --model openai/kompass</code><button class="copybtn">copy</button></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">{}</div>
+        <div>
+          <b>Your own code (direct API)</b>
+          <span class="muted"
+            >— drop-in for the Anthropic or OpenAI SDK; auth via
+            <span class="mono">Authorization: Bearer</span> or <span class="mono">x-api-key</span>,
+            both accepted. Full SDK + curl examples:
+            <a href="docs.html#direct-api">Direct API docs →</a></span
+          >
+          <pre><code>import Anthropic from "@anthropic-ai/sdk";
+const client = new Anthropic({
+  baseURL: "https://kompass.&lt;you&gt;.workers.dev",
+  authToken: process.env.KOMPASS_BEARER,
+});
+await client.messages.create({ model: "kompass", max_tokens: 1024,
+  messages: [{ role: "user", content: "Hello" }] });</code><button class="copybtn">copy</button></pre>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">◆</div>
+        <div>
+          <b>No editor? Use Kompass AI</b>
+          <span class="muted"
+            >— a hosted chat app for your gateway, no install required. Log in with the same bearer
+            token, then chat (markdown + code rendering, vision), generate images, or run multi-step
+            web research — every reply shows which free model actually served it. Runs entirely
+            client-side against your own Worker; nothing is stored on our servers.
+            <a href="https://kompass-chat.vercel.app">Open Kompass AI →</a></span
+          >
         </div>
       </div>
       <div class="step">
@@ -1671,7 +2039,7 @@ https://kompass.&lt;you&gt;.workers.dev/status.html   # live dashboard in the br
   - nvidia/z-ai/glm-5.2          # ← your addition</code><button class="copybtn">copy</button></pre>
 
       <!-- ============ FAQ ============ -->
-      <p class="kicker">Questions</p>
+      <p class="kicker" id="faq">Questions</p>
       <h2>FAQ</h2>
       <details>
         <summary>Is this really $0?</summary>
@@ -1752,7 +2120,20 @@ https://kompass.&lt;you&gt;.workers.dev/status.html   # live dashboard in the br
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const FIELDS = ['f-sub', 'f-bearer', 'f-or', 'f-nv', 'f-gg', 'f-gq'];
+      const FIELDS = [
+        'f-sub',
+        'f-bearer',
+        'f-or',
+        'f-nv',
+        'f-gg',
+        'f-gq',
+        'f-mi',
+        'f-gh',
+        'f-cf',
+        'f-sn',
+        'f-co',
+        'f-hf',
+      ];
       const LS = 'kompass-setup-v1';
 
       // restore + persist locally (never transmitted)
@@ -1785,6 +2166,12 @@ https://kompass.&lt;you&gt;.workers.dev/status.html   # live dashboard in the br
         if ($('f-nv').value.trim()) s.NVIDIA_API_KEY = $('f-nv').value.trim();
         if ($('f-gg').value.trim()) s.GOOGLE_AI_KEY = $('f-gg').value.trim();
         if ($('f-gq').value.trim()) s.GROQ_API_KEY = $('f-gq').value.trim();
+        if ($('f-mi').value.trim()) s.MISTRAL_API_KEY = $('f-mi').value.trim();
+        if ($('f-gh').value.trim()) s.GITHUB_MODELS_KEY = $('f-gh').value.trim();
+        if ($('f-cf').value.trim()) s.CF_WORKERS_AI_KEY = $('f-cf').value.trim();
+        if ($('f-sn').value.trim()) s.SAMBANOVA_API_KEY = $('f-sn').value.trim();
+        if ($('f-co').value.trim()) s.COHERE_API_KEY = $('f-co').value.trim();
+        if ($('f-hf').value.trim()) s.HF_API_KEY = $('f-hf').value.trim();
         return s;
       }
 
