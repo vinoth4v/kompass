@@ -172,3 +172,36 @@ Write `docs/MORNING_REPORT.md`:
 - per-provider live/disabled table, open blockers,
 - the three things the human should review first,
 - exact `claude-free()` snippet ready to paste into `~/.zshrc`.
+
+---
+
+## §8. Post-v1 backlog (M0–M5 complete; not scheduled)
+
+Logged as they were discovered; each entry cites the DECISIONS.md line that motivated it.
+
+1. ~~**Per-model multimodal capability flag.**~~ **SHIPPED 2026-07-24** — `multimodal_models`
+   list on providers (providers.yaml + router.ts); vision models wired as SIMPLE/HARD
+   tails. Google is no longer a multimodal single point of failure. See DECISIONS.md.
+2. ~~**Media-generation surface.**~~ **PARTIALLY SHIPPED 2026-07-24** — `POST
+/v1/images/generations` (OpenAI Images API-compatible) routes `images.chain` (Workers
+   AI flux-1-schnell → sdxl-lightning) through the shared ledger; now has a UI consumer
+   (`chat/`'s Image mode, same day). Still open: video/music (Veo/Lyria — free-quota-gated
+   on AI Studio at ship time), and Gemini image models in the chain once the key has quota
+   (the code path exists).
+3. **Ollama local lane** — owner opted out 2026-07-23 (SPEC §5 Persona E); revisit only
+   on explicit request.
+4. **Embeddings** — **SHIPPED 2026-07-24** (was an implicit gap, surfaced by this pass):
+   `POST /v1/embeddings` routes `embeddings.chain` (Workers AI bge-m3 → Gemini
+   embedding). Vector dims differ per model — clients pin an entry when a vector store
+   needs stable dims.
+5. **Hosted chat app.** **SHIPPED 2026-07-24** — `chat/`, a standalone Next.js app
+   (own package.json, deployed independently to Vercel — https://kompass-chat.vercel.app)
+   with bearer-token login, multi-conversation chat (vision, markdown/code rendering,
+   served-by/lane provenance), image generation, and web research (tool-use loop against
+   two new serverless routes). Required Worker-side CORS + `x-kompass-served-by`/
+   `x-kompass-lane` response headers (src/worker/index.ts) so a different origin can call
+   the API at all. Agent/Slides intentionally not ported — no filesystem in a hosted
+   serverless context; those stay `kompass ui`-only. See DECISIONS.md for the two live-QA
+   bugs found and fixed (a flex `align-items:flex-start` overflow needing `max-width:100%`,
+   not the usual `min-width:0`; and native `confirm()` dialogs replaced with in-app
+   two-step confirmation).

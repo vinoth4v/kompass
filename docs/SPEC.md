@@ -24,6 +24,7 @@ Developers using Claude Code on a Pro subscription hit 5-hour/weekly usage limit
 - **No multi-tenant SaaS in v1.** Kompass deploys as _your personal_ Worker under _your_ Cloudflare account; one user, your keys as Worker secrets, gated by a bearer token. Rationale: no auth/billing complexity, keys never shared with a third-party operator (Cloudflare hosts, but only you can invoke).
 - **No fine-tuned custom classifier in v1.** We call an existing fast free reasoning model; training a RouteLLM-style classifier is P2.
 - **No GUI beyond a read-only status page in v1.** Config is YAML; dashboard editing is P1.
+- **No media generation (images/video/music) in v1.** Kompass speaks chat dialects; generation APIs return binary media. The free keys already unlock those models directly (AI Studio imagen/veo/lyria/gemini-image, Workers AI flux/SDXL) — a `/v1/images` surface is P2 (BUILD_PLAN §8.2).
 
 ## 4. Architecture
 
@@ -81,6 +82,12 @@ Developers using Claude Code on a Pro subscription hit 5-hour/weekly usage limit
 | HARD    | `nvidia/deepseek-v3.2` → `google/gemini-3-pro` (free 100/day) → AGENTIC chain                | max free reasoning                                                           |
 | LONGCTX | `google/gemini-flash` (1M) → `openrouter/qwen3-coder:free` (1M)                              | ctx > 60k tokens                                                             |
 
+> **This table is the original design sketch.** The live, continuously-verified lane
+> table is `config/lanes.yaml` (hot-reloaded via `kompass config push`) — model slugs
+> above have since been replaced as rosters churned (e.g. `qwen3-coder:free` dead-listed
+> before M0; design/creative additions 2026-07-23). Every add/remove is probed for
+> tool-calling first and logged in `docs/DECISIONS.md`.
+
 ## 5. User Stories (by persona, priority order)
 
 _Status legend: ✅ shipped & verified live · 🔲 not built. Updated 2026-07-23 after the
@@ -121,7 +128,7 @@ v1 build-out (M0–M5), the reliability redesign, the multi-dialect ingress and 
 - ✅ As an enterprise developer, I want a privacy guard that blocks requests containing configured path globs / secret patterns from providers flagged `trains_on_data: true` so that work code never leaks into training sets.
 - 🔲 As an enterprise developer, I want an optional local lane (Ollama) so that sensitive repos never leave my machine. _(Deliberately not built — owner opted out 2026-07-23.)_
 
-**Edge cases (all handled and regression-tested):** classifier rate-limited or returning garbage → its own fallback chain, then heuristics — never blocks; provider 200-with-empty-content or malformed body (null body, missing `choices`, tool_call without `function`) → treated as failure, falls through the chain invisibly; mid-generation provider death → invisible (response was buffered); every model in every lane exhausted → cross-lane cascade first, then a synthetic in-chat notice (never a raw protocol error); per-model 10-min health cooldown + stickiness release on failure.
+**Edge cases (all handled and regression-tested):** classifier rate-limited or returning garbage → heuristics (fallback classifiers released to lane work 2026-07-24) — never blocks; provider 200-with-empty-content or malformed body (null body, missing `choices`, tool_call without `function`) → treated as failure, falls through the chain invisibly; mid-generation provider death → invisible (response was buffered); every model in every lane exhausted → cross-lane cascade first, then a synthetic in-chat notice (never a raw protocol error); per-model 10-min health cooldown + stickiness release on failure.
 
 ## 6. Requirements
 

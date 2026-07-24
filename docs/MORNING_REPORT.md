@@ -74,3 +74,19 @@ claude-free() {
 - Today's config version pushed: `2026-07-23T10:41:31Z`.
 - Full decision log: `docs/DECISIONS.md` (24 entries — the Gemini `thoughtSignature`
   placeholder and the awaited-DO-write fix are the two most instructive).
+
+---
+
+## Addendum (2026-07-23, evening) — design/creative model pass
+
+This report is a morning snapshot; the same day continued well past it (git push
+resolved, Groq + 6 more providers enabled, multi-dialect ingress, UI workbench,
+buffer-then-emit reliability redesign — see `docs/DECISIONS.md` entries 25+). Latest
+change: a **design/game/webdesign model pass** — live rosters re-pulled and 9
+candidates tool-probed. Added `poolside/laguna-m.1:free` +
+`nvidia/nemotron-3-super-120b-a12b:free` (AGENTIC) and
+`mistralai/mistral-small-4-119b-2603` (SIMPLE); config pushed and smoke-verified live.
+Vision models pass probes but wait on a per-model multimodal flag; media generation
+(imagen/veo/flux — free on existing keys) is out of gateway scope. Details:
+DECISIONS.md (last entry), `BUILD_PLAN.md` §8, README "Design, game & creative
+coding work".
