@@ -322,8 +322,9 @@ source ~/.zshrc     # activate claude-free in the current shell</code></pre>
         </p>
         <pre><code>git clone https://github.com/vinoth4v/kompass && cd kompass && pnpm install
 # copy secrets/.secrets.json from your original machine (it includes the CF token), then:
-pnpm kompass init   # detects existing resources, re-deploys secrets, adds claude-free
-source ~/.zshrc     # activate the new shell function</code></pre>
+pnpm kompass init              # detects existing resources, re-deploys secrets, adds claude-free
+source ~/.zshrc                # macOS/Linux: activate the new shell function
+# Windows PowerShell: . $PROFILE</code></pre>
         <p>
           If you prefer the manual path, the two commands that matter on a machine that already has
           a deployed worker are:
@@ -332,12 +333,23 @@ source ~/.zshrc     # activate the new shell function</code></pre>
 pnpm kompass config push --url https://kompass.&lt;you&gt;.workers.dev</code></pre>
 
         <h2 id="claude-code">Connect: Claude Code</h2>
-        <p>Add to <code>~/.zshrc</code> (the wizard does this for you):</p>
+        <p>
+          The wizard (<code>pnpm kompass init</code>) detects your shell and adds the right snippet
+          automatically. For manual setup:
+        </p>
+        <p><b>macOS / Linux</b> — add to <code>~/.zshrc</code> or <code>~/.bashrc</code>:</p>
         <pre><code>claude-free() {
   ANTHROPIC_BASE_URL="https://kompass.&lt;you&gt;.workers.dev" \
   ANTHROPIC_AUTH_TOKEN="&lt;bearer&gt;" \
-  ANTHROPIC_MODEL="claude-sonnet-4-5" \
+  ANTHROPIC_MODEL="kompass-free-model-1.0" \
   claude "$@"
+}</code></pre>
+        <p><b>Windows PowerShell</b> — add to <code>$PROFILE</code>:</p>
+        <pre><code>function claude-free {
+  $env:ANTHROPIC_BASE_URL = "https://kompass.&lt;you&gt;.workers.dev"
+  $env:ANTHROPIC_AUTH_TOKEN = "&lt;bearer&gt;"
+  $env:ANTHROPIC_MODEL = "kompass-free-model-1.0"
+  claude @args
 }</code></pre>
         <p>
           Then run <code>claude-free</code> instead of <code>claude</code> whenever you want free
@@ -558,7 +570,7 @@ export ANTHROPIC_AUTH_TOKEN="&lt;bearer&gt;"</code></pre>
           Kompass routes to <b>free upstream models</b>, not to Anthropic — so Anthropic-specific
           features (extended thinking blocks, beta headers, prompt-caching semantics) behave per
           whatever model serves the lane. Model names: any unrecognized name (e.g.
-          <code>claude-sonnet-4-5</code>) auto-routes; <code>kompass-&lt;lane&gt;</code>
+          <code>kompass-free-model-1.0</code>) auto-routes; <code>kompass-&lt;lane&gt;</code>
           pins a lane and skips the classifier. See
           <a href="#models">Model names &amp; headers</a>.
         </div>
@@ -661,7 +673,7 @@ vercel link && vercel deploy --prod</code></pre>
           </tr>
           <tr>
             <td>
-              <code>kompass</code> (or any unrecognized name, e.g. <code>claude-sonnet-4-5</code>)
+              <code>kompass</code> / <code>kompass-free-model-1.0</code> (or any unrecognized name)
             </td>
             <td>Automatic lane routing by task complexity</td>
           </tr>
