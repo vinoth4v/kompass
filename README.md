@@ -1,9 +1,12 @@
 # 🧭 Kompass
 
-**Classifier-routed free-model gateway for Claude Code.** One Cloudflare Worker exposes an
-Anthropic-compatible `/v1/messages` endpoint that routes your Claude Code traffic across
-free model providers (OpenRouter `:free`, NVIDIA Build, Google AI Studio, Groq) by task
-complexity — with a shared quota ledger across every machine you code from. $0 infra, $0 models.
+**Classifier-routed free-model gateway for Claude Code, Codex, Cursor, Cline & more.** One
+Cloudflare Worker exposes Anthropic (`/v1/messages`), OpenAI Chat Completions
+(`/v1/chat/completions`) and OpenAI Responses (`/v1/responses`) endpoints that route your
+coding traffic across **10 pooled free providers** (OpenRouter, NVIDIA Build, Google AI
+Studio, Groq, Mistral, GitHub Models, Cloudflare Workers AI, SambaNova, Cohere, Hugging
+Face — **30+ models across 5 complexity lanes**) — with a shared quota ledger across every
+machine you code from. $0 infra, $0 models.
 
 **Website & Setup Builder:** https://kompass-iota.vercel.app · **Docs:** https://kompass-iota.vercel.app/docs.html · MIT · Node 20+
 
@@ -17,14 +20,21 @@ pnpm kompass init                 # guided: keys → KV → workers.dev URL → 
 
 ### Where to create the free API keys
 
-| Provider         | Create key at                                             | Notes                                                               |
-| ---------------- | --------------------------------------------------------- | ------------------------------------------------------------------- |
-| OpenRouter       | https://openrouter.ai/keys                                | free `:free` models; buying $10 credits once lifts 50→1000 req/day  |
-| NVIDIA Build     | https://build.nvidia.com (any model page → "Get API Key") | free tier, no card                                                  |
-| Google AI Studio | https://aistudio.google.com/apikey                        | free tier; your live limits: https://aistudio.google.com/rate-limit |
-| Groq             | https://console.groq.com/keys                             | free tier, no card; ultra-fast small models                         |
+| Provider              | Create key at                                             | Notes                                                                 |
+| --------------------- | --------------------------------------------------------- | --------------------------------------------------------------------- |
+| OpenRouter            | https://openrouter.ai/keys                                | free `:free` models; buying $10 credits once lifts 50→1000 req/day    |
+| NVIDIA Build          | https://build.nvidia.com (any model page → "Get API Key") | free tier, no card                                                    |
+| Google AI Studio      | https://aistudio.google.com/apikey                        | free tier; your live limits: https://aistudio.google.com/rate-limit   |
+| Groq                  | https://console.groq.com/keys                             | free tier, no card; ultra-fast small models                           |
+| Mistral               | https://console.mistral.ai (Experiment tier)              | free tier trains on inputs — privacy guard keeps flagged content away |
+| GitHub Models         | https://github.com/settings/personal-access-tokens        | fine-grained PAT, "Models: read" — frontier models, small daily caps  |
+| Cloudflare Workers AI | https://dash.cloudflare.com/profile/api-tokens            | free tier; also powers image generation + embeddings                  |
+| SambaNova             | https://cloud.sambanova.ai                                | free tier, no card                                                    |
+| Cohere                | https://dashboard.cohere.com/api-keys                     | trial key, ~1000 calls/month                                          |
+| Hugging Face          | https://huggingface.co/settings/tokens                    | "Make calls to Inference Providers" permission                        |
 
-Any subset works — missing providers are skipped automatically.
+Any subset works — missing providers are skipped automatically. Prefer a form? The
+[Setup Builder](https://kompass-iota.vercel.app#builder) has a field for every one of these.
 
 The wizard is idempotent (safe to re-run), stores your keys only in the gitignored
 `secrets/.secrets.json` + Cloudflare Worker secrets, and ends with a working
@@ -36,15 +46,15 @@ personalized files entirely in your browser. The manual path follows below.
 Claude Code ──► Kompass Worker ──► FAST / SIMPLE / AGENTIC / HARD / LONGCTX lane
                  │  heuristics + Gemini flash-lite classifier
                  │  Durable Object: shared RPM/RPD ledger, health cooldowns, stickiness
-                 └► OpenRouter · NVIDIA Build · Google AI Studio · (Groq)
+                 └► OpenRouter · NVIDIA · Google · Groq · Mistral · GitHub Models ·
+                    Cloudflare AI · SambaNova · Cohere · Hugging Face (any subset)
 ```
 
 ## 10-minute setup (manual path)
 
-Prereqs: Node 22, pnpm, a Cloudflare account, and free API keys from the providers you want
-([OpenRouter](https://openrouter.ai/keys), [NVIDIA Build](https://build.nvidia.com),
-[Google AI Studio](https://aistudio.google.com/apikey), [Groq](https://console.groq.com/keys) —
-any subset works; missing providers are skipped).
+Prereqs: Node 22, pnpm, a Cloudflare account, and free API keys from the providers you want —
+see the [table above](#where-to-create-the-free-api-keys) for signup links; any subset works,
+missing providers are skipped.
 
 ```sh
 git clone https://github.com/<you>/kompass && cd kompass
@@ -53,14 +63,18 @@ pnpm install
 # 1. Cloudflare API token (Workers + KV + Durable Objects edit scopes)
 export CLOUDFLARE_API_TOKEN=...
 
-# 2. Secrets file (never committed — secrets/ is gitignored)
+# 2. Secrets file (never committed — secrets/ is gitignored). Only KOMPASS_BEARER
+#    is required; add whichever provider keys you have — see table above for the
+#    remaining env var names (MISTRAL_API_KEY, GITHUB_MODELS_KEY, CF_WORKERS_AI_KEY,
+#    SAMBANOVA_API_KEY, COHERE_API_KEY, HF_API_KEY).
 mkdir -p secrets
 cat > secrets/.secrets.json <<EOF
 {
   "KOMPASS_BEARER": "$(openssl rand -hex 24)",
   "OPENROUTER_API_KEY": "sk-or-v1-...",
   "NVIDIA_API_KEY": "nvapi-...",
-  "GOOGLE_AI_KEY": "AIza..."
+  "GOOGLE_AI_KEY": "AIza...",
+  "GROQ_API_KEY": "gsk_..."
 }
 EOF
 
@@ -122,10 +136,15 @@ wire_api = "responses"
 **Cursor**: Settings → Models → API Keys → paste the bearer as OpenAI API key, enable
 "Override OpenAI Base URL" → `https://kompass.<you>.workers.dev/v1`, add custom model `kompass`.
 
-**Cline / Roo Code / Kilo Code**: provider "OpenAI Compatible", base URL
-`https://kompass.<you>.workers.dev/v1`, API key = bearer, model ID `kompass`.
+**VS Code** has no built-in AI backend — install one of these free extensions first
+(Extensions panel, `⇧⌘X`), then configure it:
 
-**Continue** (`config.yaml`):
+**Cline / Roo Code / Kilo Code**: provider "OpenAI Compatible", base URL
+`https://kompass.<you>.workers.dev/v1`, API key = bearer, model ID `kompass`. Full
+click-by-click walkthrough (and how to pick between the three):
+https://kompass-iota.vercel.app/docs.html#vscode
+
+**Continue** (`config.yaml`, VS Code or JetBrains):
 
 ```yaml
 models:
@@ -146,14 +165,14 @@ aider --model openai/kompass
 
 ## Day-to-day
 
-| Command                                | Does                                                |
-| -------------------------------------- | --------------------------------------------------- |
-| `pnpm kompass status --url <url>`      | lanes, per-provider remaining quota, last 50 routes |
-| `pnpm kompass config push --url <url>` | hot-reload `config/*.yaml` — no redeploy            |
-| `pnpm kompass deploy`                  | `wrangler deploy` + secrets bulk push               |
-| `pnpm kompass logs`                    | live tail (`wrangler tail`)                         |
-| `pnpm kompass ui`                      | local web workbench (chat/agent/research/slides)    |
-| `https://…workers.dev/status.html`     | read-only status page (enter bearer once)           |
+| Command                                | Does                                                                                           |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `pnpm kompass status --url <url>`      | lanes, per-provider remaining quota, last 50 routes                                            |
+| `pnpm kompass config push --url <url>` | hot-reload `config/*.yaml` — no redeploy                                                       |
+| `pnpm kompass deploy`                  | `wrangler deploy` + secrets bulk push                                                          |
+| `pnpm kompass logs`                    | live tail (`wrangler tail`)                                                                    |
+| `pnpm kompass ui`                      | local web workbench (chat/agent/research/slides)                                               |
+| `https://…workers.dev/status.html`     | analytics dashboard: daily/monthly consumption, model usage, quota, routes (enter bearer once) |
 
 ## Web workbench (`kompass ui`)
 
@@ -172,6 +191,43 @@ Everything runs locally: sessions are saved under `~/.kompass/ui/`, tools execut
 your machine, and the browser only ever talks to the local server — your Kompass
 bearer never reaches the page. The sidebar shows live per-provider quota.
 
+## Kompass AI — hosted chat app (`chat/`)
+
+A full **Next.js app you deploy to your own Vercel account**, for when you want a
+gateway UI reachable from any device — not just your laptop. Live reference deploy:
+**https://kompass-chat.vercel.app** (point it at your own worker + bearer to use it
+for real; each user hosts their own instance, same one-user model as the gateway
+itself).
+
+- **Login is the bearer** — enter your Worker URL and `KOMPASS_BEARER` once; it's
+  validated live and stored only in that browser's localStorage, sent straight to
+  your Worker on every request (never to a third party, no server-side session).
+- **Chat** — multi-conversation sidebar, markdown + syntax-highlighted code blocks,
+  image/PDF attachments (vision), edit-and-resend, regenerate, and a per-reply
+  footer showing which model actually served it (`x-kompass-served-by` /
+  `x-kompass-lane` response headers) plus token usage.
+- **Image** — generates via `/v1/images/generations`, shown inline with a download
+  button.
+- **Research** — a real tool-use loop: the model calls `web_search`/`web_fetch`
+  (executed by two Vercel serverless routes, ported from `kompass ui`'s DDG-scrape
+  tools — a browser can't fetch duckduckgo.com directly due to CORS) and the
+  answer renders with clickable source citations.
+- Lane picker (Auto/Fast/Simple/Agentic/Hard/Long context), light/dark theme,
+  mobile-responsive with a slide-over sidebar.
+
+Not ported: the local UI's Agent (bash/file) and Slides tools — no user filesystem
+exists in a hosted serverless context, so those stay `kompass ui`-only.
+
+Deploy your own:
+
+```sh
+cd chat && npm install && npm run build
+vercel link && vercel deploy --prod    # or: vercel --prod
+```
+
+Requires the Worker's CORS (ships by default — see `src/worker/index.ts`) so a
+different origin can call `/v1/messages`, `/v1/images/generations`, etc.
+
 ## Add a model in 4 lines
 
 Edit `config/lanes.yaml` (chain entries are `<provider>/<model>`; the model half may
@@ -185,6 +241,57 @@ AGENTIC:
 
 New provider = one YAML block in `config/providers.yaml` (kind: `openai` or `gemini`,
 base_url, key_env, limits) + the key in your secrets file + `wrangler secret bulk`.
+
+## Enable or disable a model
+
+Flip a model off without deleting it from `lanes.yaml` — for a flaky endpoint,
+a paused experiment, or anything you want to stop calling but might restore later:
+
+```sh
+pnpm kompass models disable openrouter/poolside/laguna-m.1:free
+pnpm kompass models enable  openrouter/poolside/laguna-m.1:free
+pnpm kompass models list                # ✓/✗ status for every configured entry
+```
+
+Each command edits `config/lanes.yaml`'s `disabled_models` list (preserving every
+comment) and validates before writing — an invalid entry reverts with no changes.
+Run `pnpm kompass config push` afterward to apply. A disabled entry stays visible
+in its lane's chain (struck through on the [status dashboard](#day-to-day)'s Config
+tab) but is skipped everywhere it would otherwise be tried: chat lanes, the
+`/v1/images` and `/v1/embeddings` chains, and the classifier. This is the reversible
+sibling of `kompass deprecate` (which permanently rewrites an entry to a
+replacement at every config push).
+
+## Design, game & creative coding work
+
+The lanes cover creative _coding_ — web/UI design, CSS/WebGL animation, game code
+(three.js, Phaser, Godot). A 2026-07-23 tool-probe pass added
+`poolside/laguna-m.1:free` and `nvidia/nemotron-3-super-120b-a12b:free` (AGENTIC)
+plus `mistralai/mistral-small-4-119b-2603` (SIMPLE) for exactly this traffic; probe
+results and exclusions are recorded in `config/lanes.yaml` comments and
+`docs/DECISIONS.md`.
+
+**Image generation is built in** (2026-07-24): `POST /v1/images/generations`
+(OpenAI Images API-compatible) routes free Workers AI models
+(flux-1-schnell → SDXL-lightning fallback) through the same quota ledger:
+
+```sh
+curl https://kompass.<you>.workers.dev/v1/images/generations \
+  -H "x-api-key: <bearer>" -H "content-type: application/json" \
+  -d '{"prompt": "a minimalist compass logo"}'   # → {data: [{b64_json: ...}]}
+```
+
+**Embeddings too**: `POST /v1/embeddings` (OpenAI-compatible — works with
+Continue's indexing, RAG pipelines, etc.) routes Workers AI `bge-m3` (1024 dims)
+with a Gemini-embedding fallback (3072 dims — pin one entry via the chain if your
+vector store needs stable dimensions). Both chains live in `config/lanes.yaml`
+(`images:` / `embeddings:`).
+
+**Vision input** (images/PDFs in chat) is served by Gemini plus per-model vision
+fallbacks on OpenRouter/NVIDIA (`multimodal_models` in `config/providers.yaml`),
+so image traffic survives a Google quota-out. Still direct-only (no gateway
+endpoint yet): video (`veo-3.1-*`) and music (`lyria-3`) generation on your AI
+Studio key — free-quota-gated at ship time; see `BUILD_PLAN.md` §8.
 
 ## How routing works
 
