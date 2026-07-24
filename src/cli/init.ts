@@ -38,18 +38,34 @@ async function cf(path: string, init?: RequestInit): Promise<any> {
 export async function init(): Promise<void> {
   console.log(`\n${bold('🧭 Kompass setup')} — free-model gateway for Claude Code\n`);
 
+  const secretsPath = 'secrets/.secrets.json';
+
   // 1. Prerequisites -----------------------------------------------------------
   console.log(bold('1/6 Prerequisites'));
   const nodeMajor = Number(process.versions.node.split('.')[0]);
   if (nodeMajor < 20) die(`Node ${process.versions.node} found — need Node 20+`);
   ok(`Node ${process.versions.node}`);
-  if (!process.env.CLOUDFLARE_API_TOKEN) {
-    warn('CLOUDFLARE_API_TOKEN is not set.');
-    console.log('    Create one at https://dash.cloudflare.com/profile/api-tokens');
-    console.log('    (template "Edit Cloudflare Workers" + KV Storage:Edit), then re-run:');
-    console.log('      export CLOUDFLARE_API_TOKEN=...  &&  pnpm kompass init');
-    process.exit(2);
+
+  // Resolve Cloudflare token: env → secrets file → interactive prompt.
+  // This lets `pnpm kompass init` work without any prior `export` step.
+  if (!process.env.CLOUDFLARE_API_TOKEN && existsSync(secretsPath)) {
+    try {
+      const stored = JSON.parse(readFileSync(secretsPath, 'utf8'));
+      if (stored.CLOUDFLARE_API_TOKEN) {
+        process.env.CLOUDFLARE_API_TOKEN = stored.CLOUDFLARE_API_TOKEN;
+        ok('CLOUDFLARE_API_TOKEN loaded from secrets/.secrets.json');
+      }
+    } catch { /* malformed file — handled in step 2 */ }
   }
+  if (!process.env.CLOUDFLARE_API_TOKEN) {
+    console.log('  No Cloudflare API token found. Create one at:');
+    console.log('    https://dash.cloudflare.com/profile/api-tokens');
+    console.log('  Use template "Edit Cloudflare Workers" and add KV Storage:Edit scope.\n');
+    const t = (await ask('Paste your Cloudflare API token')).trim();
+    if (!t) die('A Cloudflare API token is required to continue.');
+    process.env.CLOUDFLARE_API_TOKEN = t;
+  }
+
   const accounts = await cf('/accounts');
   const account = accounts?.result?.[0];
   if (!account) die('Cloudflare token works but lists no accounts — check token scopes.');
@@ -59,14 +75,21 @@ export async function init(): Promise<void> {
   console.log(
     `\n${bold('2/6 Provider API keys')} (stored ONLY in local secrets/.secrets.json, gitignored)`,
   );
-  const secretsPath = 'secrets/.secrets.json';
   let secrets: Record<string, string>;
   if (existsSync(secretsPath)) {
     secrets = JSON.parse(readFileSync(secretsPath, 'utf8'));
+    // Back-fill CF token so future re-runs on any machine need no env var.
+    if (!secrets.CLOUDFLARE_API_TOKEN) {
+      secrets.CLOUDFLARE_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN!;
+      writeFileSync(secretsPath, JSON.stringify(secrets, null, 2) + '\n');
+    }
     ok(`existing ${secretsPath} found (${Object.keys(secrets).length} keys) — keeping it`);
   } else {
     console.log('  All four are free tiers, no credit card. Leave any blank to skip it.\n');
-    secrets = { KOMPASS_BEARER: randomBytes(24).toString('hex') };
+    secrets = {
+      KOMPASS_BEARER: randomBytes(24).toString('hex'),
+      CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN!,
+    };
     const wanted: Array<[string, string, string]> = [
       ['OPENROUTER_API_KEY', 'OpenRouter key (sk-or-v1-…)', 'https://openrouter.ai/keys'],
       [
@@ -82,7 +105,7 @@ export async function init(): Promise<void> {
       const v = await ask(label);
       if (v) secrets[envKey] = v;
     }
-    if (Object.keys(secrets).length === 1) die('No provider keys entered — need at least one.');
+    if (Object.keys(secrets).length === 2) die('No provider keys entered — need at least one.');
     mkdirSync('secrets', { recursive: true });
     writeFileSync(secretsPath, JSON.stringify(secrets, null, 2) + '\n');
     ok(`wrote ${secretsPath} (bearer token auto-generated)`);

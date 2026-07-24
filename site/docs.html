@@ -279,11 +279,17 @@ kompass ui ─(local server)───┘
           one free provider key.
         </p>
         <pre><code>git clone https://github.com/vinoth4v/kompass && cd kompass && pnpm install
-export CLOUDFLARE_API_TOKEN=...   # dash.cloudflare.com → API Tokens → "Edit Cloudflare Workers" + KV edit
-pnpm kompass init                 # guided wizard: keys → KV → URL → deploy → smoke test → shell function</code></pre>
+pnpm kompass init   # wizard asks for Cloudflare token + provider keys, then deploys everything
+source ~/.zshrc     # activate claude-free in the current shell</code></pre>
         <p>
+          The wizard prompts for your Cloudflare API token if it isn't already set — no
+          <code>export</code> step needed. Token:
+          <a href="https://dash.cloudflare.com/profile/api-tokens">dash.cloudflare.com → API Tokens</a>
+          → "Edit Cloudflare Workers" template + KV Storage:Edit scope.
           The wizard is idempotent and ends with a verified, deployed gateway plus a
-          <code>claude-free</code> shell command. Prefer copy-paste? Use the
+          <code>claude-free</code> shell command. After it finishes, run
+          <code>source ~/.zshrc</code> (or open a new terminal) so the function is live.
+          Prefer copy-paste? Use the
           <a href="./#builder">Setup Builder</a> on the landing page — it generates your
           personalized files entirely in your browser (nothing is sent anywhere). Free keys:
           <a href="https://openrouter.ai/keys">OpenRouter</a> ·
@@ -302,6 +308,25 @@ pnpm kompass init                 # guided wizard: keys → KV → URL → deplo
           generated during setup. The bearer is the only credential any client ever needs — your
           provider API keys stay inside Cloudflare Worker secrets.
         </div>
+
+        <h3 id="new-machine">Setting up on a new / additional machine</h3>
+        <p>
+          <code>pnpm kompass init</code> is idempotent — re-running it on a second machine (or
+          after a re-clone) detects your existing KV namespace, subdomain and
+          <code>secrets/.secrets.json</code> and skips any step already done. The minimum you
+          need is the repo plus your <code>secrets/.secrets.json</code> (copy it from your
+          first machine or recreate it). Then:
+        </p>
+        <pre><code>git clone https://github.com/vinoth4v/kompass && cd kompass && pnpm install
+# copy secrets/.secrets.json from your original machine (it includes the CF token), then:
+pnpm kompass init   # detects existing resources, re-deploys secrets, adds claude-free
+source ~/.zshrc     # activate the new shell function</code></pre>
+        <p>
+          If you prefer the manual path, the two commands that matter on a machine that already
+          has a deployed worker are:
+        </p>
+        <pre><code>pnpm exec wrangler secret bulk secrets/.secrets.json   # sync bearer to Worker
+pnpm kompass config push --url https://kompass.&lt;you&gt;.workers.dev</code></pre>
 
         <h2 id="claude-code">Connect: Claude Code</h2>
         <p>Add to <code>~/.zshrc</code> (the wizard does this for you):</p>
@@ -997,16 +1022,38 @@ https://kompass.&lt;you&gt;.workers.dev/status.html   # live dashboard</code></p
             </td>
           </tr>
           <tr>
-            <td>401 from any endpoint</td>
+            <td><code>claude-free: command not found</code></td>
             <td>
-              Wrong or missing bearer. It must be sent as <code>Authorization: Bearer …</code> (or
-              <code>x-api-key</code> for Anthropic clients).
+              The shell function is missing from your profile. Either run
+              <code>pnpm kompass init</code> (it appends the function and asks if you want to add
+              it to <code>~/.zshrc</code>), or paste the snippet from the
+              <a href="#claude-code">Claude Code section</a> manually. Then
+              <code>source ~/.zshrc</code> or open a new terminal.
             </td>
           </tr>
           <tr>
-            <td>503 "no config in KV"</td>
+            <td>401 "invalid bearer token" even though setup ran</td>
             <td>
-              Run <code>pnpm kompass config push --url &lt;your url&gt;</code> once after deploying.
+              The <code>KOMPASS_BEARER</code> in your local <code>secrets/.secrets.json</code>
+              drifted from the value stored in the Worker (e.g. the file was regenerated after the
+              last deploy). Fix: <code>pnpm exec wrangler secret bulk secrets/.secrets.json</code>
+              — this syncs all keys. If the shell function still has the old bearer, update it in
+              <code>~/.zshrc</code> to match the new value.
+            </td>
+          </tr>
+          <tr>
+            <td>401 from any endpoint</td>
+            <td>
+              Wrong or missing bearer. It must be sent as <code>Authorization: Bearer …</code> or
+              <code>x-api-key: …</code>.
+            </td>
+          </tr>
+          <tr>
+            <td>503 / "no config in KV"</td>
+            <td>
+              Run <code>pnpm kompass config push --url &lt;your url&gt;</code> once after deploying
+              or moving to a new machine. Config lives in KV and must be pushed separately from the
+              Worker binary.
             </td>
           </tr>
           <tr>

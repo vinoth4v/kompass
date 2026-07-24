@@ -14,8 +14,21 @@ machine you code from. $0 infra, $0 models.
 
 ```sh
 git clone https://github.com/vinoth4v/kompass && cd kompass && pnpm install
-export CLOUDFLARE_API_TOKEN=...   # dash.cloudflare.com → API Tokens → "Edit Cloudflare Workers" + KV edit
-pnpm kompass init                 # guided: keys → KV → workers.dev URL → deploy → smoke → shell function
+pnpm kompass init   # wizard asks for your Cloudflare token + provider keys, then deploys everything
+source ~/.zshrc     # activate claude-free in the current shell
+```
+
+The wizard prompts for your Cloudflare API token if it isn't set — no `export` step needed.
+Token: [dash.cloudflare.com → API Tokens → "Edit Cloudflare Workers" template + KV Storage:Edit scope](https://dash.cloudflare.com/profile/api-tokens).
+
+**Setting up on a second machine or after a re-clone:** copy `secrets/.secrets.json` from your
+first machine (it includes your Cloudflare token and provider keys), then run `pnpm kompass init`
+— it detects all existing resources and skips them, re-deploys secrets and config, and adds
+`claude-free` to your shell. No `export` needed. If you prefer the manual path:
+
+```sh
+pnpm exec wrangler secret bulk secrets/.secrets.json            # sync bearer + provider keys to Worker
+pnpm kompass config push --url https://kompass.<you>.workers.dev  # restore lane config in KV
 ```
 
 ### Where to create the free API keys
