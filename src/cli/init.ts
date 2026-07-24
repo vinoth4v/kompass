@@ -142,10 +142,14 @@ export async function init(): Promise<void> {
     ok(`existing ${secretsPath} found (${Object.keys(secrets).length} keys) — keeping it`);
   } else {
     console.log('  All four are free tiers, no credit card. Leave any blank to skip it.\n');
+    console.log('  Re-installing on a second machine? Paste your existing bearer token to avoid');
+    console.log('  rotating it (which would break any other machines already using it).');
+    const existingBearer = (await ask('Existing KOMPASS_BEARER (leave blank to generate new)')).trim();
     secrets = {
-      KOMPASS_BEARER: randomBytes(24).toString('hex'),
+      KOMPASS_BEARER: existingBearer || randomBytes(24).toString('hex'),
       CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN!,
     };
+    const bearerNote = existingBearer ? 'bearer token from existing installation' : 'bearer token auto-generated';
     const wanted: Array<[string, string, string]> = [
       ['OPENROUTER_API_KEY', 'OpenRouter key (sk-or-v1-…)', 'https://openrouter.ai/keys'],
       [
@@ -164,7 +168,7 @@ export async function init(): Promise<void> {
     if (Object.keys(secrets).length === 2) die('No provider keys entered — need at least one.');
     mkdirSync('secrets', { recursive: true });
     writeFileSync(secretsPath, JSON.stringify(secrets, null, 2) + '\n');
-    ok(`wrote ${secretsPath} (bearer token auto-generated)`);
+    ok(`wrote ${secretsPath} (${bearerNote})`);
   }
 
   // 3. KV namespace ------------------------------------------------------------
