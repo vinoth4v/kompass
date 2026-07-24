@@ -40,12 +40,7 @@ async function cf(path: string, init?: RequestInit): Promise<any> {
 function shellProfile(): { rc: string; sourceCmd: string; isPs: boolean } {
   if (process.platform === 'win32') {
     // PowerShell Core (pwsh) and Windows PowerShell share the same CurrentUserCurrentHost profile.
-    const rc = join(
-      homedir(),
-      'Documents',
-      'PowerShell',
-      'Microsoft.PowerShell_profile.ps1',
-    );
+    const rc = join(homedir(), 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1');
     return { rc, sourceCmd: '. $PROFILE', isPs: true };
   }
   const shell = process.env.SHELL ?? '';
@@ -251,7 +246,10 @@ export async function init(): Promise<void> {
   if (addIt.startsWith('y')) {
     mkdirSync(join(rc, '..'), { recursive: true }); // ensure profile dir exists (PowerShell on fresh installs)
     const existing = existsSync(rc) ? readFileSync(rc, 'utf8') : '';
-    if (existing.includes(`ANTHROPIC_BASE_URL = "${url}"`) || existing.includes(`ANTHROPIC_BASE_URL="${url}"`)) {
+    if (
+      existing.includes(`ANTHROPIC_BASE_URL = "${url}"`) ||
+      existing.includes(`ANTHROPIC_BASE_URL="${url}"`)
+    ) {
       ok('claude-free already present — left as is');
     } else {
       appendFileSync(rc, snippet);
