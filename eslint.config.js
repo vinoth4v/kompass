@@ -3,7 +3,10 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['node_modules', 'dist', '.wrangler', 'coverage'] },
+  // chat/ is a fully separate Next.js app (own package.json, own node_modules,
+  // own .eslintrc.json) — it lints itself via `npm run lint` inside chat/, not
+  // via this root flat config.
+  { ignores: ['node_modules', 'dist', '.wrangler', 'coverage', 'chat'] },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {

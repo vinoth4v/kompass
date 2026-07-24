@@ -3,3 +3,6 @@ dist/
 .wrangler/
 pnpm-lock.yaml
 secrets/
+# chat/ is a separate Next.js app with its own tooling (own package.json,
+# own node_modules, own .eslintrc.json) — not covered by root format/lint.
+chat/
