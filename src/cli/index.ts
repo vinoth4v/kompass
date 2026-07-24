@@ -315,9 +315,12 @@ else if (cmd === 'models' && sub === 'enable')
   (await import('./models')).enableModel(arg3, flag('config-dir') ?? 'config');
 else if (cmd === 'models' && (sub === 'list' || !sub))
   (await import('./models')).listModels(flag('config-dir') ?? 'config');
+else if (cmd === 'trace' && sub === 'list') await (await import('./trace')).traceList();
+else if (cmd === 'trace' && sub === 'replay') await (await import('./trace')).traceReplay(arg3);
+else if (cmd === 'trace') await (await import('./trace')).traceShow(sub);
 else {
   console.log(
-    'Usage: kompass <init|ui|deploy|status|logs|bench|discovery [--run]|deprecate <old> --replaced-by <new>|models <list|disable|enable> <entry>|config push> [--url <worker-url>]',
+    'Usage: kompass <init|ui|deploy|status|logs|bench|discovery [--run]|deprecate <old> --replaced-by <new>|models <list|disable|enable> <entry>|trace <id>|trace list [--n N]|trace replay <id> [--lane L] [--model M]|config push> [--url <worker-url>]',
   );
   process.exit(cmd ? 1 : 0);
 }

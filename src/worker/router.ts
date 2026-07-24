@@ -37,6 +37,10 @@ export interface RouteAttempt {
   status: number | string;
   detail?: string;
   usage?: { input_tokens: number; output_tokens: number };
+  /** Wall-clock ms for this entry's attempt (reserve + upstream call). Undefined
+   *  for entries skipped before ever being tried (fit filter, quota, disabled…) —
+   *  populated by routeRequest's main loop, used by the M7 trace store. */
+  ms?: number;
 }
 
 export interface RouteOutcome {
@@ -377,6 +381,9 @@ export async function routeRequest(
       ctx.live === true,
     );
     const last = attempts[attempts.length - 1];
+    // M7: latency for this entry's own attempt, attached for the trace store —
+    // reserve() + tryChainEntry() together, matching what reportOutcome logs below.
+    if (last) last.ms = Date.now() - t0;
     if (ctx.stub) {
       // Awaited (not waitUntil): a same-colo DO roundtrip is ~1ms and keeps
       // /status reads strictly consistent with the routes that produced them.
@@ -385,7 +392,7 @@ export async function routeRequest(
           kind: res === null && last ? failureKind(last.status) : undefined,
           sessionId: ctx.sessionId,
           lane,
-          ms: Date.now() - t0,
+          ms: last?.ms ?? Date.now() - t0,
           detail: res === null ? last?.detail?.slice(0, 120) : undefined,
           usage: last?.usage,
         })

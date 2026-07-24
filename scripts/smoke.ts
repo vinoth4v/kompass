@@ -283,12 +283,46 @@ async function testLongContext() {
   );
 }
 
+async function testTraceStore() {
+  // M7: a routed request gets a trace id back, and that trace is fetchable and
+  // redacted by default (no raw_body unless X-Kompass-Trace: full was sent).
+  const res = await fetch(`${BASE_URL}/v1/messages`, {
+    method: 'POST',
+    headers: HEADERS,
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 16,
+      messages: [{ role: 'user', content: 'trace smoke check — reply with: pong' }],
+    }),
+  });
+  const traceId = res.headers.get('x-kompass-trace-id');
+  if (res.status !== 200 || !traceId) {
+    check('trace store', false, `HTTP ${res.status}, trace-id header=${traceId}`);
+    return;
+  }
+  const traceRes = await fetch(`${BASE_URL}/trace/${traceId}`, { headers: HEADERS });
+  if (traceRes.status !== 200) {
+    check('trace store', false, `GET /trace/${traceId} → HTTP ${traceRes.status}`);
+    return;
+  }
+  const trace = (await traceRes.json()) as { id: string; raw_body?: string; digest: string };
+  check(
+    'trace store: fetchable, redacted by default',
+    trace.id === traceId && trace.raw_body === undefined && typeof trace.digest === 'string',
+    `id=${trace.id}, has_raw_body=${trace.raw_body !== undefined}`,
+  );
+  const listRes = await fetch(`${BASE_URL}/traces?n=5`, { headers: HEADERS });
+  const { traces } = (await listRes.json()) as { traces: unknown[] };
+  check('trace store: /traces lists recent entries', traces.length > 0, `n=${traces.length}`);
+}
+
 console.log(`Smoke target: ${BASE_URL}`);
 await testAuth();
 await testStreaming();
 await testToolRoundTrip();
 await testDispatchLatency();
 await testLongContext();
+await testTraceStore();
 // M1 acceptance: identical toy tool-call task on one OpenAI-format and one Gemini model.
 const adapterTargets = (process.env.SMOKE_ADAPTER_MODELS ?? '').split(',').filter(Boolean);
 for (const target of adapterTargets) await testToolRoundTrip(target);

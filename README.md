@@ -171,6 +171,9 @@ aider --model openai/kompass
 | `pnpm kompass config push --url <url>` | hot-reload `config/*.yaml` — no redeploy                                                       |
 | `pnpm kompass deploy`                  | `wrangler deploy` + secrets bulk push                                                          |
 | `pnpm kompass logs`                    | live tail (`wrangler tail`)                                                                    |
+| `pnpm kompass trace <id>`              | full detail for one routed request: verdict, every hop tried and why, latency, usage           |
+| `pnpm kompass trace list [--n N]`      | recent traces (redacted), newest first                                                         |
+| `pnpm kompass trace replay <id>`       | re-issue a full-capture trace's request, optionally `--lane`/`--model`                         |
 | `pnpm kompass ui`                      | local web workbench (chat/agent/research/slides)                                               |
 | `https://…workers.dev/status.html`     | analytics dashboard: daily/monthly consumption, model usage, quota, routes (enter bearer once) |
 
@@ -315,6 +318,15 @@ whichever free model provider serves the lane. Free endpoints may train on input
 guard for path/secret patterns ships in M5). If that is unacceptable for your repo, use
 paid tiers or a self-hosted deployment target (planned P2) — and don't point sensitive
 work at free endpoints.
+
+**Trace store (M7):** every routed request is logged to a 500-entry Durable Object
+ring buffer — lane, dispatcher verdict, which models were tried and why, latency,
+token usage — for `kompass trace <id>` / `kompass trace list` / `kompass trace replay`.
+**Redaction is the default**: the stored record never contains your raw prompt, only a
+one-way SHA-256 fingerprint for correlation. Full capture (the actual request body, so
+`kompass trace replay` can re-issue it against a different lane/model) is opt-in per
+request via the `X-Kompass-Trace: full` header, stored separately from the redacted
+ring buffer, and auto-expires after 1 hour.
 
 ## Development
 

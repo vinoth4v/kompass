@@ -3,6 +3,7 @@
 // last-N route log. One instance ("global") backs every client machine, so two
 // laptops draw down the same OpenRouter daily budget.
 import { DurableObject } from 'cloudflare:workers';
+import { isExpired, pushTrace, type TraceRecord } from './trace';
 
 export interface ReserveLimits {
   rpm: number;
@@ -496,5 +497,49 @@ export class KompassState extends DurableObject {
     const count = Math.max(0, (d.day === day ? d.count : 0) + n);
     await this.ctx.storage.put(`rpd:${provider}`, { day, count });
     return { day, count };
+  }
+
+  // ── M7 trace store: DO-storage ring buffer + opt-in TTL-bounded full capture ──
+  // (SPEC_V2 §9 — confirmed live against a 500-entry buffer: SQLite-backed DO
+  // storage is 5GB/account on the free plan, 2MB per key+value, 100k rows
+  // written/day; the buffer's one array-under-one-key write is 1 row, matching
+  // the existing `routes` pattern, so a 500-entry ring buffer plus the ~5
+  // existing per-request writes stays well inside the free daily row budget.
+  // See docs/DECISIONS.md.)
+
+  /**
+   * Fire-and-forget from the caller (ctx.waitUntil) — never awaited on the
+   * response path. Always appends a redacted summary to the ring buffer;
+   * additionally writes a separate TTL-bounded full-capture key only when the
+   * caller opted in (record.raw_body present).
+   */
+  async writeTrace(record: TraceRecord): Promise<void> {
+    const ring = (await this.ctx.storage.get<TraceRecord[]>('traces')) ?? [];
+    await this.ctx.storage.put('traces', pushTrace(ring, record));
+    if (record.raw_body !== undefined) {
+      await this.ctx.storage.put(`tracefull:${record.id}`, {
+        raw_body: record.raw_body,
+        exp: record.exp,
+      });
+    }
+  }
+
+  /** Redacted summary, enriched with raw_body when an unexpired full-capture
+   *  key exists for this id. Null when the id isn't in the ring buffer at all
+   *  (evicted, or never existed). */
+  async getTrace(id: string): Promise<TraceRecord | null> {
+    const ring = (await this.ctx.storage.get<TraceRecord[]>('traces')) ?? [];
+    const base = ring.find((t) => t.id === id) ?? null;
+    if (!base) return null;
+    const full = await this.ctx.storage.get<{ raw_body: string; exp?: number }>(`tracefull:${id}`);
+    if (full && !isExpired(full)) return { ...base, raw_body: full.raw_body, exp: full.exp };
+    return base;
+  }
+
+  /** Newest-first, always redacted (never raw_body) — a lightweight overview,
+   *  distinct from the single-trace fetch above which may reveal raw_body. */
+  async listTraces(n: number): Promise<TraceRecord[]> {
+    const ring = (await this.ctx.storage.get<TraceRecord[]>('traces')) ?? [];
+    return ring.slice(-n).reverse();
   }
 }

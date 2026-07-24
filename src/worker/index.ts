@@ -16,8 +16,22 @@ import {
 import { bearerAuth } from './auth';
 import { routeEmbeddings, routeImageGeneration } from './capabilities';
 import { getCloudflareUsage } from './cf-usage';
-import { CONFIG_KV_KEY, laneChainArray, laneSpreadTop, loadConfig, validateConfig } from './config';
-import { dispatch } from './dispatcher';
+import {
+  CONFIG_KV_KEY,
+  laneChainArray,
+  laneSpreadTop,
+  loadConfig,
+  resolveLaneChain,
+  validateConfig,
+} from './config';
+import {
+  digestOf,
+  newTraceId,
+  RAW_BODY_CAP,
+  FULL_CAPTURE_TTL_MS,
+  type TraceRecord,
+} from '../do/trace';
+import { dispatch, estimateTokens } from './dispatcher';
 import { runDiscovery } from './discovery';
 import type { Env } from './env';
 import {
@@ -30,7 +44,7 @@ import {
   syntheticNoticeStream,
 } from './escalation';
 import { compilePrivacyGuard, privacyMatch } from './privacy';
-import { routeRequest } from './router';
+import { routeRequest, type RouteAttempt } from './router';
 import { FAVICON_SVG, STATUS_HTML } from './status-page';
 
 export { KompassState } from '../do/state';
@@ -58,8 +72,9 @@ app.use(
       'x-api-key',
       'x-kompass-lane',
       'x-kompass-model',
+      'x-kompass-trace',
     ],
-    exposeHeaders: ['x-kompass-served-by', 'x-kompass-lane'],
+    exposeHeaders: ['x-kompass-served-by', 'x-kompass-lane', 'x-kompass-trace-id'],
     maxAge: 86400,
   }),
 );
@@ -170,7 +185,9 @@ async function handleAnthropic(
       rawLength: raw.length,
     });
 
+  const allAttempts: RouteAttempt[] = [];
   let outcome = await routeOnce(lane);
+  allAttempts.push(...outcome.attempts);
   // M6: track whether EVERY lane tried failed purely on fit (never actually
   // attempted a provider) — if so, the terminal notice below names the
   // largest configured window instead of the generic exhaustion message.
@@ -187,6 +204,7 @@ async function handleAnthropic(
     lane = up;
     escalatedOnExhaustion = true;
     outcome = await routeOnce(lane);
+    allAttempts.push(...outcome.attempts);
     allTooLargeSoFar = allTooLargeSoFar && outcome.allSkippedTooLarge === true;
     if (
       outcome.largestCtx !== undefined &&
@@ -194,6 +212,53 @@ async function handleAnthropic(
     )
       maxCtxSeen = outcome.largestCtx;
   }
+
+  // M7 trace store (SPEC_V2 §5/§6, guardrail §6.13/§6.14): redacted by default,
+  // fire-and-forget via ctx.waitUntil — a trace write NEVER blocks or fails the
+  // response. `X-Kompass-Trace: full` opts this one request into a separate,
+  // TTL-bounded copy of the raw body (see docs/DECISIONS.md for the storage design).
+  const traceId = newTraceId();
+  const fullCapture = c.req.header('x-kompass-trace')?.toLowerCase() === 'full';
+  const digest = await digestOf(raw);
+  let usage: { input_tokens: number; output_tokens: number } | undefined;
+  for (let i = allAttempts.length - 1; i >= 0; i--) {
+    const a = allAttempts[i]!;
+    if (a.status === 200 && a.usage) {
+      usage = a.usage;
+      break;
+    }
+  }
+  const finish = (response: Response): Response => {
+    const record: TraceRecord = {
+      id: traceId,
+      session: sessionId,
+      ts: Date.now(),
+      lane,
+      verdict: verdict.source,
+      confidence: verdict.confidence,
+      est_in: estimateTokens(body, raw.length),
+      chain_considered: resolveLaneChain(cfg, lane),
+      attempts: allAttempts.map((a) => ({
+        model: a.entry,
+        outcome: a.status === 200 ? 'ok' : 'fail',
+        hop_reason: String(a.status) + (a.detail ? `: ${a.detail}` : ''),
+        latency_ms: a.ms,
+      })),
+      final_model: outcome.used,
+      usage,
+      digest,
+    };
+    if (fullCapture) {
+      record.raw_body = raw.slice(0, RAW_BODY_CAP);
+      record.exp = Date.now() + FULL_CAPTURE_TTL_MS;
+    }
+    c.executionCtx.waitUntil(
+      stub.writeTrace(record).catch((e) => console.log(`trace write failed: ${String(e)}`)),
+    );
+    const headers = new Headers(response.headers);
+    headers.set('x-kompass-trace-id', traceId);
+    return new Response(response.body, { status: response.status, headers });
+  };
 
   if (outcome.response) {
     console.log(
@@ -214,7 +279,9 @@ async function handleAnthropic(
     const headers = new Headers(outcome.response.headers);
     if (outcome.used) headers.set('x-kompass-served-by', outcome.used);
     headers.set('x-kompass-lane', lane);
-    return new Response(outcome.response.body, { status: outcome.response.status, headers });
+    return finish(
+      new Response(outcome.response.body, { status: outcome.response.status, headers }),
+    );
   }
   console.log(JSON.stringify({ route: null, lane, attempts: outcome.attempts }));
 
@@ -224,22 +291,26 @@ async function handleAnthropic(
   if (allTooLargeSoFar) {
     console.log(JSON.stringify({ no_fit: { largest_ctx: maxCtxSeen ?? null } }));
     if (body.stream) {
-      return new Response(noFitNoticeStream(body.model, maxCtxSeen), {
-        headers: { 'content-type': 'text/event-stream; charset=utf-8' },
-      });
+      return finish(
+        new Response(noFitNoticeStream(body.model, maxCtxSeen), {
+          headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+        }),
+      );
     }
-    return c.json(noFitNotice(body.model, maxCtxSeen));
+    return finish(c.json(noFitNotice(body.model, maxCtxSeen)));
   }
 
   // Every lane's entire chain failed. Always a friendly in-chat notice, never a
   // raw protocol error — Claude Code treats this as a normal completed turn, so
   // no manual retry/--continue is ever needed on Kompass's account (SPEC §4).
   if (body.stream) {
-    return new Response(syntheticNoticeStream(body.model), {
-      headers: { 'content-type': 'text/event-stream; charset=utf-8' },
-    });
+    return finish(
+      new Response(syntheticNoticeStream(body.model), {
+        headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+      }),
+    );
   }
-  return c.json(syntheticNotice(body.model));
+  return finish(c.json(syntheticNotice(body.model)));
 }
 
 app.post('/v1/messages', async (c) => {
@@ -512,6 +583,20 @@ app.post('/dispatch/preview', async (c) => {
   const cfg = await loadConfig(c.env.CONFIG);
   if (!cfg) return anthropicError('api_error', 'no config pushed yet', 503);
   return c.json(await dispatch(c.env, cfg, body, stateStub(c.env), raw.length));
+});
+
+// M7 trace store: single-record fetch (may include raw_body if that request
+// opted into full capture and it hasn't expired yet) and a redacted-only
+// recent-N listing. Both authenticated like every other non-health route.
+app.get('/trace/:id', async (c) => {
+  const trace = await stateStub(c.env).getTrace(c.req.param('id'));
+  if (!trace) return anthropicError('not_found_error', 'no trace with that id', 404);
+  return c.json(trace);
+});
+
+app.get('/traces', async (c) => {
+  const n = Math.max(1, Math.min(500, Number(c.req.query('n')) || 50));
+  return c.json({ traces: await stateStub(c.env).listTraces(n) });
 });
 
 // Test/admin helper backing the M2 multi-machine acceptance: burn provider budget.
