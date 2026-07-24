@@ -125,3 +125,167 @@ This build session ran with no `ANTHROPIC_BASE_URL` override present in the
 shell environment — i.e. it was built on native Claude, not dogfooded through
 Kompass itself (BUILD_PLAN_V2 §7's `claude-free` loop). Unlike v1's report,
 this session has no per-task free-lane/native breakdown to log.
+
+---
+
+## M7 — Trace Store & Observability
+
+**Status: complete.** Tag `m7`, commit `e1a7604` (plus two merge commits —
+`549db0b`, `9383147` — reconciling concurrent work pushed from another
+machine mid-build, and a smoke-check fix, `9695069`), pushed to `origin/main`.
+Deployed: **https://kompass.vinoth4v.workers.dev** (config re-pushed to KV —
+the KV namespace itself changed mid-session, see below).
+
+### Test / smoke status
+
+| Check                 | Result                                                                                                                                                                                               |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm typecheck`      | ✅ green                                                                                                                                                                                             |
+| `pnpm lint`           | ✅ green                                                                                                                                                                                             |
+| `pnpm test`           | ✅ 152/152 green (16 new in `test/trace.test.ts`, all M6 tests unmodified)                                                                                                                           |
+| `pnpm smoke:deployed` | ✅ all 7 checks green, incl. trace-id header + fetchable/redacted trace + `/traces` listing (see below for a real free-tier exhaustion hiccup mid-verification, resolved by waiting, not a code fix) |
+
+### What shipped
+
+- `src/do/trace.ts` (new): `TraceRecord` schema, `pushTrace` (ring-buffer
+  append+evict, strips `raw_body`/`exp` unconditionally so redaction can't be
+  defeated), `isExpired` (lazy TTL check, same convention as the existing
+  verdict cache), `digestOf` (SHA-256 fingerprint, irreversible), `newTraceId`.
+- `KompassState` (`src/do/state.ts`) gained `writeTrace`/`getTrace`/
+  `listTraces` — the 500-entry ring buffer lives under one `traces` key (same
+  pattern as the existing `routes` log); opt-in full-capture bodies live in
+  separate `tracefull:<id>` keys with their own TTL, never mixed into the
+  ring buffer.
+- Wired into `handleAnthropic` (index.ts): every routed request — success,
+  no-fit, or fully exhausted — gets a trace, written fire-and-forget via
+  `ctx.executionCtx.waitUntil()` after a small `finish()` wrapper adds the
+  `x-kompass-trace-id` response header. `X-Kompass-Trace: full` opts one
+  request into raw-body capture (capped 500KB, expires after 1h).
+- New authenticated `GET /trace/:id` (404 on unknown/evicted) and
+  `GET /traces?n=` (redacted listing, newest first).
+- New CLI: `kompass trace <id>`, `kompass trace list [--n N]`,
+  `kompass trace replay <id> [--lane L] [--model M]` — kept separate from the
+  existing `kompass logs` (live `wrangler tail`) rather than overloading it,
+  since BUILD_PLAN_V2's literal "`kompass logs --last N`" phrasing would have
+  collided with an unrelated existing command (see DECISIONS.md).
+- `router.ts`'s `RouteAttempt` gained an optional `ms` (latency) field, reused
+  from the existing per-entry timing already computed for `reportOutcome`
+  rather than measured twice.
+- README trust-model section + CLI table updated; `scripts/smoke.ts` gained a
+  trace-store check.
+
+### The SPEC_V2 §9 blocking prerequisite
+
+Resolved before writing any storage code, per the explicit "one decision
+needed before M7" instruction: verified live (Cloudflare's own docs, not
+assumed) that `KompassState`'s SQLite-backed Durable Object storage — Workers
+Free plan — gives 5GB/account, 10GB/object, 2MB per key+value, 100,000 rows
+written/day. A 500-entry ring buffer written as one array-under-one-key is 1
+row per request, comfortably inside that budget alongside the ~4-5 writes
+M0-M6 already make per request. **No sampling fallback needed** — full
+tracing shipped as designed. Full reasoning and source URLs in
+`docs/DECISIONS.md`.
+
+### Acceptance criteria
+
+- [x] 500-request soak: DO storage within limits, ring buffer evicts oldest —
+      `test/trace.test.ts` runs 520 real writes against the live SQLite-backed
+      storage backend (not a mock), confirms the cap holds and the oldest 20
+      are evicted, in ~850ms total (no meaningful added latency per write).
+- [x] Seeded secret in the prompt → default trace contains no raw prompt
+      text — integration test confirms `JSON.stringify(trace)` never contains
+      the seeded `AKIA...` string; only a SHA-256 digest is stored.
+- [x] Replay of a full trace reproduces the original routing decision —
+      `kompass trace replay` re-issues the stored raw body (only present when
+      `X-Kompass-Trace: full` was set) against `/v1/messages`; verified live
+      (see below), not unit-tested — CLI/Node code follows this repo's
+      existing convention of live-only verification (matches `kompass status`,
+      `deprecate`, `models`).
+- [~] Trace write failure injected → response still succeeds — a genuine
+  failure-injection attempt (a circular-reference record, which
+  `structuredClone` legitimately rejects) crashed the test harness's own
+  isolated-storage bookkeeping rather than surfacing as a catchable
+  rejection — a known limitation of `@cloudflare/vitest-pool-workers`, not
+  of the Worker code. Verified structurally instead: `writeTrace` never
+  internally try/catches, so failures genuinely propagate; the call site
+  (`index.ts`'s `finish()`) wraps it in `.catch()` before handing it to
+  `ctx.waitUntil()`, which by construction runs after the response has
+  already been returned — the identical pattern already trusted for
+  `reportOutcome`/`recordUsage`/`putVerdict` since M2-M5, none of which
+  have a dedicated failure-injection test either. See DECISIONS.md.
+- [x] Green typecheck/lint/test.
+
+### Before / after
+
+- **Misroutes diagnosable from a single trace (SPEC_V2 G3):** previously
+  required correlating `/status`'s last-50 route log with server-side
+  `console.log` output. Now `kompass trace <id>` shows the full picture in one
+  call — lane, verdict/confidence, every chain entry considered, every attempt
+  with its outcome/reason/latency, final model, usage.
+- **Wasted-hops measurement (flagged as pending in the M6 report):** each
+  trace's `attempts[]` array now makes this directly countable per request —
+  still needs M9's bench suite to aggregate it into a metric, but the raw data
+  no longer needs separate instrumentation.
+
+### A real-world hiccup during deployed verification (not a code bug)
+
+The first `pnpm smoke:deployed` run after this deploy showed the >60k-token
+LONGCTX check technically passing (non-empty text) but actually landing on the
+generic exhausted-notice fallback — `lane=null served_by=null`. Investigated
+via `/status`: all four LONGCTX chain entries were in a live M2 health
+cooldown, caused by **real upstream free-tier exhaustion** from the day's
+cumulative M6+M7 testing — Google's actual account-level 429 ("You exceeded
+your current quota"), NVIDIA's actual `ResourceExhausted: Worker local total
+request limit reached (104/32)`, and OpenRouter/NVIDIA-via-OpenRouter rate
+limits — not a Kompass bug, and not caught by Kompass's own internal
+rpm/rpd counters (which track what Kompass itself has dispatched, not the
+upstream provider's separate account-level throttling). Two real findings
+came out of chasing this down: (1) the smoke check's own assertion was too
+weak — `text.length > 0` is also true for the synthetic notice — tightened to
+require a non-null `served_by` header (fixed, tested, deployed). (2) Waited
+~2 minutes for the fastest-cooling pair (`google/gemini-3.6-flash`,
+`nvidia/nemotron-3-ultra-550b-a55b`) to clear their cooldowns, then re-ran:
+clean pass, real route (`served_by=nvidia/nvidia/nemotron-3-ultra-550b-a55b`,
+16s — slower than M6's 5.5s run, consistent with a provider still recovering
+from load). No code changed to "fix" this beyond the smoke-assertion
+tightening — it was the correct, working exhaustion-fallback behavior
+observed live under real free-tier pressure.
+
+### Auto-demoted models
+
+None — M7 doesn't demote anything (that's M8). The live cooldowns observed
+above are the existing M2 health-cooldown mechanism working as designed, not
+a new M7 behavior.
+
+### Open blockers
+
+None new.
+
+### Three things to review first
+
+1. **Trace `usage` is best-effort, not guaranteed.** Populated from the
+   response's `usage.input_tokens`/`output_tokens` on the buffered path;
+   left `undefined` on the hybrid live-streaming path, where real usage only
+   resolves after the trace is already written. Extending the ledger's
+   existing "late usage" back-fill pattern (`recordUsage`) to traces too was
+   scoped out — a reasonable follow-up, not a correctness gap against any M7
+   acceptance criterion.
+2. **The KV namespace changed mid-session** (`config/CONFIG` binding id went
+   from `45e10070...` to `ac8f6361...` between the M6 and M7 deploys) via
+   commits merged in from another machine's `kompass init` run — outside this
+   session's scope (`wrangler.toml`/`.jsonc` bindings were explicitly off
+   limits per the M6 brief, and this session didn't touch them). Config was
+   re-pushed to the new namespace so the deploy is correct, but worth
+   confirming intentionally on the human's side — a namespace switch usually
+   means a fresh empty KV unless the old data was migrated.
+3. **Images/embeddings capabilities aren't traced.** Only the classifier-routed
+   chat lanes (`handleAnthropic`) write to the trace store; `capabilities.ts`'s
+   `routeImageGeneration`/`routeEmbeddings` use a different routing shape that
+   doesn't map onto the `{lane, verdict, chain_considered}` trace schema.
+   Reasonable scope boundary (not in BUILD_PLAN_V2's M7 task list), but a gap
+   if debugging image/embedding routing ever needs the same tooling.
+
+### Free lanes vs. native Claude
+
+Same as M6 — no `ANTHROPIC_BASE_URL` override present in this session's shell
+environment; built on native Claude.
