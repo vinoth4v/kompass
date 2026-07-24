@@ -285,3 +285,39 @@ describe('M5 integration', () => {
     expect(json.content[0].text).toBe(HARD_EXHAUSTED_NOTICE);
   });
 });
+
+describe('disabled_models (user-toggled off, distinct from privacy/multimodal skips)', () => {
+  it('a disabled chain entry is skipped and falls through to the next one', async () => {
+    const disabledCfg = cfg();
+    // SIMPLE/AGENTIC chain[0] is openrouter/trains:free — disable it and confirm
+    // routing falls straight to nvidia/clean-model without ever calling openrouter.
+    disabledCfg.disabled_models = ['openrouter/trains:free'];
+    await env.CONFIG.put('config', JSON.stringify(disabledCfg));
+
+    fetchMock
+      .get('https://integrate.api.nvidia.com')
+      .intercept({ path: '/v1/chat/completions', method: 'POST' })
+      .reply(200, {
+        choices: [
+          { message: { role: 'assistant', content: 'served anyway' }, finish_reason: 'stop' },
+        ],
+      });
+    const res = await SELF.fetch('https://kompass.test/v1/messages', {
+      method: 'POST',
+      headers: AUTH,
+      body: JSON.stringify({
+        model: 'kompass-simple',
+        max_tokens: 64,
+        messages: [{ role: 'user', content: 'hello' }],
+      }),
+    });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as any).content[0].text).toBe('served anyway');
+
+    const status = (await (
+      await SELF.fetch('https://kompass.test/status', { headers: AUTH })
+    ).json()) as any;
+    expect(status.routes[0]).toMatchObject({ entry: 'nvidia/clean-model', ok: true });
+    expect(status.disabled_models).toEqual(['openrouter/trains:free']);
+  });
+});

@@ -15,6 +15,9 @@ export function compileConfig(configDir = 'config'): RouterConfig {
     dispatcher?: RouterConfig['dispatcher'];
     privacy?: RouterConfig['privacy'];
     deprecated_models?: RouterConfig['deprecated_models'];
+    images?: RouterConfig['images'];
+    embeddings?: RouterConfig['embeddings'];
+    disabled_models?: RouterConfig['disabled_models'];
   };
   const cfg: RouterConfig = {
     version: new Date().toISOString(),
@@ -25,6 +28,9 @@ export function compileConfig(configDir = 'config'): RouterConfig {
     dispatcher: lanesDoc.dispatcher,
     privacy: lanesDoc.privacy,
     deprecated_models: lanesDoc.deprecated_models,
+    images: lanesDoc.images,
+    embeddings: lanesDoc.embeddings,
+    disabled_models: lanesDoc.disabled_models,
   };
   const substitutions = applyDeprecations(cfg);
   for (const s of substitutions) console.log(`  deprecated: ${s}`);

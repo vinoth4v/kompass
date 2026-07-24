@@ -16,6 +16,10 @@ export interface ProviderConfig {
    *  providers silently ignore such blocks, so requests carrying them skip ahead
    *  to a multimodal provider instead of answering blind. */
   multimodal?: boolean;
+  /** Per-model multimodal capability for providers that are NOT wholly multimodal:
+   *  these specific models can read image/document blocks even though the
+   *  provider default is text-only (e.g. a vision model on an openai-kind host). */
+  multimodal_models?: string[];
   limits: ProviderLimits;
   model_limits?: Record<string, ProviderLimits>;
   /** Model-listing endpoint for discovery; defaults to `${base_url}/models`. */
@@ -62,6 +66,11 @@ export function laneSpreadTop(entry: LaneConfig | undefined, fallback = 1): numb
   return entry.spread_top ?? fallback;
 }
 
+/** Non-chat capability served by its own ordered fallback chain (images, embeddings). */
+export interface CapabilityConfig {
+  chain: string[];
+}
+
 export interface RouterConfig {
   version?: string;
   default_lane: string;
@@ -70,6 +79,10 @@ export interface RouterConfig {
   lanes: Record<string, LaneConfig>;
   dispatcher?: DispatcherConfig;
   privacy?: PrivacyConfig;
+  /** Image generation chain for POST /v1/images/generations (optional capability). */
+  images?: CapabilityConfig;
+  /** Embeddings chain for POST /v1/embeddings (optional capability). */
+  embeddings?: CapabilityConfig;
   /**
    * Declarative deprecation registry (compile-time only — see applyDeprecations).
    * Once an entry is listed here, it can never go live again even if it's still
@@ -77,6 +90,15 @@ export interface RouterConfig {
    * transparently rewrites it to `replaced_by` before the config is pushed.
    */
   deprecated_models?: Record<string, DeprecatedModelEntry>;
+  /**
+   * Chain entries ("provider/model") temporarily switched off without removing
+   * them from lanes.yaml — skipped wherever they'd otherwise be tried (chat
+   * lanes, images/embeddings chains, the classifier). Unlike deprecated_models
+   * this carries no replacement and is meant to be flipped back on any time
+   * (a flaky model, a paused experiment). Manage with `kompass models
+   * disable/enable <entry>`, which edits this list in place.
+   */
+  disabled_models?: string[];
 }
 
 export interface ChainEntry {
@@ -136,6 +158,25 @@ export function validateConfig(cfg: unknown): RouterConfig {
     }
   }
 
+  if (c.disabled_models) {
+    for (const entry of c.disabled_models) {
+      const { provider } = parseChainEntry(entry); // throws on malformed "provider/model" shape
+      if (!c.providers[provider])
+        throw new Error(`disabled_models: unknown provider "${provider}" in "${entry}"`);
+    }
+  }
+
+  for (const cap of ['images', 'embeddings'] as const) {
+    const cc = c[cap];
+    if (cc === undefined) continue;
+    if (!Array.isArray(cc.chain) || cc.chain.length === 0)
+      throw new Error(`${cap}.chain must be a non-empty array`);
+    for (const entry of cc.chain) {
+      const { provider } = parseChainEntry(entry);
+      if (!c.providers[provider]) throw new Error(`${cap}: unknown provider "${provider}"`);
+    }
+  }
+
   for (const [lane, laneCfg] of Object.entries(c.lanes)) {
     const chain = laneChainArray(laneCfg);
     if (chain.length === 0) throw new Error(`lane ${lane}: empty chain`);
@@ -170,6 +211,11 @@ export async function loadConfig(kv: KVNamespace): Promise<RouterConfig | null> 
 
 export function limitsFor(p: ProviderConfig, model: string): ProviderLimits {
   return p.model_limits?.[model] ?? p.limits;
+}
+
+/** True when `entry` ("provider/model") is in the disabled_models switch list. */
+export function isModelDisabled(cfg: RouterConfig, entry: string): boolean {
+  return cfg.disabled_models?.includes(entry) === true;
 }
 
 /**

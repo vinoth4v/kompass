@@ -13,6 +13,7 @@ export default defineWorkersConfig({
             OPENROUTER_API_KEY: 'test-openrouter-key',
             GOOGLE_AI_KEY: 'test-google-key',
             NVIDIA_API_KEY: 'test-nvidia-key',
+            CF_WORKERS_AI_KEY: 'test-cfai-key',
           },
         },
       },

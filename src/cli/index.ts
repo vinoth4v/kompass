@@ -87,6 +87,7 @@ interface StatusPayload {
     };
   } | null;
   deprecated_models?: Record<string, { replaced_by: string; note?: string; since?: string }>;
+  disabled_models?: string[];
 }
 
 function fmtTok(n?: number): string {
@@ -155,6 +156,10 @@ async function status() {
     for (const [old, info] of depEntries) {
       console.log(`  ${old} → ${info.replaced_by}${info.note ? `  (${info.note})` : ''}`);
     }
+  }
+  if (d.disabled_models?.length) {
+    console.log('Disabled models (kompass models enable <entry> to restore)');
+    for (const m of d.disabled_models) console.log(`  ${m}`);
   }
   console.log('Lanes');
   for (const [lane, l] of Object.entries(d.lanes)) {
@@ -293,7 +298,7 @@ async function discovery() {
   console.log('before adding it to config/lanes.yaml and running `kompass config push`.');
 }
 
-const [, , cmd, sub] = process.argv;
+const [, , cmd, sub, arg3] = process.argv;
 if (cmd === 'init') await (await import('./init')).init();
 else if (cmd === 'ui') await import('../ui/server');
 else if (cmd === 'config' && sub === 'push') await configPush();
@@ -304,9 +309,15 @@ else if (cmd === 'bench') await bench();
 else if (cmd === 'discovery') await discovery();
 else if (cmd === 'deprecate')
   (await import('./deprecate')).deprecateModel(flag('config-dir') ?? 'config');
+else if (cmd === 'models' && sub === 'disable')
+  (await import('./models')).disableModel(arg3, flag('config-dir') ?? 'config');
+else if (cmd === 'models' && sub === 'enable')
+  (await import('./models')).enableModel(arg3, flag('config-dir') ?? 'config');
+else if (cmd === 'models' && (sub === 'list' || !sub))
+  (await import('./models')).listModels(flag('config-dir') ?? 'config');
 else {
   console.log(
-    'Usage: kompass <init|ui|deploy|status|logs|bench|discovery [--run]|deprecate <old> --replaced-by <new>|config push> [--url <worker-url>]',
+    'Usage: kompass <init|ui|deploy|status|logs|bench|discovery [--run]|deprecate <old> --replaced-by <new>|models <list|disable|enable> <entry>|config push> [--url <worker-url>]',
   );
   process.exit(cmd ? 1 : 0);
 }

@@ -18,7 +18,13 @@ import { anthropicToOpenAI, openAIToAnthropic } from '../adapters/openai';
 import { anthropicToGemini, geminiToAnthropic, type GeminiResponse } from '../adapters/gemini';
 import type { KompassState, FailureKind, ReserveLimits } from '../do/state';
 import type { ProviderConfig, RouterConfig } from './config';
-import { limitsFor, parseChainEntry, resolveLaneChain, resolveLaneSpreadTop } from './config';
+import {
+  isModelDisabled,
+  limitsFor,
+  parseChainEntry,
+  resolveLaneChain,
+  resolveLaneSpreadTop,
+} from './config';
 import type { Env } from './env';
 import { tryLiveEntry, type LiveUsage } from './live';
 
@@ -175,15 +181,22 @@ async function tryChainEntry(
     attempts.push({ entry, status: 'skipped-disabled' });
     return null;
   }
+  // User-toggled off via `kompass models disable` — kept in the chain (so lanes.yaml
+  // stays a readable record of the full roster) but never tried until re-enabled.
+  if (isModelDisabled(cfg, entry)) {
+    attempts.push({ entry, status: 'skipped-disabled-model' });
+    return null;
+  }
   // M5 privacy guard: sensitive content never reaches providers that train on inputs.
   if (privacySensitive && p.trains_on_data === true) {
     attempts.push({ entry, status: 'skipped-privacy', detail: 'trains_on_data provider' });
     return null;
   }
-  // Image/PDF blocks: text-only providers silently ignore them and answer blind —
-  // skip ahead to a provider whose models can actually read the attachment.
-  if (multimodal && p.multimodal !== true) {
-    attempts.push({ entry, status: 'skipped-multimodal', detail: 'text-only provider' });
+  // Image/PDF blocks: text-only models silently ignore them and answer blind —
+  // skip ahead to a model that can actually read the attachment. Capability is
+  // provider-wide (multimodal: true) or per-model (multimodal_models list).
+  if (multimodal && p.multimodal !== true && !p.multimodal_models?.includes(model)) {
+    attempts.push({ entry, status: 'skipped-multimodal', detail: 'text-only model' });
     return null;
   }
   const key = providerKey(env, p);

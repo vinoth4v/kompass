@@ -12,6 +12,10 @@ providers:
     # OpenRouter free endpoints may train on prompts; treat as training-on-data for
     # the M5 privacy guard (conservative; per docs some :free endpoints train).
     trains_on_data: true
+    # Per-model vision capability (provider default stays text-only). Tool-probed
+    # ✓ 2026-07-23; gives image/PDF requests a fallback besides google.
+    multimodal_models:
+      - nvidia/nemotron-nano-12b-v2-vl:free
     # Verified 2026-07-23 at openrouter.ai/docs/api-reference/limits: 20 RPM on
     # :free models regardless of account status. RPD is the lever: <$10 lifetime
     # credits purchased → 50/day; $10+ → 1000/day (the $10 spend never expires).
@@ -26,6 +30,9 @@ providers:
     base_url: https://integrate.api.nvidia.com/v1
     key_env: NVIDIA_API_KEY
     trains_on_data: false
+    # Per-model vision capability — tool-probed ✓ 2026-07-23 (see openrouter note).
+    multimodal_models:
+      - meta/llama-3.2-90b-vision-instruct
     # TODO(verify): NVIDIA Build commonly documents 40 RPM per key; RPD not published.
     # Conservative per-key values; per-key vs per-model is an open SPEC §8 question.
     limits: { rpm: 40, rpd: 5000 }

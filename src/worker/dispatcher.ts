@@ -4,7 +4,7 @@
 import type { AnthropicRequest } from '../adapters/types';
 import type { KompassState } from '../do/state';
 import type { RouterConfig } from './config';
-import { parseChainEntry } from './config';
+import { isModelDisabled, parseChainEntry } from './config';
 import type { Env } from './env';
 
 export const LANES = ['FAST', 'SIMPLE', 'AGENTIC', 'HARD', 'LONGCTX'] as const;
@@ -124,7 +124,7 @@ async function callClassifier(
 ): Promise<{ lane: Lane; confidence: number } | null> {
   const { provider, model } = parseChainEntry(entry);
   const p = cfg.providers[provider];
-  if (!p || p.enabled === false) return null;
+  if (!p || p.enabled === false || isModelDisabled(cfg, entry)) return null;
   const key = (env as unknown as Record<string, string | undefined>)[p.key_env];
   if (!key) return null;
 

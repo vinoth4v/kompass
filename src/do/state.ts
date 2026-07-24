@@ -61,9 +61,23 @@ export interface DiscoveryReport {
   providers: Record<string, ProviderDiscovery>;
 }
 
+/** Per-day usage aggregates powering the status dashboard's analytics tab. */
+export interface DayProviderStat {
+  req: number;
+  ok: number;
+  tin: number;
+  tout: number;
+}
+export interface DayHistory {
+  providers: Record<string, DayProviderStat>;
+  models: Record<string, { req: number; ok: number }>;
+  lanes: Record<string, number>;
+}
+
 export const COOLDOWN_MS = 10 * 60 * 1000; // per-model health cooldown (SPEC P0 #5)
 const STICKY_TTL_MS = 2 * 60 * 60 * 1000;
 const MAX_ROUTES = 50;
+const HISTORY_DAYS = 60; // daily aggregates retained (covers this month + last)
 const PERF_DECAY_CAP = 40; // halve ok/fail past this total so scoring stays recency-biased
 const PERF_FLOOR = 0.05; // never fully zero out an entry — allow self-healing retries
 
@@ -215,6 +229,45 @@ export class KompassState extends DurableObject {
     return { ok: true };
   }
 
+  /**
+   * Daily usage aggregate (one storage cell per UTC day, HISTORY_DAYS retention):
+   * per-provider request/success/token counts, per-model request counts, per-lane
+   * counts. Pruning happens on the first write of a fresh day — cheap and rare.
+   */
+  private async bumpHistory(
+    entry: string,
+    ok: boolean,
+    lane?: string,
+    usage?: { input_tokens: number; output_tokens: number },
+  ): Promise<void> {
+    const day = utcDay(Date.now());
+    const key = `hist:${day}`;
+    let cell = await this.ctx.storage.get<DayHistory>(key);
+    if (!cell) {
+      cell = { providers: {}, models: {}, lanes: {} };
+      await this.pruneHistory(day);
+    }
+    const provider = entry.split('/')[0] ?? '';
+    const p = (cell.providers[provider] ??= { req: 0, ok: 0, tin: 0, tout: 0 });
+    p.req++;
+    if (ok) p.ok++;
+    if (usage) {
+      p.tin += usage.input_tokens;
+      p.tout += usage.output_tokens;
+    }
+    const m = (cell.models[entry] ??= { req: 0, ok: 0 });
+    m.req++;
+    if (ok) m.ok++;
+    if (lane) cell.lanes[lane] = (cell.lanes[lane] ?? 0) + 1;
+    await this.ctx.storage.put(key, cell);
+  }
+
+  private async pruneHistory(today: string): Promise<void> {
+    const cutoff = utcDay(Date.parse(today) - HISTORY_DAYS * 86_400_000);
+    const old = await this.ctx.storage.list({ prefix: 'hist:', end: `hist:${cutoff}` });
+    for (const k of old.keys()) await this.ctx.storage.delete(k);
+  }
+
   private async bumpTokens(provider: string, tin: number, tout: number): Promise<void> {
     const day = utcDay(Date.now());
     const cell = (await this.ctx.storage.get<TokenCell>(`tokd:${provider}`)) ?? {
@@ -275,6 +328,7 @@ export class KompassState extends DurableObject {
       tout: opts.usage?.output_tokens,
     });
     await this.ctx.storage.put('routes', routes.slice(-MAX_ROUTES));
+    await this.bumpHistory(entry, ok, opts.lane, opts.usage);
     if (opts.usage) {
       await this.bumpTokens(
         entry.split('/')[0] ?? '',
@@ -295,6 +349,22 @@ export class KompassState extends DurableObject {
     usage: { input_tokens: number; output_tokens: number },
   ): Promise<void> {
     await this.bumpTokens(entry.split('/')[0] ?? '', usage.input_tokens, usage.output_tokens);
+    // Late token counts also land in today's history aggregate (request/success
+    // were already counted by reportOutcome — only tokens are added here).
+    {
+      const day = utcDay(Date.now());
+      const key = `hist:${day}`;
+      const cell = (await this.ctx.storage.get<DayHistory>(key)) ?? {
+        providers: {},
+        models: {},
+        lanes: {},
+      };
+      const provider = entry.split('/')[0] ?? '';
+      const p = (cell.providers[provider] ??= { req: 0, ok: 0, tin: 0, tout: 0 });
+      p.tin += usage.input_tokens;
+      p.tout += usage.output_tokens;
+      await this.ctx.storage.put(key, cell);
+    }
     const routes = (await this.ctx.storage.get<RouteRecord[]>('routes')) ?? [];
     for (let i = routes.length - 1; i >= 0; i--) {
       const r = routes[i];
@@ -359,6 +429,7 @@ export class KompassState extends DurableObject {
     tokens: Record<string, TokenCell>;
     perf: Record<string, PerfCell>;
     routes: RouteRecord[];
+    history: Record<string, DayHistory>;
   }> {
     const now = Date.now();
     const rpm: Record<string, RpmCell> = {};
@@ -366,12 +437,14 @@ export class KompassState extends DurableObject {
     const cooldowns: Record<string, number> = {};
     const tokens: Record<string, TokenCell> = {};
     const perf: Record<string, PerfCell> = {};
+    const history: Record<string, DayHistory> = {};
     const all = await this.ctx.storage.list();
     for (const [k, v] of all) {
       if (k.startsWith('rpm:')) rpm[k.slice(4)] = v as RpmCell;
       else if (k.startsWith('rpd:')) rpd[k.slice(4)] = v as RpdCell;
       else if (k.startsWith('tokd:')) tokens[k.slice(5)] = v as TokenCell;
       else if (k.startsWith('perf:')) perf[k.slice(5)] = v as PerfCell;
+      else if (k.startsWith('hist:')) history[k.slice(5)] = v as DayHistory;
       else if (k.startsWith('cool:') && (v as number) > now) cooldowns[k.slice(5)] = v as number;
     }
     return {
@@ -381,6 +454,7 @@ export class KompassState extends DurableObject {
       tokens,
       perf,
       routes: (await this.ctx.storage.get<RouteRecord[]>('routes')) ?? [],
+      history,
     };
   }
 

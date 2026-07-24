@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
+import { cors } from 'hono/cors';
 import type { AnthropicRequest, AnthropicResponse } from '../adapters/types';
 import {
   anthropicToChatResponse,
@@ -13,6 +14,7 @@ import {
   type ResponsesRequest,
 } from '../adapters/ingress';
 import { bearerAuth } from './auth';
+import { routeEmbeddings, routeImageGeneration } from './capabilities';
 import { getCloudflareUsage } from './cf-usage';
 import { CONFIG_KV_KEY, laneChainArray, laneSpreadTop, loadConfig, validateConfig } from './config';
 import { dispatch } from './dispatcher';
@@ -32,6 +34,33 @@ import { FAVICON_SVG, STATUS_HTML } from './status-page';
 export { KompassState } from '../do/state';
 
 const app = new Hono<{ Bindings: Env }>();
+
+// CORS (2026-07-24): lets a hosted client on a different origin (e.g. the
+// Vercel-hosted chat app) call this Worker's API with just the bearer — no
+// cookies involved, so a wildcard origin doesn't weaken auth (bearerAuth still
+// gates every real endpoint). Registered first so it wraps every route,
+// including the public health/favicon/status.html ones and — crucially — the
+// 401 response bearerAuth returns for a bad token: without CORS headers on
+// the error response too, a browser reports an opaque "CORS error" instead of
+// a readable 401, which is what actually happens (Hono merges headers set
+// here onto whatever Response a downstream handler returns — see Context#res).
+// OPTIONS preflight is answered here directly, before bearerAuth ever runs.
+app.use(
+  '*',
+  cors({
+    origin: '*',
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    allowHeaders: [
+      'content-type',
+      'authorization',
+      'x-api-key',
+      'x-kompass-lane',
+      'x-kompass-model',
+    ],
+    exposeHeaders: ['x-kompass-served-by', 'x-kompass-lane'],
+    maxAge: 86400,
+  }),
+);
 
 app.get('/healthz', (c) => c.json({ ok: true, service: 'kompass' }));
 
@@ -164,7 +193,14 @@ async function handleAnthropic(
         escalated_on_exhaustion: escalatedOnExhaustion || undefined,
       }),
     );
-    return outcome.response;
+    // Provenance headers (2026-07-24): which provider/model actually served this
+    // reply, and which lane it routed to — the native dialect's response body
+    // otherwise only echoes back the requested model name, not what answered.
+    // Exposed cross-origin via the CORS middleware's exposeHeaders.
+    const headers = new Headers(outcome.response.headers);
+    if (outcome.used) headers.set('x-kompass-served-by', outcome.used);
+    headers.set('x-kompass-lane', lane);
+    return new Response(outcome.response.body, { status: outcome.response.status, headers });
   }
   console.log(JSON.stringify({ route: null, lane, attempts: outcome.attempts }));
 
@@ -263,6 +299,81 @@ app.post('/v1/responses', async (c) => {
   return c.json(anthropicToResponsesResponse(result, model));
 });
 
+// ---- Non-chat capabilities: image generation + embeddings (free models) ----
+
+// OpenAI Images API-compatible: {prompt, model?, n?} → {created, data:[{b64_json}]}.
+// One image per request (n is ignored — every generation burns free-tier budget);
+// the chain lives in config `images.chain` and meters the same DO ledger.
+app.post('/v1/images/generations', async (c) => {
+  let body: { prompt?: string };
+  try {
+    body = (await c.req.json()) as { prompt?: string };
+  } catch {
+    return openaiError('body must be JSON', 400);
+  }
+  if (!body.prompt || typeof body.prompt !== 'string') {
+    return openaiError('prompt (string) is required', 400);
+  }
+  const cfg = await loadConfig(c.env.CONFIG);
+  if (!cfg) return openaiError('no config in KV — run `kompass config push`', 503);
+  if (!cfg.images?.chain?.length) {
+    return openaiError('image generation not configured (images.chain in lanes.yaml)', 501);
+  }
+  const outcome = await routeImageGeneration(c.env, cfg, body.prompt, stateStub(c.env));
+  console.log(JSON.stringify({ images: outcome.used ?? null, attempts: outcome.attempts.length }));
+  if (!outcome.result) {
+    return openaiError(
+      `all image models failed: ${outcome.attempts.map((a) => `${a.entry} ${a.status}`).join('; ')}`,
+      502,
+    );
+  }
+  return c.json({
+    created: Math.floor(Date.now() / 1000),
+    data: [{ b64_json: outcome.result.b64 }],
+    // Kompass extensions (harmless to OpenAI clients): what served it + media type.
+    model: outcome.used,
+    mime_type: outcome.result.mime,
+  });
+});
+
+// OpenAI Embeddings API-compatible: {input: string|string[]} → {object:"list", data:[...]}.
+// Chain lives in config `embeddings.chain`; vector dimensions depend on the
+// serving model, so pin one entry if your vector store needs stable dims.
+app.post('/v1/embeddings', async (c) => {
+  let body: { input?: string | string[] };
+  try {
+    body = (await c.req.json()) as { input?: string | string[] };
+  } catch {
+    return openaiError('body must be JSON', 400);
+  }
+  const inputs =
+    typeof body.input === 'string' ? [body.input] : Array.isArray(body.input) ? body.input : null;
+  if (!inputs || inputs.length === 0 || inputs.some((i) => typeof i !== 'string')) {
+    return openaiError('input (string or string[]) is required', 400);
+  }
+  const cfg = await loadConfig(c.env.CONFIG);
+  if (!cfg) return openaiError('no config in KV — run `kompass config push`', 503);
+  if (!cfg.embeddings?.chain?.length) {
+    return openaiError('embeddings not configured (embeddings.chain in lanes.yaml)', 501);
+  }
+  const outcome = await routeEmbeddings(c.env, cfg, inputs, stateStub(c.env));
+  console.log(
+    JSON.stringify({ embeddings: outcome.used ?? null, attempts: outcome.attempts.length }),
+  );
+  if (!outcome.result) {
+    return openaiError(
+      `all embedding models failed: ${outcome.attempts.map((a) => `${a.entry} ${a.status}`).join('; ')}`,
+      502,
+    );
+  }
+  return c.json({
+    object: 'list',
+    data: outcome.result.map((embedding, index) => ({ object: 'embedding', index, embedding })),
+    model: outcome.used,
+    usage: { prompt_tokens: 0, total_tokens: 0 },
+  });
+});
+
 // Model roster for client pickers/validation (Cursor and others call this).
 app.get('/v1/models', (c) => {
   const ids = [
@@ -353,10 +464,16 @@ app.get('/status', async (c) => {
       Object.entries(snap.cooldowns).map(([k, v]) => [k, `${Math.round((v - now) / 1000)}s`]),
     ),
     routes: snap.routes.slice().reverse(),
+    // Daily aggregates (HISTORY_DAYS retention in the DO) — the analytics tab
+    // computes daily/monthly consumption and model usage from these client-side.
+    history: snap.history,
     // Best-effort: null when CLOUDFLARE_API_TOKEN isn't set or the Analytics
     // API call fails — never blocks the rest of /status.
     cloudflare: await getCloudflareUsage(c.env),
     deprecated_models: cfg?.deprecated_models ?? {},
+    // User-toggled off via `kompass models disable` — still listed in lanes.yaml,
+    // never tried until re-enabled. Surfaced so the dashboard can mark them.
+    disabled_models: cfg?.disabled_models ?? [],
   });
 });
 

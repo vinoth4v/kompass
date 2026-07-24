@@ -16,11 +16,12 @@ allow_paid: false
 # traffic can never starve the classifier's budget. Probed live: strict-JSON ✓.
 dispatcher:
   model: google/gemini-3.1-flash-lite
-  # Backup classifiers (JSON-mode probed ✓ 2026-07-23): tried in order when the
-  # primary is exhausted/down. Groq 8b classifies in ~70ms with 14400 RPD.
-  fallbacks:
-    - groq/llama-3.1-8b-instant
-    - mistral/mistral-small-latest
+  # Fallback classifiers released to lane work 2026-07-24 (user request): groq
+  # llama-3.1-8b-instant (already FAST) and mistral-small-latest (now FAST) no
+  # longer classify — their budgets serve real work instead. If the primary is
+  # exhausted/down, routing falls back to heuristics (never blocks, defaults to
+  # AGENTIC). Restore a `fallbacks:` list here if classifier coverage matters
+  # more than those budgets.
   timeout_ms: 1500
   cache_ttl_s: 300
   confidence_floor: 0.6
@@ -47,6 +48,20 @@ privacy:
 # kimi-k2.6 still 404s ("Function not found for account") on this key → excluded.
 # nemotron-3-embed-1b excluded: embeddings model, Claude Code sends chat traffic only.
 #
+# Design/creative candidates probed 2026-07-23 (third pass, tool-calling probe):
+#   PASSED → added: openrouter/poolside/laguna-m.1:free (AGENTIC),
+#     openrouter/nvidia/nemotron-3-super-120b-a12b:free (AGENTIC tail),
+#     nvidia/mistralai/mistral-small-4-119b-2603 (SIMPLE).
+#   EXCLUDED: nvidia qwen3.5-397b-a17b + writer/palmyra-creative-122b (404
+#     "not found for account" on this key, same class as kimi-k2.6);
+#     openrouter google/gemma-4-31b-it:free (persistent upstream 429 — free
+#     capacity saturated); nvidia minimaxai/minimax-m2.7 (68s response — too
+#     cold for interactive lanes; m3 already covers this family).
+#   Vision models (nemotron-nano-12b-v2-vl:free, llama-3.2-90b-vision) tool-probe
+#     ✓ — initially blocked on the provider-level multimodal flag; shipped
+#     per-model `multimodal_models` in providers.yaml 2026-07-24 and wired both
+#     as SIMPLE/HARD vision tails (google is no longer a multimodal SPOF).
+#
 # spread_top (2026-07-23): a lane's first pick is drawn by weighted-random from the
 # top `spread_top` entries (weighted by each model's recent live success rate),
 # not always chain[0]. Spreads load across comparable models under bursty/parallel
@@ -61,6 +76,9 @@ lanes:
     chain:
       - google/gemini-3.5-flash-lite
       - groq/llama-3.1-8b-instant
+      # mistral-small released from classifier duty 2026-07-24 — fast small
+      # generalist, natural FAST fit (JSON-mode probed ✓ 2026-07-23).
+      - mistral/mistral-small-latest
       - nvidia/stepfun-ai/step-3.7-flash
       - cfai/@cf/meta/llama-3.3-70b-instruct-fp8-fast
       - openrouter/poolside/laguna-xs-2.1:free
@@ -73,14 +91,20 @@ lanes:
       - nvidia/poolside/laguna-xs-2.1
       - mistral/codestral-2508
       - nvidia/nvidia/llama-3.3-nemotron-super-49b-v1
+      # mistral-small-4 added 2026-07-23: tool-probed ✓ (~670ms); frontend/creative
+      # all-rounder for webdesign-flavoured SIMPLE traffic.
+      - nvidia/mistralai/mistral-small-4-119b-2603
       - sambanova/Meta-Llama-3.3-70B-Instruct
       - groq/llama-3.3-70b-versatile
       - nvidia/mistralai/mistral-medium-3.5-128b
       - google/gemini-3.5-flash-lite
       # second multimodal entry (google provider counter, not flash-lite's): a
       # transient flash-lite failure must not exhaust every lane for PDF/image
-      # requests, which only multimodal (google) models can serve.
+      # requests, which only multimodal models can serve.
       - google/gemini-3.6-flash
+      # non-google vision fallback (multimodal_models in providers.yaml) so a
+      # google outage/quota-out no longer exhausts SIMPLE for image/PDF requests.
+      - openrouter/nvidia/nemotron-nano-12b-v2-vl:free
 
   # laguna-xs (nvidia) demoted below minimax 2026-07-23: repeatedly returned
   # truncated/empty streams during real sessions.
@@ -89,11 +113,19 @@ lanes:
     chain:
       - openrouter/poolside/laguna-s-2.1:free
       - nvidia/minimaxai/minimax-m3
+      # laguna-m.1 added 2026-07-23 (design/frontend/game-code pass): larger laguna
+      # sibling, tool-probed ✓ (2.8s, first probe hit a transient upstream 429).
+      # Deliberately below the proven spread pair — promote into the spread only
+      # after real-session validation (see docs/DECISIONS.md).
+      - openrouter/poolside/laguna-m.1:free
       - mistral/devstral-medium-latest
       - openrouter/poolside/laguna-xs-2.1:free
       - nvidia/z-ai/glm-5.2
       - nvidia/poolside/laguna-xs-2.1
       - hf/Qwen/Qwen3-Coder-Next
+      # nemotron-3-super-120b added 2026-07-23: tool-probed ✓ (~300ms), 262k ctx,
+      # solid webdesign/game-code fallback depth on the openrouter RPD budget.
+      - openrouter/nvidia/nemotron-3-super-120b-a12b:free
       - google/gemini-3.6-flash
 
   HARD:
@@ -111,6 +143,9 @@ lanes:
       # multimodal fallback: gemini-3.1-pro is scarce (2 rpm / 50 rpd) — PDF/image
       # requests on HARD need a second multimodal option before exhausting.
       - google/gemini-3.6-flash
+      # non-google vision fallback (multimodal_models in providers.yaml); slow
+      # (~8s probe) but keeps HARD alive for image/PDF when google is out.
+      - nvidia/meta/llama-3.2-90b-vision-instruct
 
   LONGCTX:
     spread_top: 2 # both leads are 1M-context models of comparable quality
@@ -124,3 +159,23 @@ lanes:
       - nvidia/nvidia/nemotron-3-ultra-550b-a55b
       - nvidia/minimaxai/minimax-m3
       - openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
+
+# Non-chat capabilities (2026-07-24): each is an ordered fallback chain over the
+# same providers/ledger. Upstream shapes live-probed before wiring — flux returns
+# JSON b64, SDXL returns raw PNG bytes, bge-m3 native run, gemini batchEmbed.
+# Excluded after probing: nvidia baai/bge-m3 (account-gated "Something went
+# wrong"), google gemini-3.1-flash-image (429 "check your plan" on free tier),
+# cfai flux-2-klein (requires multipart input — not worth a third body shape).
+images:
+  chain:
+    - cfai/@cf/black-forest-labs/flux-1-schnell
+    - cfai/@cf/bytedance/stable-diffusion-xl-lightning
+
+# NOTE for clients: vector dimensions differ per model (bge-m3: 1024,
+# gemini-embedding-001: 3072). A vector store needs stable dims — if you index
+# with one model, don't let a fallback silently switch dims mid-corpus; the
+# response's `model` field says which entry served each request.
+embeddings:
+  chain:
+    - cfai/@cf/baai/bge-m3
+    - google/gemini-embedding-001

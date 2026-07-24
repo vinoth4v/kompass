@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyDeprecations,
+  isModelDisabled,
   laneChainArray,
   laneSpreadTop,
   resolveLaneChain,
@@ -142,5 +143,29 @@ describe('applyDeprecations', () => {
     const cfg = baseCfg({ AGENTIC: ['openrouter/a:free'] });
     expect(applyDeprecations(cfg)).toEqual([]);
     expect(laneChainArray(cfg.lanes.AGENTIC)).toEqual(['openrouter/a:free']);
+  });
+});
+
+describe('disabled_models', () => {
+  it('validates: entries must parse and reference a known provider', () => {
+    const ok = baseCfg({ AGENTIC: ['openrouter/a:free'] });
+    ok.disabled_models = ['openrouter/a:free'];
+    expect(() => validateConfig(ok)).not.toThrow();
+
+    const badShape = baseCfg({ AGENTIC: ['openrouter/a:free'] });
+    badShape.disabled_models = ['not-a-chain-entry'];
+    expect(() => validateConfig(badShape)).toThrow();
+
+    const unknownProvider = baseCfg({ AGENTIC: ['openrouter/a:free'] });
+    unknownProvider.disabled_models = ['ghost/model'];
+    expect(() => validateConfig(unknownProvider)).toThrow(/unknown provider/);
+  });
+
+  it('isModelDisabled checks the switch list; absent list means nothing is disabled', () => {
+    const cfg = baseCfg({ AGENTIC: ['openrouter/a:free', 'openrouter/b:free'] });
+    expect(isModelDisabled(cfg, 'openrouter/a:free')).toBe(false);
+    cfg.disabled_models = ['openrouter/a:free'];
+    expect(isModelDisabled(cfg, 'openrouter/a:free')).toBe(true);
+    expect(isModelDisabled(cfg, 'openrouter/b:free')).toBe(false);
   });
 });
