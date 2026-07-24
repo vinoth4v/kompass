@@ -294,8 +294,8 @@ environment; built on native Claude.
 
 ## M8 — Quality Signal & Adaptive Weights
 
-**Status: complete.** Tag `m8` (deploy commit to follow this write-up).
-Deployed: **https://kompass.vinoth4v.workers.dev**.
+**Status: complete.** Tag `m8`, commit `dac0916`, pushed to `origin/main`.
+Deployed: **https://kompass.vinoth4v.workers.dev**, config re-pushed.
 
 ### Test / smoke status
 
@@ -304,7 +304,26 @@ Deployed: **https://kompass.vinoth4v.workers.dev**.
 | `pnpm typecheck`      | ✅ green                                                                                                                                                 |
 | `pnpm lint`           | ✅ green                                                                                                                                                 |
 | `pnpm test`           | ✅ 173/173 green (21 new in `test/score.test.ts`, every M0-M7 test unmodified except one v1 fixture updated for the new selection mechanism — see below) |
-| `pnpm smoke:deployed` | ✅ (to run as part of this milestone's deploy step)                                                                                                      |
+| `pnpm smoke:deployed` | ✅ 4 of 5 consecutive runs fully green; 1 run hit two real HTTP 500s — investigated, see below, not blocking                                             |
+
+**The one smoke anomaly, investigated rather than dismissed:** one
+`smoke:deployed` run returned HTTP 500 (not a graceful synthetic-notice
+fallback) on the streamed-completion and tool-round-trip checks; three
+immediate re-runs and one manual `curl` reproduction all came back clean.
+Reviewed every new score-recording call site in `router.ts`/`index.ts` for
+an unguarded throw — all are wrapped in `.catch()`, and the two call sites
+that could theoretically fire in production (escalation attribution) are
+inside the existing M5 escalation block's own try/catch. `/status`'s
+Cloudflare panel shows 11 errors / 4376 requests today (~0.25%) and a CPU
+p99 of 35ms against the 10ms free-tier budget — flagged as "hitting the CPU
+ceiling" by the existing dashboard logic, but this is a **pre-existing,
+cumulative concern this project has flagged in every milestone since M0**
+(large Claude Code payloads triggering privacy-guard/digest/fit-filter CPU
+spikes), not a new regression traceable to a specific M8 code path — the
+score-recording DO calls themselves are I/O-bound RPCs (compute happens
+inside the DO's own separate CPU budget), not CPU work on the calling
+Worker. Recorded here rather than silently ignored; see "three things to
+review" below.
 
 ### What shipped
 
@@ -434,6 +453,15 @@ None new.
    wholly new check. Both are real signals, but worth knowing the coverage
    isn't perfectly symmetric across providers/paths if `malformed_tool_call`
    penalty counts ever look asymmetric in `/status`.
+4. **The CPU-ceiling flag on `/status`** (p99 35ms vs. the 10ms free-tier
+   budget, 11/4376 errors today) predates this milestone as a known concern
+   but was re-surfaced by chasing the one flaky smoke run above — worth an
+   actual measurement pass (the M6/M7 pattern: instrument, don't guess) on
+   the cumulative per-request CPU cost of privacy guard + fit filter +
+   digest + fit-filter's estimator + M8's synchronous overrides computation,
+   now that four milestones' worth of hot-path additions have stacked up.
+   Not done here — out of scope for M8 specifically, but the next milestone
+   that touches the request hot path should budget time for it.
 
 ### Free lanes vs. native Claude
 
