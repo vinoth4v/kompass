@@ -24,6 +24,8 @@ import {
   ESCALATION_THRESHOLD,
   lastTurnHadToolError,
   laneUp,
+  noFitNotice,
+  noFitNoticeStream,
   syntheticNotice,
   syntheticNoticeStream,
 } from './escalation';
@@ -165,9 +167,15 @@ async function handleAnthropic(
       privacySensitive,
       live,
       waitUntil: (p) => c.executionCtx.waitUntil(p),
+      rawLength: raw.length,
     });
 
   let outcome = await routeOnce(lane);
+  // M6: track whether EVERY lane tried failed purely on fit (never actually
+  // attempted a provider) — if so, the terminal notice below names the
+  // largest configured window instead of the generic exhaustion message.
+  let allTooLargeSoFar = outcome.allSkippedTooLarge === true;
+  let maxCtxSeen = outcome.largestCtx;
   // Total exhaustion of one lane's chain doesn't mean every free model is down —
   // squeeze every remaining lane before ever giving up (skip when a specific
   // model was forced via x-kompass-model, e.g. smoke tests expecting exactly one).
@@ -179,6 +187,12 @@ async function handleAnthropic(
     lane = up;
     escalatedOnExhaustion = true;
     outcome = await routeOnce(lane);
+    allTooLargeSoFar = allTooLargeSoFar && outcome.allSkippedTooLarge === true;
+    if (
+      outcome.largestCtx !== undefined &&
+      (maxCtxSeen === undefined || outcome.largestCtx > maxCtxSeen)
+    )
+      maxCtxSeen = outcome.largestCtx;
   }
 
   if (outcome.response) {
@@ -203,6 +217,19 @@ async function handleAnthropic(
     return new Response(outcome.response.body, { status: outcome.response.status, headers });
   }
   console.log(JSON.stringify({ route: null, lane, attempts: outcome.attempts }));
+
+  // M6 (SPEC_V2 §6 edge case): nothing was ever attempted anywhere — every lane's
+  // every entry was too small for this request, not exhausted or unhealthy. Name
+  // the largest window actually configured instead of the generic notice below.
+  if (allTooLargeSoFar) {
+    console.log(JSON.stringify({ no_fit: { largest_ctx: maxCtxSeen ?? null } }));
+    if (body.stream) {
+      return new Response(noFitNoticeStream(body.model, maxCtxSeen), {
+        headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+      });
+    }
+    return c.json(noFitNotice(body.model, maxCtxSeen));
+  }
 
   // Every lane's entire chain failed. Always a friendly in-chat notice, never a
   // raw protocol error — Claude Code treats this as a normal completed turn, so

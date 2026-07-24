@@ -247,11 +247,48 @@ async function testDispatchLatency() {
   );
 }
 
+async function testLongContext() {
+  // M6 (BUILD_PLAN_V2 §5): a >60k-token request must be routed and answered
+  // (not dropped) — proves the fit filter's per-model ctx checks and the
+  // derived LONGCTX heuristic threshold both work against the REAL deployed
+  // config, not just unit fixtures. ~300k chars / 4 ≈ 75k tokens.
+  const t0 = Date.now();
+  const res = await fetch(`${BASE_URL}/v1/messages`, {
+    method: 'POST',
+    headers: HEADERS,
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-5',
+      max_tokens: 64,
+      messages: [
+        {
+          role: 'user',
+          content:
+            'lorem ipsum dolor sit amet '.repeat(11_000) + '\n\nReply with exactly the word: pong',
+        },
+      ],
+    }),
+  });
+  if (res.status !== 200) {
+    check('>60k-token request', false, `HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    return;
+  }
+  const served = res.headers.get('x-kompass-served-by');
+  const lane = res.headers.get('x-kompass-lane');
+  const json = (await res.json()) as { content?: Array<{ text?: string }> };
+  const text = (json.content ?? []).map((b) => b.text ?? '').join('');
+  check(
+    '>60k-token request routes and answers',
+    text.length > 0,
+    `${Date.now() - t0}ms, lane=${lane} served_by=${served}, text="${text.slice(0, 60)}"`,
+  );
+}
+
 console.log(`Smoke target: ${BASE_URL}`);
 await testAuth();
 await testStreaming();
 await testToolRoundTrip();
 await testDispatchLatency();
+await testLongContext();
 // M1 acceptance: identical toy tool-call task on one OpenAI-format and one Gemini model.
 const adapterTargets = (process.env.SMOKE_ADAPTER_MODELS ?? '').split(',').filter(Boolean);
 for (const target of adapterTargets) await testToolRoundTrip(target);

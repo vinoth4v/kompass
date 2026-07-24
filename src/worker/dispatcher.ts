@@ -4,8 +4,9 @@
 import type { AnthropicRequest } from '../adapters/types';
 import type { KompassState } from '../do/state';
 import type { RouterConfig } from './config';
-import { isModelDisabled, parseChainEntry } from './config';
+import { isModelDisabled, parseChainEntry, resolveLaneChain } from './config';
 import type { Env } from './env';
+import { smallestCtx } from './fit';
 
 export const LANES = ['FAST', 'SIMPLE', 'AGENTIC', 'HARD', 'LONGCTX'] as const;
 export type Lane = (typeof LANES)[number];
@@ -33,10 +34,29 @@ export function estimateTokens(body: AnthropicRequest, rawLength?: number): numb
   return Math.ceil(chars / 4);
 }
 
+const LONGCTX_FALLBACK_THRESHOLD = 60_000;
+
+/**
+ * M6 (BUILD_PLAN_V2 §4): the LONGCTX heuristic threshold is derived from the
+ * smallest declared ctx in the AGENTIC chain — once a request wouldn't even
+ * fit the least-capable AGENTIC entry, guessing LONGCTX up front skips a
+ * doomed hop. Falls back to the v1 60k constant when no AGENTIC entry (or no
+ * cfg at all — unit-test callers) declares a ctx, so an unmodified v1 config
+ * behaves identically.
+ */
+export function longctxThreshold(cfg?: RouterConfig): number {
+  if (!cfg) return LONGCTX_FALLBACK_THRESHOLD;
+  return smallestCtx(cfg, resolveLaneChain(cfg, 'AGENTIC')) ?? LONGCTX_FALLBACK_THRESHOLD;
+}
+
 /** 0ms pre-filter (BUILD_PLAN M3): tiny & tool-less → FAST; huge context → LONGCTX. */
-export function heuristicLane(body: AnthropicRequest, rawLength?: number): Lane | null {
+export function heuristicLane(
+  body: AnthropicRequest,
+  rawLength?: number,
+  cfg?: RouterConfig,
+): Lane | null {
   const tokens = estimateTokens(body, rawLength);
-  if (tokens > 60_000) return 'LONGCTX';
+  if (tokens > longctxThreshold(cfg)) return 'LONGCTX';
   if (tokens < 1_000 && !body.tools?.length) return 'FAST';
   return null;
 }
@@ -197,7 +217,7 @@ export async function dispatch(
 ): Promise<DispatchResult> {
   const t0 = Date.now();
 
-  const h = heuristicLane(body, rawLength);
+  const h = heuristicLane(body, rawLength, cfg);
   if (h && cfg.lanes[h]) return { lane: h, source: 'heuristic', ms: Date.now() - t0 };
 
   const cc = classifierConfig(cfg);

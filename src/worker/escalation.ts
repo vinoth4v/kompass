@@ -48,3 +48,31 @@ export function syntheticNotice(model: string): AnthropicResponse {
 export function syntheticNoticeStream(model: string): string {
   return messageToAnthropicSSE(syntheticNotice(model));
 }
+
+/**
+ * M6 (SPEC_V2 §6, edge cases): distinct from HARD_EXHAUSTED_NOTICE — every
+ * chain entry tried was dropped by the fit filter itself (structurally too
+ * large), not by quota/health. Names the largest window actually configured
+ * so the developer knows whether trimming the request could even help.
+ */
+export function noFitNoticeText(largestConfiguredCtx: number | undefined): string {
+  return largestConfiguredCtx !== undefined
+    ? `This request is too large for every configured model — the largest available ` +
+        `context window is ${largestConfiguredCtx.toLocaleString()} tokens. Trim the request, ` +
+        'or switch to native Claude (`claude`) for this one.'
+    : HARD_EXHAUSTED_NOTICE;
+}
+
+export function noFitNotice(
+  model: string,
+  largestConfiguredCtx: number | undefined,
+): AnthropicResponse {
+  return {
+    ...syntheticNotice(model),
+    content: [{ type: 'text', text: noFitNoticeText(largestConfiguredCtx) }],
+  };
+}
+
+export function noFitNoticeStream(model: string, largestConfiguredCtx: number | undefined): string {
+  return messageToAnthropicSSE(noFitNotice(model, largestConfiguredCtx));
+}

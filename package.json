@@ -28,6 +28,7 @@
     "format": "prettier --write .",
     "test": "vitest run",
     "smoke": "tsx scripts/smoke.ts",
+    "smoke:deployed": "tsx scripts/smoke.ts --url https://kompass.vinoth4v.workers.dev",
     "ui": "tsx src/ui/server.ts",
     "secrets:push": "wrangler secret bulk secrets/.secrets.json",
     "kompass": "tsx src/cli/index.ts"

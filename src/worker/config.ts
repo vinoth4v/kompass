@@ -4,6 +4,18 @@
 export interface ProviderLimits {
   rpm: number;
   rpd: number;
+  /** Tokens-per-minute ceiling, when a provider enforces one separately from
+   *  RPM/RPD (e.g. Groq's free tier). Optional — omitted means "not TPM-limited,
+   *  or not verified" (M6 fit filter treats it as unbounded, never invented). */
+  tpm?: number;
+  /** Context window in tokens (input+output). Only meaningful per model_limits
+   *  entry — a bare provider-wide `limits` block has no single ctx. Missing =
+   *  unknown: the M6 fit filter keeps the entry but ranks it last, never
+   *  hard-drops on absent data. */
+  ctx?: number;
+  /** Max output/completion tokens this model will accept in one request, when
+   *  documented separately from (and smaller than) its context window. */
+  max_out?: number;
 }
 
 export interface ProviderConfig {
@@ -22,6 +34,10 @@ export interface ProviderConfig {
   multimodal_models?: string[];
   limits: ProviderLimits;
   model_limits?: Record<string, ProviderLimits>;
+  /** Fallback context window (M6) for a model_limits entry that declares none.
+   *  Still optional/defaulted — an unmodified v1 config has no default_ctx
+   *  anywhere and every entry stays "unknown ctx" (fit filter is inert). */
+  default_ctx?: number;
   /** Model-listing endpoint for discovery; defaults to `${base_url}/models`. */
   discovery_url?: string;
 }
@@ -131,6 +147,21 @@ export function validateConfig(cfg: unknown): RouterConfig {
     if (!p.key_env) throw new Error(`provider ${name}: key_env missing`);
     if (!p.limits || typeof p.limits.rpm !== 'number' || typeof p.limits.rpd !== 'number')
       throw new Error(`provider ${name}: limits.rpm/rpd required`);
+    // M6: every fit-related field is optional, but if present must be sane —
+    // never silently accept a zero/negative ctx/tpm/max_out (guardrail §6.16).
+    if (p.default_ctx !== undefined && !(p.default_ctx > 0))
+      throw new Error(`provider ${name}: default_ctx must be a positive number`);
+    if (p.limits.tpm !== undefined && !(p.limits.tpm > 0))
+      throw new Error(`provider ${name}: limits.tpm must be a positive number`);
+    for (const [model, ml] of Object.entries(p.model_limits ?? {})) {
+      for (const field of ['ctx', 'max_out', 'tpm'] as const) {
+        const v = ml[field];
+        if (v !== undefined && !(v > 0))
+          throw new Error(
+            `provider ${name} model_limits["${model}"]: ${field} must be a positive number`,
+          );
+      }
+    }
   }
 
   if (c.dispatcher) {

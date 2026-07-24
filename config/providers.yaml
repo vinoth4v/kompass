@@ -1,5 +1,12 @@
 # Kompass provider registry. All model IDs live here or in lanes.yaml — never in code
 # (BUILD_PLAN §6.5). Limits: verified live where possible, else conservative + TODO(verify).
+#
+# M6 (2026-07-24): ctx (context window, tokens) / max_out (max completion tokens) /
+# tpm (tokens-per-minute) added per model_limits entry, plus optional provider-wide
+# default_ctx. All optional and defaulted (SPEC_V2 §5) — src/worker/fit.ts treats a
+# missing ctx as "unknown" and never hard-drops on it. Verified live per guardrail
+# §6.6/§6.16 against each provider's own docs (see docs/DECISIONS.md for sources and
+# the handful of TODO(verify) gaps that had no public, checkable number).
 providers:
   # ── Get a free key: https://openrouter.ai/keys ──────────────────────────────
   # Sign in (GitHub/Google works) → "Create Key" → copy the sk-or-v1-… value into
@@ -21,6 +28,19 @@ providers:
     # credits purchased → 50/day; $10+ → 1000/day (the $10 spend never expires).
     # User purchased $10+ credits 2026-07-23 → tier confirmed at 1000 RPD.
     limits: { rpm: 20, rpd: 1000 }
+    # M6 (2026-07-24): ctx/max_out verified live from the PUBLIC, unauthenticated
+    # GET openrouter.ai/api/v1/models — every :free slug below carries a real
+    # context_length/max_completion_tokens field. See DECISIONS.md.
+    model_limits:
+      poolside/laguna-xs-2.1:free: { rpm: 20, rpd: 1000, ctx: 262144, max_out: 32768 }
+      poolside/laguna-s-2.1:free: { rpm: 20, rpd: 1000, ctx: 262144, max_out: 32768 }
+      # NOTE (2026-07-24): OpenRouter's own model page flags this slug
+      # "Discontinuing July 28, 2026" — 4 days out at verification time. Re-probe
+      # soon; see docs/BLOCKERS.md.
+      poolside/laguna-m.1:free: { rpm: 20, rpd: 1000, ctx: 262144, max_out: 32768 }
+      nvidia/nemotron-nano-12b-v2-vl:free: { rpm: 20, rpd: 1000, ctx: 128000 } # max_out TODO(verify)
+      nvidia/nemotron-3-super-120b-a12b:free: { rpm: 20, rpd: 1000, ctx: 262144 } # max_out TODO(verify)
+      nvidia/nemotron-3-ultra-550b-a55b:free: { rpm: 20, rpd: 1000, ctx: 1000000, max_out: 65536 }
 
   # ── Get a free key: https://build.nvidia.com ────────────────────────────────
   # Create an NVIDIA account → open any model page → "Get API Key" → copy the
@@ -36,6 +56,26 @@ providers:
     # TODO(verify): NVIDIA Build commonly documents 40 RPM per key; RPD not published.
     # Conservative per-key values; per-key vs per-model is an open SPEC §8 question.
     limits: { rpm: 40, rpd: 5000 }
+    # M6 (2026-07-24): ctx verified live at docs.api.nvidia.com/nim/reference/<model>
+    # for every model actually wired into a lane. max_out/tpm: NVIDIA Build does not
+    # publish a hard completion-token ceiling or a TPM figure on these model cards
+    # (free-tier throttling there is an undocumented adaptive RPM, not TPM) — left
+    # unset rather than invented; see docs/DECISIONS.md.
+    model_limits:
+      stepfun-ai/step-3.7-flash: { rpm: 40, rpd: 5000, ctx: 262144 }
+      nvidia/llama-3.3-nemotron-super-49b-v1: { rpm: 40, rpd: 5000, ctx: 131072 }
+      poolside/laguna-xs-2.1: { rpm: 40, rpd: 5000, ctx: 262144 }
+      mistralai/mistral-small-4-119b-2603: { rpm: 40, rpd: 5000, ctx: 262144 }
+      mistralai/mistral-medium-3.5-128b: { rpm: 40, rpd: 5000, ctx: 262144 }
+      minimaxai/minimax-m3: { rpm: 40, rpd: 5000, ctx: 1000000 }
+      z-ai/glm-5.2: { rpm: 40, rpd: 5000, ctx: 1048576 }
+      deepseek-ai/deepseek-v4-pro: { rpm: 40, rpd: 5000, ctx: 1000000 }
+      deepseek-ai/deepseek-v4-flash: { rpm: 40, rpd: 5000, ctx: 1000000 }
+      meta/llama-3.2-90b-vision-instruct: { rpm: 40, rpd: 5000, ctx: 128000 }
+      # NIM catalog cites up to 1M, but that requires the deployer to opt into
+      # VLLM_ALLOW_LONG_MAX_MODEL_LEN=1 server-side — NOT the default. 262144 is
+      # the documented default served context; conservative per guardrail §6.16.
+      nvidia/nemotron-3-ultra-550b-a55b: { rpm: 40, rpd: 5000, ctx: 262144 } # TODO(verify): confirm this key's NIM deployment isn't opted into the 1M variant
 
   # ── Get a free key: https://aistudio.google.com/apikey ─────────────────────
   # Sign in with a Google account → "Create API key" → copy the AIza… value into
@@ -53,13 +93,20 @@ providers:
     # TODO(verify): ai.google.dev no longer publishes free-tier numbers (dashboard-only,
     # needs browser). Conservative defaults; per-model overrides below.
     limits: { rpm: 10, rpd: 500 }
+    # M6 (2026-07-24): every current Gemini 3.x model shares a verified 1,048,576-token
+    # context window / 65,536-token max output (ai.google.dev/gemini-api/docs/models/<model>).
+    # default_ctx covers any Gemini model referenced without its own model_limits entry
+    # (e.g. gemini-3.6-flash below, which only overrides rpm/rpd for multimodal fallback).
+    # TPM: Google no longer publishes a static free-tier table (account-only AI Studio
+    # dashboard) — left unset rather than invented; see docs/DECISIONS.md.
+    default_ctx: 1048576
     model_limits:
-      gemini-3.1-pro-preview: { rpm: 2, rpd: 50 }
+      gemini-3.1-pro-preview: { rpm: 2, rpd: 50, ctx: 1048576, max_out: 65536 }
       # classifier: SPEC cites ~1,500/day free for flash-lite; TODO(verify) exact
       # current numbers in the AI Studio dashboard (not published in docs anymore).
-      gemini-3.5-flash-lite: { rpm: 15, rpd: 1000 }
+      gemini-3.5-flash-lite: { rpm: 15, rpd: 1000, ctx: 1048576, max_out: 65536 }
       # dedicated dispatcher model — own counter, no coding lane uses it
-      gemini-3.1-flash-lite: { rpm: 15, rpd: 1000 }
+      gemini-3.1-flash-lite: { rpm: 15, rpd: 1000, ctx: 1048576, max_out: 65536 }
 
   # ── Get a free key: https://console.groq.com/keys ──────────────────────────
   # Create a Groq account → "Create API Key" → copy the gsk_… value into
@@ -71,12 +118,15 @@ providers:
     enabled: true
     trains_on_data: false
     # Verified 2026-07-23 via x-ratelimit-limit-requests response headers (per-day):
-    # llama-3.3-70b/gpt-oss-120b 1000 RPD, llama-3.1-8b-instant 14400 RPD.
-    # TPM is tiny on free tier (6-12k) → Groq suits small-context lanes; oversized
-    # requests get rejected upstream and fall through the chain. rpm TODO(verify).
+    # llama-3.3-70b/gpt-oss-120b 1000 RPD, llama-3.1-8b-instant 14400 RPD. rpm TODO(verify).
     limits: { rpm: 30, rpd: 1000 }
+    # M6 (2026-07-24): ctx/max_out/tpm verified live at console.groq.com/docs/models —
+    # CORRECTS the earlier "TPM is tiny (6-12k)" guess in this file's history: the
+    # real free/dev-tier TPM is 250k-300k per model, two orders of magnitude higher.
+    # See docs/DECISIONS.md.
     model_limits:
-      llama-3.1-8b-instant: { rpm: 30, rpd: 14400 }
+      llama-3.1-8b-instant: { rpm: 30, rpd: 14400, ctx: 131072, max_out: 131072, tpm: 250000 }
+      llama-3.3-70b-versatile: { rpm: 30, rpd: 1000, ctx: 131072, max_out: 32768, tpm: 300000 }
 
   # ── Get a free key: https://console.mistral.ai (Experiment tier) ────────────
   # NOTE: the free Experiment tier trains on your data → trains_on_data: true,
@@ -88,6 +138,17 @@ providers:
     trains_on_data: true
     # TODO(verify): Experiment tier ~1 req/s; conservative values.
     limits: { rpm: 30, rpd: 5000 }
+    # M6 (2026-07-24): ctx verified live at docs.mistral.ai/models/model-cards/<card>.
+    # codestral-2508 is a pinned dated model — direct match, fully verified (a
+    # third-party listing claims 256k instead of the official 128k; official docs
+    # trusted per guardrail §6.16 — see DECISIONS.md). mistral-small-latest and
+    # devstral-medium-latest are rolling aliases — the ctx below is the newest
+    # matching dated model card at verification time, not a confirmed alias-pin;
+    # flagged TODO(verify) accordingly. max_out/tpm: not published by Mistral.
+    model_limits:
+      mistral-small-latest: { rpm: 30, rpd: 5000, ctx: 262144 } # TODO(verify): alias→dated-card mapping inferred, not confirmed
+      codestral-2508: { rpm: 30, rpd: 5000, ctx: 128000 }
+      devstral-medium-latest: { rpm: 30, rpd: 5000, ctx: 128000 } # TODO(verify): alias→dated-card mapping inferred, not confirmed
 
   # ── Get a token: https://github.com/settings/personal-access-tokens ────────
   # Fine-grained PAT with "Models: read". Free access to frontier models with
@@ -101,6 +162,15 @@ providers:
     limits: { rpm: 5, rpd: 50 }
     # Catalog lives on a different host than the inference endpoint above.
     discovery_url: https://models.github.ai/catalog/models
+    # M6 (2026-07-24): the known-bite case (SPEC_V2 §2/§4) — confirmed live at
+    # docs.github.com/en/github-models/prototyping-with-ai-models#rate-limits:
+    # GitHub Models free tier hard-caps EVERY model at 8,000 input / 4,000 output
+    # tokens per request, identically across both rate-limit tiers. ctx=8000 here
+    # models the combined request budget (input+output <= ctx) — stricter than the
+    # real two-independent-caps rule, which is the conservative/safe direction per
+    # guardrail §6.16 (never risk a request the fit filter thought would fit).
+    model_limits:
+      openai/gpt-4.1: { rpm: 5, rpd: 50, ctx: 8000, max_out: 4000 }
 
   # ── Get a token: https://dash.cloudflare.com/profile/api-tokens (Workers AI) ─
   cfai:
@@ -112,6 +182,11 @@ providers:
     limits: { rpm: 30, rpd: 500 }
     # Model listing is a separate search endpoint, not {base_url}/models.
     discovery_url: https://api.cloudflare.com/client/v4/accounts/fa8b047b0bd7d52b47a415ee6dbf3fda/ai/models/search?per_page=100&task=Text%20Generation
+    # M6 (2026-07-24): ctx verified live at developers.cloudflare.com/workers-ai/models/
+    # llama-3.3-70b-instruct-fp8-fast/. max_out/tpm: Workers AI free tier is
+    # neuron-quota-based, not token-rate-based — no TPM to declare; left unset.
+    model_limits:
+      '@cf/meta/llama-3.3-70b-instruct-fp8-fast': { rpm: 30, rpd: 500, ctx: 24000 }
 
   # ── Get a free key: https://cloud.sambanova.ai ──────────────────────────────
   sambanova:
@@ -121,6 +196,15 @@ providers:
     trains_on_data: false
     # TODO(verify): free-tier RPM per model varies; conservative.
     limits: { rpm: 10, rpd: 500 }
+    # M6 (2026-07-24): ctx verified live at docs.sambanova.ai/cloud/docs/get-started/
+    # supported-models. SambaNova publishes a 200,000 TOKENS-PER-DAY free-tier cap
+    # (docs.sambanova.ai/docs/en/models/rate-limits) — a different unit than this
+    # schema's per-minute `tpm`, and not something the M6 fit filter enforces
+    # (that would need a daily token ledger, out of scope for M6) — deliberately
+    # left unset rather than misapplied to the wrong field. max_out: not published.
+    model_limits:
+      Meta-Llama-3.3-70B-Instruct: { rpm: 10, rpd: 500, ctx: 128000 }
+      DeepSeek-V3.2: { rpm: 10, rpd: 500, ctx: 32000 }
 
   # ── Get a trial key: https://dashboard.cohere.com/api-keys ──────────────────
   # Trial keys are ~1000 calls/month and may be used for improvement → trains true.
@@ -149,3 +233,8 @@ providers:
     key_env: HF_API_KEY
     trains_on_data: true
     limits: { rpm: 10, rpd: 500 }
+    # M6 (2026-07-24): native ctx verified live on the huggingface.co model card.
+    # max_out/tpm: HF Inference Providers doesn't publish a fixed free-tier
+    # ceiling for either (undisclosed, load-dependent) — left unset.
+    model_limits:
+      Qwen/Qwen3-Coder-Next: { rpm: 10, rpd: 500, ctx: 262144 }

@@ -151,9 +151,15 @@ lanes:
     spread_top: 2 # both leads are 1M-context models of comparable quality
     # github/openai/gpt-4.1 removed 2026-07-23: hard-capped at 8000 tokens per
     # request on the free Models tier ("Request body too large... Max size: 8000
-    # tokens") — structurally incompatible with this lane (heuristic threshold is
-    # >60k tokens), so every real LONGCTX request would fail on it. Kept in HARD
-    # only, where request sizes are normally well under that cap.
+    # tokens") — structurally incompatible with this lane. Kept in HARD only,
+    # where request sizes are normally well under that cap; also enforced live
+    # by the M6 fit filter (providers.yaml github.model_limits, ctx=8000) so a
+    # request that's actually too big for it is skipped rather than dispatched.
+    # NOTE (M6, 2026-07-24): the dispatcher's LONGCTX heuristic threshold is no
+    # longer the hardcoded 60k this comment used to describe — it's now derived
+    # from the smallest declared `ctx` in the AGENTIC chain (currently 128,000,
+    # from mistral/devstral-medium-latest, in the AGENTIC chain above), falling back to 60k only when
+    # no AGENTIC entry declares a ctx. See src/worker/dispatcher.ts longctxThreshold().
     chain:
       - google/gemini-3.6-flash
       - nvidia/nvidia/nemotron-3-ultra-550b-a55b

@@ -26,6 +26,7 @@ import {
   resolveLaneSpreadTop,
 } from './config';
 import type { Env } from './env';
+import { filterChainByFit, largestCtx as fitLargestCtx, recordActualTokens } from './fit';
 import { tryLiveEntry, type LiveUsage } from './live';
 
 // Free-tier cold starts (NVIDIA especially) run past 60s — 90s covers that with room.
@@ -42,6 +43,13 @@ export interface RouteOutcome {
   response: Response | null;
   attempts: RouteAttempt[];
   used?: string;
+  /** M6: this lane had chain entries, but the fit filter dropped every one of
+   *  them (skipped-too-large) — none were even attempted against the ledger or
+   *  a provider. Lets the caller (index.ts) emit the "fits nothing" notice
+   *  instead of the generic exhaustion one when this holds across every lane. */
+  allSkippedTooLarge?: boolean;
+  /** Largest ctx declared anywhere in this lane's chain, for that notice. */
+  largestCtx?: number;
 }
 
 export interface RouteContext {
@@ -53,6 +61,9 @@ export interface RouteContext {
   /** Native Anthropic dialect: stream text deltas live (see live.ts). */
   live?: boolean;
   waitUntil: (p: Promise<unknown>) => void;
+  /** Raw request body length, captured once at ingress (never re-serialize —
+   *  CPU budget). Feeds the M6 fit filter's byte→token estimate. */
+  rawLength?: number;
 }
 
 function providerKey(env: Env, p: ProviderConfig): string | undefined {
@@ -299,19 +310,40 @@ export async function routeRequest(
   const spreadTop = ctx.forced ? 1 : resolveLaneSpreadTop(cfg, lane);
   const attempts: RouteAttempt[] = [];
   const multimodal = hasMultimodalBlocks(body);
+  // M6: request size captured once at ingress (ctx.rawLength) — reused here for
+  // both the fit filter and the post-response calibration hook. Falls back to a
+  // stringify only for callers without raw text (unit tests) — never on the hot
+  // path (index.ts always sets rawLength).
+  const estBytes = ctx.rawLength ?? JSON.stringify(body).length;
+
+  // M6 fit filter: runs AFTER the privacy guard (privacySensitive is already
+  // decided by the caller) and BEFORE the quota ledger below — a chain entry
+  // this request structurally cannot hold is dropped before it ever consumes a
+  // reservation. Skipped when a specific entry is forced (smoke tests, etc.).
+  let fitChain = chain;
+  let allSkippedTooLarge = false;
+  let laneLargestCtx: number | undefined;
+  if (!ctx.forced) {
+    const fit = filterChainByFit(cfg, chain, estBytes, body.max_tokens);
+    fitChain = fit.order;
+    for (const s of fit.skipped)
+      attempts.push({ entry: s.entry, status: 'skipped-too-large', detail: s.detail });
+    allSkippedTooLarge = chain.length > 0 && fitChain.length === 0;
+    laneLargestCtx = fitLargestCtx(cfg, chain);
+  }
 
   const limitsByEntry: Record<string, { key: string; limits: ReserveLimits }> = {};
-  for (const entry of chain) {
+  for (const entry of fitChain) {
     const { provider, model } = parseChainEntry(entry);
     const p = cfg.providers[provider];
     if (p)
       limitsByEntry[entry] = { key: counterKey(provider, model, p), limits: limitsFor(p, model) };
   }
 
-  let order = chain;
+  let order = fitChain;
   if (ctx.stub && !ctx.forced) {
     try {
-      const plan = await ctx.stub.filterChain(chain, limitsByEntry, ctx.sessionId, spreadTop);
+      const plan = await ctx.stub.filterChain(fitChain, limitsByEntry, ctx.sessionId, spreadTop);
       order = plan.order;
       for (const s of plan.skipped)
         attempts.push({ entry: s.entry, status: `skipped-${s.reason}` });
@@ -358,18 +390,28 @@ export async function routeRequest(
           usage: last?.usage,
         })
         .catch((e) => console.log(`DO report failed: ${String(e)}`));
-      if (res?.usageLater) {
+    }
+    if (res) {
+      // M6 calibration: correct this provider's byte→token ratio from what the
+      // request actually cost, off the response path — never blocks the reply.
+      const { provider } = parseChainEntry(entry);
+      const stub = ctx.stub;
+      if (res.usageLater) {
         // Live streams learn their token counts only at stream end — patch the
         // ledger and the routes log after the fact, off the response path.
-        const stub = ctx.stub;
         ctx.waitUntil(
           res.usageLater
-            .then((u) => stub.recordUsage(entry, u))
+            .then((u) => {
+              recordActualTokens(provider, estBytes, u.input_tokens);
+              return stub?.recordUsage(entry, u);
+            })
             .catch((e) => console.log(`DO recordUsage failed: ${String(e)}`)),
         );
+      } else if (last?.usage) {
+        recordActualTokens(provider, estBytes, last.usage.input_tokens);
       }
+      return { response: res.response, attempts, used: entry };
     }
-    if (res) return { response: res.response, attempts, used: entry };
   }
-  return { response: null, attempts };
+  return { response: null, attempts, allSkippedTooLarge, largestCtx: laneLargestCtx };
 }
