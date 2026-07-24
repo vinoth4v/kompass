@@ -108,14 +108,27 @@ pnpm smoke -- --url https://kompass.<your-subdomain>.workers.dev
 
 ## Point Claude Code at it
 
-Add to `~/.zshrc` (the bearer is the `KOMPASS_BEARER` you generated):
+`pnpm kompass init` adds the snippet automatically and detects your shell. For manual setup:
+
+**macOS / Linux** (`~/.zshrc` or `~/.bashrc`):
 
 ```sh
 claude-free() {
   ANTHROPIC_BASE_URL="https://kompass.<your-subdomain>.workers.dev" \
   ANTHROPIC_AUTH_TOKEN="<your KOMPASS_BEARER>" \
-  ANTHROPIC_MODEL="claude-sonnet-4-5" \
+  ANTHROPIC_MODEL="kompass-free-model-1.0" \
   claude "$@"
+}
+```
+
+**Windows PowerShell** (`$PROFILE`):
+
+```powershell
+function claude-free {
+  $env:ANTHROPIC_BASE_URL = "https://kompass.<your-subdomain>.workers.dev"
+  $env:ANTHROPIC_AUTH_TOKEN = "<your KOMPASS_BEARER>"
+  $env:ANTHROPIC_MODEL = "kompass-free-model-1.0"
+  claude @args
 }
 ```
 

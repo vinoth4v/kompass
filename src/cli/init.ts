@@ -5,6 +5,7 @@ import { execSync, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -35,10 +36,52 @@ async function cf(path: string, init?: RequestInit): Promise<any> {
   return res.json();
 }
 
+/** Detect the active shell and return its profile path + how to reload it. */
+function shellProfile(): { rc: string; sourceCmd: string; isPs: boolean } {
+  if (process.platform === 'win32') {
+    // PowerShell Core (pwsh) and Windows PowerShell share the same CurrentUserCurrentHost profile.
+    const rc = join(
+      homedir(),
+      'Documents',
+      'PowerShell',
+      'Microsoft.PowerShell_profile.ps1',
+    );
+    return { rc, sourceCmd: '. $PROFILE', isPs: true };
+  }
+  const shell = process.env.SHELL ?? '';
+  const rc = shell.endsWith('bash') ? join(homedir(), '.bashrc') : join(homedir(), '.zshrc');
+  return { rc, sourceCmd: `source ${rc}`, isPs: false };
+}
+
+/** Generate the claude-free snippet in the right syntax for the detected shell. */
+function claudeFreeSnippet(url: string, bearer: string, isPs: boolean): string {
+  if (isPs) {
+    return `
+# Kompass — free-model gateway for Claude Code (added by kompass init)
+function claude-free {
+  $env:ANTHROPIC_BASE_URL = "${url}"
+  $env:ANTHROPIC_AUTH_TOKEN = "${bearer}"
+  $env:ANTHROPIC_MODEL = "kompass-free-model-1.0"
+  claude @args
+}
+`;
+  }
+  return `
+# Kompass — free-model gateway for Claude Code (added by kompass init)
+claude-free() {
+  ANTHROPIC_BASE_URL="${url}" \\
+  ANTHROPIC_AUTH_TOKEN="${bearer}" \\
+  ANTHROPIC_MODEL="kompass-free-model-1.0" \\
+  claude "$@"
+}
+`;
+}
+
 export async function init(): Promise<void> {
   console.log(`\n${bold('🧭 Kompass setup')} — free-model gateway for Claude Code\n`);
 
   const secretsPath = 'secrets/.secrets.json';
+  const { rc, sourceCmd, isPs } = shellProfile();
 
   // 1. Prerequisites -----------------------------------------------------------
   console.log(bold('1/6 Prerequisites'));
@@ -203,24 +246,16 @@ export async function init(): Promise<void> {
   const smoke = spawnSync('pnpm', ['smoke', '--', '--url', url], { stdio: 'inherit' });
   if (smoke.status !== 0) warn('smoke test failed — check `pnpm kompass status` and provider keys');
 
-  const snippet = `
-# Kompass — free-model gateway for Claude Code (added by kompass init)
-claude-free() {
-  ANTHROPIC_BASE_URL="${url}" \\
-  ANTHROPIC_AUTH_TOKEN="${secrets.KOMPASS_BEARER}" \\
-  ANTHROPIC_MODEL="claude-sonnet-4-5" \\
-  claude "$@"
-}
-`;
-  const rc = `${homedir()}/.zshrc`;
-  const addIt = (await ask(`Add the claude-free() function to ${rc}? (y/n)`, 'y')).toLowerCase();
+  const snippet = claudeFreeSnippet(url, secrets.KOMPASS_BEARER ?? '', isPs);
+  const addIt = (await ask(`Add the claude-free function to ${rc}? (y/n)`, 'y')).toLowerCase();
   if (addIt.startsWith('y')) {
+    mkdirSync(join(rc, '..'), { recursive: true }); // ensure profile dir exists (PowerShell on fresh installs)
     const existing = existsSync(rc) ? readFileSync(rc, 'utf8') : '';
-    if (existing.includes(`ANTHROPIC_BASE_URL="${url}"`)) {
-      ok('claude-free() already present — left as is');
+    if (existing.includes(`ANTHROPIC_BASE_URL = "${url}"`) || existing.includes(`ANTHROPIC_BASE_URL="${url}"`)) {
+      ok('claude-free already present — left as is');
     } else {
       appendFileSync(rc, snippet);
-      ok(`appended claude-free() to ${rc} — run: source ${rc}`);
+      ok(`appended claude-free to ${rc}`);
     }
   } else {
     console.log('  Paste this into your shell profile:');
@@ -228,7 +263,7 @@ claude-free() {
   }
 
   console.log(`\n${bold('Done.')} Next steps:`);
-  console.log(`  source ~/.zshrc && claude-free        # use it`);
+  console.log(`  ${sourceCmd} && claude-free        # activate and use it`);
   console.log(`  pnpm kompass status --url ${url}`);
   console.log(`  ${url}/status.html                    # live dashboard (enter your bearer once)`);
   rl.close();
