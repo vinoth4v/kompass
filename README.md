@@ -16,7 +16,21 @@ machine you code from. $0 infra, $0 models.
 git clone https://github.com/vinoth4v/kompass && cd kompass && pnpm install
 export CLOUDFLARE_API_TOKEN=...   # dash.cloudflare.com → API Tokens → "Edit Cloudflare Workers" + KV edit
 pnpm kompass init                 # guided: keys → KV → workers.dev URL → deploy → smoke → shell function
+source ~/.zshrc                   # activate claude-free in the current shell
 ```
+
+**Setting up on a second machine or after a re-clone:** `pnpm kompass init` is idempotent — it
+detects your existing KV namespace, subdomain and `secrets/.secrets.json` and skips any step
+already done. Copy `secrets/.secrets.json` from your first machine (or recreate it from your
+provider keys), export your Cloudflare token, and re-run `pnpm kompass init`. If you prefer the
+manual path, the two commands that restore a running worker are:
+
+```sh
+pnpm exec wrangler secret bulk secrets/.secrets.json            # sync bearer + provider keys to Worker
+pnpm kompass config push --url https://kompass.<you>.workers.dev  # restore lane config in KV
+```
+
+Then add the `claude-free` function to your shell (see "Point Claude Code at it" below).
 
 ### Where to create the free API keys
 
