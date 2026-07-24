@@ -55,7 +55,9 @@ export async function init(): Promise<void> {
         process.env.CLOUDFLARE_API_TOKEN = stored.CLOUDFLARE_API_TOKEN;
         ok('CLOUDFLARE_API_TOKEN loaded from secrets/.secrets.json');
       }
-    } catch { /* malformed file — handled in step 2 */ }
+    } catch {
+      /* malformed file — handled in step 2 */
+    }
   }
   if (!process.env.CLOUDFLARE_API_TOKEN) {
     console.log('  No Cloudflare API token found. Create one at:');

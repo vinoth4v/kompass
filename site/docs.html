@@ -284,15 +284,16 @@ source ~/.zshrc     # activate claude-free in the current shell</code></pre>
         <p>
           The wizard prompts for your Cloudflare API token if it isn't already set — no
           <code>export</code> step needed. Token:
-          <a href="https://dash.cloudflare.com/profile/api-tokens">dash.cloudflare.com → API Tokens</a>
-          → "Edit Cloudflare Workers" template + KV Storage:Edit scope.
-          The wizard is idempotent and ends with a verified, deployed gateway plus a
+          <a href="https://dash.cloudflare.com/profile/api-tokens"
+            >dash.cloudflare.com → API Tokens</a
+          >
+          → "Edit Cloudflare Workers" template + KV Storage:Edit scope. The wizard is idempotent and
+          ends with a verified, deployed gateway plus a
           <code>claude-free</code> shell command. After it finishes, run
-          <code>source ~/.zshrc</code> (or open a new terminal) so the function is live.
-          Prefer copy-paste? Use the
-          <a href="./#builder">Setup Builder</a> on the landing page — it generates your
-          personalized files entirely in your browser (nothing is sent anywhere). Free keys:
-          <a href="https://openrouter.ai/keys">OpenRouter</a> ·
+          <code>source ~/.zshrc</code> (or open a new terminal) so the function is live. Prefer
+          copy-paste? Use the <a href="./#builder">Setup Builder</a> on the landing page — it
+          generates your personalized files entirely in your browser (nothing is sent anywhere).
+          Free keys: <a href="https://openrouter.ai/keys">OpenRouter</a> ·
           <a href="https://build.nvidia.com">NVIDIA Build</a> ·
           <a href="https://aistudio.google.com/apikey">Google AI Studio</a> ·
           <a href="https://console.groq.com/keys">Groq</a> ·
@@ -311,19 +312,19 @@ source ~/.zshrc     # activate claude-free in the current shell</code></pre>
 
         <h3 id="new-machine">Setting up on a new / additional machine</h3>
         <p>
-          <code>pnpm kompass init</code> is idempotent — re-running it on a second machine (or
-          after a re-clone) detects your existing KV namespace, subdomain and
-          <code>secrets/.secrets.json</code> and skips any step already done. The minimum you
-          need is the repo plus your <code>secrets/.secrets.json</code> (copy it from your
-          first machine or recreate it). Then:
+          <code>pnpm kompass init</code> is idempotent — re-running it on a second machine (or after
+          a re-clone) detects your existing KV namespace, subdomain and
+          <code>secrets/.secrets.json</code> and skips any step already done. The minimum you need
+          is the repo plus your <code>secrets/.secrets.json</code> (copy it from your first machine
+          or recreate it). Then:
         </p>
         <pre><code>git clone https://github.com/vinoth4v/kompass && cd kompass && pnpm install
 # copy secrets/.secrets.json from your original machine (it includes the CF token), then:
 pnpm kompass init   # detects existing resources, re-deploys secrets, adds claude-free
 source ~/.zshrc     # activate the new shell function</code></pre>
         <p>
-          If you prefer the manual path, the two commands that matter on a machine that already
-          has a deployed worker are:
+          If you prefer the manual path, the two commands that matter on a machine that already has
+          a deployed worker are:
         </p>
         <pre><code>pnpm exec wrangler secret bulk secrets/.secrets.json   # sync bearer to Worker
 pnpm kompass config push --url https://kompass.&lt;you&gt;.workers.dev</code></pre>
@@ -1025,8 +1026,8 @@ https://kompass.&lt;you&gt;.workers.dev/status.html   # live dashboard</code></p
             <td><code>claude-free: command not found</code></td>
             <td>
               The shell function is missing from your profile. Either run
-              <code>pnpm kompass init</code> (it appends the function and asks if you want to add
-              it to <code>~/.zshrc</code>), or paste the snippet from the
+              <code>pnpm kompass init</code> (it appends the function and asks if you want to add it
+              to <code>~/.zshrc</code>), or paste the snippet from the
               <a href="#claude-code">Claude Code section</a> manually. Then
               <code>source ~/.zshrc</code> or open a new terminal.
             </td>
@@ -1034,9 +1035,10 @@ https://kompass.&lt;you&gt;.workers.dev/status.html   # live dashboard</code></p
           <tr>
             <td>401 "invalid bearer token" even though setup ran</td>
             <td>
-              The <code>KOMPASS_BEARER</code> in your local <code>secrets/.secrets.json</code>
-              drifted from the value stored in the Worker (e.g. the file was regenerated after the
-              last deploy). Fix: <code>pnpm exec wrangler secret bulk secrets/.secrets.json</code>
+              The <code>KOMPASS_BEARER</code> in your local
+              <code>secrets/.secrets.json</code> drifted from the value stored in the Worker (e.g.
+              the file was regenerated after the last deploy). Fix:
+              <code>pnpm exec wrangler secret bulk secrets/.secrets.json</code>
               — this syncs all keys. If the shell function still has the old bearer, update it in
               <code>~/.zshrc</code> to match the new value.
             </td>
