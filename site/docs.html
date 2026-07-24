@@ -279,9 +279,13 @@ kompass ui ─(local server)───┘
           one free provider key.
         </p>
         <pre><code>git clone https://github.com/vinoth4v/kompass && cd kompass && pnpm install
-export CLOUDFLARE_API_TOKEN=...   # dash.cloudflare.com → API Tokens → "Edit Cloudflare Workers" + KV edit
-pnpm kompass init                 # guided wizard: keys → KV → URL → deploy → smoke test → shell function</code></pre>
+pnpm kompass init   # wizard asks for Cloudflare token + provider keys, then deploys everything
+source ~/.zshrc     # activate claude-free in the current shell</code></pre>
         <p>
+          The wizard prompts for your Cloudflare API token if it isn't already set — no
+          <code>export</code> step needed. Token:
+          <a href="https://dash.cloudflare.com/profile/api-tokens">dash.cloudflare.com → API Tokens</a>
+          → "Edit Cloudflare Workers" template + KV Storage:Edit scope.
           The wizard is idempotent and ends with a verified, deployed gateway plus a
           <code>claude-free</code> shell command. After it finishes, run
           <code>source ~/.zshrc</code> (or open a new terminal) so the function is live.
@@ -314,10 +318,9 @@ pnpm kompass init                 # guided wizard: keys → KV → URL → deplo
           first machine or recreate it). Then:
         </p>
         <pre><code>git clone https://github.com/vinoth4v/kompass && cd kompass && pnpm install
-# copy secrets/.secrets.json from your original machine, then:
-export CLOUDFLARE_API_TOKEN=...   # same token as before
-pnpm kompass init                 # detects existing resources, re-deploys secrets, adds claude-free
-source ~/.zshrc                   # activate the new shell function</code></pre>
+# copy secrets/.secrets.json from your original machine (it includes the CF token), then:
+pnpm kompass init   # detects existing resources, re-deploys secrets, adds claude-free
+source ~/.zshrc     # activate the new shell function</code></pre>
         <p>
           If you prefer the manual path, the two commands that matter on a machine that already
           has a deployed worker are:
