@@ -223,12 +223,20 @@ export async function init(): Promise<void> {
   console.log(`\n${bold('5/6 Deploy')}`);
   execSync('pnpm exec wrangler deploy', { stdio: 'inherit' });
   execSync(`pnpm exec wrangler secret bulk ${secretsPath}`, { stdio: 'inherit' });
-  const push = spawnSync(
-    process.execPath,
-    ['--import', 'tsx', 'src/cli/index.ts', 'config', 'push', '--url', url],
-    { stdio: 'inherit', env: process.env },
-  );
-  if (push.status !== 0) die('config push failed (see above)');
+  // Secrets need a moment to propagate to the live worker before config push
+  // can authenticate. Retry up to 5 times with 4-second gaps (~20s total).
+  let pushOk = false;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    await new Promise<void>((r) => setTimeout(r, 4_000));
+    const push = spawnSync(
+      process.execPath,
+      ['--import', 'tsx', 'src/cli/index.ts', 'config', 'push', '--url', url],
+      { stdio: attempt === 1 ? 'inherit' : 'pipe', env: process.env },
+    );
+    if (push.status === 0) { pushOk = true; break; }
+    if (attempt < 5) console.log(`  config push attempt ${attempt} failed — retrying in 4s…`);
+  }
+  if (!pushOk) die('config push failed after 5 attempts — run manually: pnpm kompass config push');
   ok(`deployed → ${url}`);
 
   // 6. Verify + shell snippet --------------------------------------------------
