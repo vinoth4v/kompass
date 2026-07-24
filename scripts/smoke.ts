@@ -276,9 +276,13 @@ async function testLongContext() {
   const lane = res.headers.get('x-kompass-lane');
   const json = (await res.json()) as { content?: Array<{ text?: string }> };
   const text = (json.content ?? []).map((b) => b.text ?? '').join('');
+  // A non-null served_by proves a real model answered — `lane` is always set
+  // even on the exhausted-notice fallback, so checking `served` (not just
+  // "text.length > 0", which the synthetic notice also satisfies) is what
+  // actually proves the fit filter + derived LONGCTX threshold routed for real.
   check(
     '>60k-token request routes and answers',
-    text.length > 0,
+    served !== null && text.length > 0,
     `${Date.now() - t0}ms, lane=${lane} served_by=${served}, text="${text.slice(0, 60)}"`,
   );
 }
