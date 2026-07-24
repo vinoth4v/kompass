@@ -18,7 +18,10 @@ pnpm kompass init   # wizard asks for your Cloudflare token + provider keys, the
 source ~/.zshrc     # activate claude-free in the current shell
 ```
 
-The wizard prompts for your Cloudflare API token if it isn't set — no `export` step needed.
+The wizard handles everything: it installs Claude Code if it's missing, prompts for your
+Cloudflare API token if it isn't set (no `export` step needed), collects provider keys, deploys
+the Worker, and adds `claude-free` to your shell.
+
 Token: [dash.cloudflare.com → API Tokens → "Edit Cloudflare Workers" template + KV Storage:Edit scope](https://dash.cloudflare.com/profile/api-tokens).
 
 **Setting up on a second machine or after a re-clone:** copy `secrets/.secrets.json` from your

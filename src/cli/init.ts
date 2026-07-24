@@ -46,6 +46,22 @@ export async function init(): Promise<void> {
   if (nodeMajor < 20) die(`Node ${process.versions.node} found — need Node 20+`);
   ok(`Node ${process.versions.node}`);
 
+  // Claude Code check — required for claude-free to work.
+  try {
+    execSync('claude --version', { stdio: 'pipe' });
+    ok('Claude Code (claude) installed');
+  } catch {
+    warn('Claude Code is not installed — claude-free needs it.');
+    console.log('  Install now with:  npm install -g @anthropic-ai/claude-code\n');
+    const install = (await ask('Install Claude Code now? (y/n)', 'y')).toLowerCase();
+    if (install.startsWith('y')) {
+      execSync('npm install -g @anthropic-ai/claude-code', { stdio: 'inherit' });
+      ok('Claude Code installed');
+    } else {
+      warn('Skipping — run `npm install -g @anthropic-ai/claude-code` before using claude-free');
+    }
+  }
+
   // Resolve Cloudflare token: env → secrets file → interactive prompt.
   // This lets `pnpm kompass init` work without any prior `export` step.
   if (!process.env.CLOUDFLARE_API_TOKEN && existsSync(secretsPath)) {
