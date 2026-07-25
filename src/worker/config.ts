@@ -1,3 +1,4 @@
+import { DEFAULT_CONFIG } from './default-config';
 // Runtime config: compiled from config/*.yaml by the CLI, stored in Workers KV,
 // hot-reloaded via POST /config. Pure module — shared by Worker and CLI.
 
@@ -335,9 +336,21 @@ export function validateConfig(cfg: unknown): RouterConfig {
 
 export const CONFIG_KV_KEY = 'config';
 
+/**
+ * Config from KV, falling back to the lane table bundled with the Worker.
+ *
+ * The fallback is what makes a Deploy-to-Cloudflare install usable on arrival:
+ * a fresh Worker's KV namespace is empty, and before this it answered 503 with
+ * "run `kompass config push`" — a CLI command a browser-only user cannot run.
+ * `config push` is now an override, not a prerequisite.
+ *
+ * A STORED-BUT-INVALID config deliberately does not fall back. That state means
+ * someone pushed something broken, and silently serving different rules than
+ * the ones they just pushed would hide the mistake.
+ */
 export async function loadConfig(kv: KVNamespace): Promise<RouterConfig | null> {
   const raw = await kv.get(CONFIG_KV_KEY, 'json');
-  if (!raw) return null;
+  if (!raw) return DEFAULT_CONFIG;
   try {
     return validateConfig(raw);
   } catch (e) {

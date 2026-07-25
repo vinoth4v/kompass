@@ -75,8 +75,31 @@ describe('worker ingress', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns 503 when no config is in KV', async () => {
+  it('falls back to the bundled config when KV is empty, instead of 503', async () => {
+    // Changed 2026-07-25. An empty KV is the NORMAL state of a
+    // Deploy-to-Cloudflare install, and answering 503 with "run `kompass config
+    // push`" made every such deployment useless on arrival — the user cannot
+    // run a CLI. The bundled lane table (src/worker/default-config.ts) now
+    // serves instead, so `config push` is an override rather than a
+    // prerequisite.
     await env.CONFIG.delete('config');
+    const res = await SELF.fetch('https://kompass.test/v1/messages', {
+      method: 'POST',
+      headers: AUTH,
+      body: msgBody(),
+    });
+    expect(res.status).not.toBe(503);
+    // No provider keys are bound in tests, so every real entry is skipped and
+    // the request lands on the friendly notice — which is a routed turn, not a
+    // missing-config error.
+    expect(res.status).toBe(200);
+    expect(res.headers.get('x-kompass-exhausted')).toBe('true');
+  });
+
+  it('still 503s when the STORED config is invalid, rather than hiding it', async () => {
+    // Falling back here would silently serve different rules than the ones
+    // someone just pushed, hiding their mistake.
+    await env.CONFIG.put('config', JSON.stringify({ nonsense: true }));
     const res = await SELF.fetch('https://kompass.test/v1/messages', {
       method: 'POST',
       headers: AUTH,

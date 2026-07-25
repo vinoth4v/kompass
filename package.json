@@ -42,7 +42,8 @@
     "smoke:deployed": "tsx scripts/smoke.ts --url https://kompass.vinoth4v.workers.dev",
     "ui": "tsx src/ui/server.ts",
     "secrets:push": "wrangler secret bulk secrets/.secrets.json",
-    "kompass": "tsx src/cli/index.ts"
+    "kompass": "tsx src/cli/index.ts",
+    "config:build": "node scripts/build-default-config.mjs"
   },
   "dependencies": {
     "hono": "^4.6.0",
