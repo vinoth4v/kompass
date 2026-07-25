@@ -13,14 +13,30 @@ machine you code from. $0 infra, $0 models.
 ## Install (the easy way)
 
 ```sh
-git clone https://github.com/vinoth4v/kompass && cd kompass && pnpm install
-pnpm kompass init   # wizard asks for your Cloudflare token + provider keys, then deploys everything
-source ~/.zshrc     # activate claude-free in the current shell
+mkdir my-kompass && cd my-kompass
+npx kompass-gateway init   # wizard asks for your Cloudflare token + provider keys, then deploys everything
+source ~/.zshrc            # activate claude-free in the current shell
 ```
 
 The wizard handles everything: it installs Claude Code if it's missing, prompts for your
 Cloudflare API token if it isn't set (no `export` step needed), collects provider keys, deploys
 the Worker, and adds `claude-free` to your shell.
+
+It also creates two files in that directory — `config/lanes.yaml` and `config/providers.yaml`
+(your lane/model config, yours to edit) and `wrangler.jsonc` (your Cloudflare settings). The
+Worker source itself stays inside the installed package, so `npm update -g kompass-gateway`
+upgrades the gateway without touching your configuration. Re-run `kompass config push` after
+editing any config.
+
+**Prefer to work from the source?** The clone path is fully supported and is what contributors use:
+
+```sh
+git clone https://github.com/vinoth4v/kompass && cd kompass && pnpm install
+pnpm kompass init
+```
+
+Every `kompass` command below works identically either way — write `pnpm kompass <cmd>` in a
+clone, `kompass <cmd>` when installed.
 
 Token: [dash.cloudflare.com → API Tokens → "Edit Cloudflare Workers" template + KV Storage:Edit scope](https://dash.cloudflare.com/profile/api-tokens).
 

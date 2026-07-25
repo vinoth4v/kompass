@@ -7,6 +7,14 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
+import {
+  cliEntry,
+  cliInvocation,
+  ensureProject,
+  runWranglerOrDie,
+  smokeEntry,
+  tsxLoader,
+} from './paths';
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
@@ -80,6 +88,10 @@ export async function init(): Promise<void> {
 
   // 1. Prerequisites -----------------------------------------------------------
   console.log(bold('1/6 Prerequisites'));
+  // Installed (non-clone) users start in an empty directory: give them a
+  // wrangler.jsonc pointing at the packaged worker plus editable config/ before
+  // any step tries to read either. No-op inside a cloned repo.
+  for (const f of ensureProject()) ok(`created ${f}`);
   const nodeMajor = Number(process.versions.node.split('.')[0]);
   if (nodeMajor < 20) die(`Node ${process.versions.node} found — need Node 20+`);
   ok(`Node ${process.versions.node}`);
@@ -193,10 +205,15 @@ export async function init(): Promise<void> {
   }
   const wranglerPath = 'wrangler.jsonc';
   const wrangler = readFileSync(wranglerPath, 'utf8');
-  const patched = wrangler.replace(
-    /("binding":\s*"CONFIG",\s*\n\s*"id":\s*")[^"]+(")/,
-    `$1${kv.id}$2`,
-  );
+  // Both ids are account-specific. The KV binding is what the Worker reads its
+  // config from; CLOUDFLARE_ACCOUNT_ID/KV_NAMESPACE_ID back the /status
+  // Cloudflare-utilisation panel. The shipped defaults are the AUTHOR's account
+  // (harmless in the public repo, wrong for every other user), so patch all
+  // three from the account this token actually belongs to.
+  const patched = wrangler
+    .replace(/("binding":\s*"CONFIG",\s*\n\s*"id":\s*")[^"]+(")/, `$1${kv.id}$2`)
+    .replace(/("CLOUDFLARE_ACCOUNT_ID":\s*")[^"]+(")/, `$1${account.id}$2`)
+    .replace(/("CLOUDFLARE_KV_NAMESPACE_ID":\s*")[^"]+(")/, `$1${kv.id}$2`);
   if (patched !== wrangler) {
     writeFileSync(wranglerPath, patched);
     ok(`wrangler.jsonc patched with your namespace id`);
@@ -225,12 +242,12 @@ export async function init(): Promise<void> {
 
   // 5. Deploy + secrets + config ----------------------------------------------
   console.log(`\n${bold('5/6 Deploy')}`);
-  execSync('pnpm exec wrangler deploy', { stdio: 'inherit' });
+  runWranglerOrDie(['deploy']);
   ok(`gateway live → ${url}`);
   console.log(
     `  Dashboard: ${bold(url + '/status.html')}  (bookmark this — enter your bearer once)`,
   );
-  execSync(`pnpm exec wrangler secret bulk ${secretsPath}`, { stdio: 'inherit' });
+  runWranglerOrDie(['secret', 'bulk', secretsPath]);
   // Secrets need a moment to propagate to the live worker before config push
   // can authenticate. Retry up to 5 times with 4-second gaps (~20s total).
   let pushOk = false;
@@ -238,7 +255,7 @@ export async function init(): Promise<void> {
     await new Promise<void>((r) => setTimeout(r, 4_000));
     const push = spawnSync(
       process.execPath,
-      ['--import', 'tsx', 'src/cli/index.ts', 'config', 'push', '--url', url],
+      ['--import', tsxLoader(), cliEntry(), 'config', 'push', '--url', url],
       { stdio: attempt === 1 ? 'inherit' : 'pipe', env: process.env },
     );
     if (push.status === 0) {
@@ -247,7 +264,8 @@ export async function init(): Promise<void> {
     }
     if (attempt < 5) console.log(`  config push attempt ${attempt} failed — retrying in 4s…`);
   }
-  if (!pushOk) die('config push failed after 5 attempts — run manually: pnpm kompass config push');
+  if (!pushOk)
+    die(`config push failed after 5 attempts — run manually: ${cliInvocation()} config push`);
   ok(`deployed → ${url}`);
 
   // 6. Verify + shell snippet --------------------------------------------------
@@ -261,8 +279,12 @@ export async function init(): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 15_000));
   }
-  const smoke = spawnSync('pnpm', ['smoke', '--', '--url', url], { stdio: 'inherit' });
-  if (smoke.status !== 0) warn('smoke test failed — check `pnpm kompass status` and provider keys');
+  const smoke = spawnSync(process.execPath, ['--import', tsxLoader(), smokeEntry(), '--url', url], {
+    stdio: 'inherit',
+    env: process.env,
+  });
+  if (smoke.status !== 0)
+    warn(`smoke test failed — check \`${cliInvocation()} status\` and provider keys`);
 
   const snippet = claudeFreeSnippet(url, secrets.KOMPASS_BEARER ?? '', isPs);
   const addIt = (await ask(`Add the claude-free function to ${rc}? (y/n)`, 'y')).toLowerCase();
@@ -285,7 +307,7 @@ export async function init(): Promise<void> {
 
   console.log(`\n${bold('Done.')} Next steps:`);
   console.log(`  ${sourceCmd} && claude-free        # activate and use it`);
-  console.log(`  pnpm kompass status --url ${url}`);
+  console.log(`  ${cliInvocation()} status --url ${url}`);
   console.log(`  ${url}/status.html                    # live dashboard (enter your bearer once)`);
   rl.close();
 }

@@ -1,7 +1,7 @@
 // kompass CLI: deploy | status | logs | config push (BUILD_PLAN M1/M4).
-import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { compileConfig } from './compile-config';
+import { ensureProject, runWranglerOrDie } from './paths';
 
 function flag(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -27,8 +27,16 @@ function bearer(): string {
   }
 }
 
+/** Local config dir, scaffolding the defaults on first use outside a clone. */
+function configDir(): string {
+  const explicit = flag('config-dir');
+  if (explicit) return explicit;
+  for (const f of ensureProject()) console.log(`  created ${f}`);
+  return 'config';
+}
+
 async function configPush() {
-  const cfg = compileConfig(flag('config-dir') ?? 'config');
+  const cfg = compileConfig(configDir());
   const res = await fetch(`${baseUrl()}/config`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', authorization: `Bearer ${bearer()}` },
@@ -190,12 +198,14 @@ async function status() {
 }
 
 function deploy() {
-  execSync('pnpm exec wrangler deploy', { stdio: 'inherit' });
-  execSync('pnpm exec wrangler secret bulk secrets/.secrets.json', { stdio: 'inherit' });
+  // Scaffolds wrangler.jsonc + config/ on first run outside a clone; no-op otherwise.
+  for (const f of ensureProject()) console.log(`  created ${f}`);
+  runWranglerOrDie(['deploy']);
+  runWranglerOrDie(['secret', 'bulk', 'secrets/.secrets.json']);
 }
 
 function logs() {
-  execSync('pnpm exec wrangler tail --format pretty', { stdio: 'inherit' });
+  runWranglerOrDie(['tail', '--format', 'pretty']);
 }
 
 /**
@@ -307,14 +317,13 @@ else if (cmd === 'deploy') deploy();
 else if (cmd === 'logs') logs();
 else if (cmd === 'bench') await bench();
 else if (cmd === 'discovery') await discovery();
-else if (cmd === 'deprecate')
-  (await import('./deprecate')).deprecateModel(flag('config-dir') ?? 'config');
+else if (cmd === 'deprecate') (await import('./deprecate')).deprecateModel(configDir());
 else if (cmd === 'models' && sub === 'disable')
-  (await import('./models')).disableModel(arg3, flag('config-dir') ?? 'config');
+  (await import('./models')).disableModel(arg3, configDir());
 else if (cmd === 'models' && sub === 'enable')
-  (await import('./models')).enableModel(arg3, flag('config-dir') ?? 'config');
+  (await import('./models')).enableModel(arg3, configDir());
 else if (cmd === 'models' && (sub === 'list' || !sub))
-  (await import('./models')).listModels(flag('config-dir') ?? 'config');
+  (await import('./models')).listModels(configDir());
 else if (cmd === 'trace' && sub === 'list') await (await import('./trace')).traceList();
 else if (cmd === 'trace' && sub === 'replay') await (await import('./trace')).traceReplay(arg3);
 else if (cmd === 'trace') await (await import('./trace')).traceShow(sub);

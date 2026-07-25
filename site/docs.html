@@ -279,9 +279,23 @@ kompass ui ─(local server)───┘
           Everything else — Claude Code, your Cloudflare token, provider keys — is handled
           interactively by the wizard.
         </p>
+        <pre><code>mkdir my-kompass && cd my-kompass
+npx kompass-gateway init   # wizard installs Claude Code if needed, collects keys, deploys everything
+source ~/.zshrc            # activate claude-free in the current shell</code></pre>
+        <p>
+          The wizard creates <code>config/lanes.yaml</code>, <code>config/providers.yaml</code> and
+          <code>wrangler.jsonc</code> in that directory — your configuration, yours to edit. The
+          Worker source stays inside the installed package, so
+          <code>npm update -g kompass-gateway</code> upgrades the gateway without touching your
+          settings. Prefer working from source? The clone path is fully supported:
+        </p>
         <pre><code>git clone https://github.com/vinoth4v/kompass && cd kompass && pnpm install
-pnpm kompass init   # wizard installs Claude Code if needed, collects keys, deploys everything
-source ~/.zshrc     # activate claude-free in the current shell</code></pre>
+pnpm kompass init</code></pre>
+        <p>
+          Every command on this page works both ways — write
+          <code>pnpm kompass &lt;cmd&gt;</code> in a clone, <code>kompass &lt;cmd&gt;</code> when
+          installed from npm.
+        </p>
         <p>
           The wizard checks for Claude Code and offers to install it (<code
             >npm install -g @anthropic-ai/claude-code</code
@@ -317,12 +331,12 @@ source ~/.zshrc     # activate claude-free in the current shell</code></pre>
           <code>pnpm kompass init</code> is idempotent — re-running it on a second machine (or after
           a re-clone) detects your existing KV namespace, subdomain and
           <code>secrets/.secrets.json</code> and skips any step already done. The minimum you need
-          is the repo plus your <code>secrets/.secrets.json</code> (copy it from your first machine
-          or recreate it). Then:
+          is the package plus your <code>secrets/.secrets.json</code> (copy it from your first
+          machine or recreate it). Then:
         </p>
-        <pre><code>git clone https://github.com/vinoth4v/kompass && cd kompass && pnpm install
+        <pre><code>mkdir my-kompass && cd my-kompass
 # copy secrets/.secrets.json from your original machine (it includes the CF token), then:
-pnpm kompass init              # detects existing resources, re-deploys secrets, adds claude-free
+npx kompass-gateway init       # detects existing resources, re-deploys secrets, adds claude-free
 source ~/.zshrc                # macOS/Linux: activate the new shell function
 # Windows PowerShell: . $PROFILE</code></pre>
         <p>

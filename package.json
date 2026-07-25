@@ -1,8 +1,8 @@
 {
   "name": "kompass-gateway",
   "version": "1.0.0",
+  "description": "Classifier-routed free-model gateway for Claude Code \u2014 one Cloudflare Worker routes your coding sessions across free model providers by task complexity",
   "type": "module",
-  "description": "Classifier-routed free-model gateway for Claude Code — one Cloudflare Worker routes your coding sessions across free model providers by task complexity",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -19,7 +19,18 @@
   "bin": {
     "kompass": "bin/kompass.mjs"
   },
-  "packageManager": "pnpm@11.9.0",
+  "files": [
+    "bin/",
+    "src/",
+    "config/",
+    "scripts/smoke.ts",
+    "wrangler.jsonc",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
@@ -35,7 +46,10 @@
   },
   "dependencies": {
     "hono": "^4.6.0",
-    "pptxgenjs": "^4.0.1"
+    "pptxgenjs": "^4.0.1",
+    "tsx": "^4.19.0",
+    "wrangler": "^4.0.0",
+    "yaml": "^2.6.0"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.9.0",
@@ -44,11 +58,9 @@
     "@types/node": "^22.10.0",
     "eslint": "^9.15.0",
     "prettier": "^3.4.0",
-    "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.16.0",
-    "vitest": "^3.2.0",
-    "wrangler": "^4.0.0",
-    "yaml": "^2.6.0"
-  }
+    "vitest": "^3.2.0"
+  },
+  "packageManager": "pnpm@11.9.0"
 }

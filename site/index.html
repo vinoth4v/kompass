@@ -1707,8 +1707,13 @@
       <div class="step">
         <div class="n">1</div>
         <div>
-          <b>Clone and install</b>
-          <pre><code>git clone https://github.com/vinoth4v/kompass && cd kompass && pnpm install</code><button class="copybtn">copy</button></pre>
+          <b>Make a directory for your gateway</b>
+          <span class="muted"
+            >(your config lives here; the gateway itself installs from npm — or
+            <span class="mono">git clone https://github.com/vinoth4v/kompass && pnpm install</span>
+            if you'd rather work from source)</span
+          >
+          <pre><code>mkdir my-kompass && cd my-kompass</code><button class="copybtn">copy</button></pre>
         </div>
       </div>
       <div class="step">
@@ -1728,7 +1733,7 @@
           <b>Run the wizard</b> — asks for your provider keys, provisions KV + your
           <span class="mono">workers.dev</span> URL, deploys, verifies end-to-end, and installs the
           <code>claude-free</code> command in your shell:
-          <pre><code>pnpm kompass init</code><button class="copybtn">copy</button></pre>
+          <pre><code>npx kompass-gateway init</code><button class="copybtn">copy</button></pre>
         </div>
       </div>
       <div class="step">
