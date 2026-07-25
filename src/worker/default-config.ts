@@ -474,7 +474,11 @@ export const DEFAULT_CONFIG: RouterConfig = {
   "images": {
     "chain": [
       "cfai/@cf/black-forest-labs/flux-1-schnell",
-      "cfai/@cf/bytedance/stable-diffusion-xl-lightning"
+      "cfai/@cf/bytedance/stable-diffusion-xl-lightning",
+      "cfai/@cf/lykon/dreamshaper-8-lcm",
+      "cfai/@cf/leonardo/phoenix-1.0",
+      "cfai/@cf/leonardo/lucid-origin",
+      "cfai/@cf/stabilityai/stable-diffusion-xl-base-1.0"
     ]
   },
   "embeddings": {

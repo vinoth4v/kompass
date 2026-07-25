@@ -308,10 +308,25 @@ lanes:
       # Excluded after probing: nvidia baai/bge-m3 (account-gated "Something went
       # wrong"), google gemini-3.1-flash-image (429 "check your plan" on free tier),
       # cfai flux-2-klein (requires multipart input — not worth a third body shape).
+# Image chain widened 2026-07-25. All six probed live against this account with
+# a plain {"prompt": ...} body; the four added returned real images (png, png,
+# jpeg, and json-b64 respectively). Ordered fastest/cheapest first, with the
+# heavier SDXL base last — the response-shape handling in capabilities.ts
+# already covers both raw-bytes and JSON-b64 replies.
+#
+# Excluded after probing: flux-2-dev and flux-2-klein-4b/9b, which reject a JSON
+# body with "required properties at '/' are 'multipart'" — a third request shape
+# for no capability the models above do not already provide. img2img and
+# inpainting variants are excluded by definition: they need an input image,
+# which this endpoint does not take.
 images:
   chain:
     - cfai/@cf/black-forest-labs/flux-1-schnell
     - cfai/@cf/bytedance/stable-diffusion-xl-lightning
+    - cfai/@cf/lykon/dreamshaper-8-lcm # 400KB png, fast LCM
+    - cfai/@cf/leonardo/phoenix-1.0 # jpeg
+    - cfai/@cf/leonardo/lucid-origin # json b64
+    - cfai/@cf/stabilityai/stable-diffusion-xl-base-1.0 # 1.6MB png, slowest
 
 # NOTE for clients: vector dimensions differ per model (bge-m3: 1024,
 # gemini-embedding-001: 3072). A vector store needs stable dims — if you index
