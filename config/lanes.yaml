@@ -149,6 +149,10 @@ lanes:
       - cfai/@cf/meta/llama-3.3-70b-instruct-fp8-fast
       - openrouter/poolside/laguna-xs-2.1:free
       - nvidia/nvidia/llama-3.3-nemotron-super-49b-v1
+      # Zero-key floor (2026-07-25). Last in the chain on purpose: it exists so
+      # a freshly deployed gateway with no provider signups can still answer,
+      # not to outrank models that have earned their position.
+      - workersai/@cf/meta/llama-3.3-70b-instruct-fp8-fast
 
   SIMPLE:
     spread_top: 2 # top two are roughly comparable single-file coders
@@ -177,6 +181,7 @@ lanes:
       # non-google vision fallback (multimodal_models in providers.yaml) so a
       # google outage/quota-out no longer exhausts SIMPLE for image/PDF requests.
       - openrouter/nvidia/nemotron-nano-12b-v2-vl:free
+      - workersai/@cf/meta/llama-3.3-70b-instruct-fp8-fast # zero-key floor
 
   # laguna-xs (nvidia) demoted below minimax 2026-07-23: repeatedly returned
   # truncated/empty streams during real sessions.
@@ -214,6 +219,7 @@ lanes:
       - nvidia/z-ai/glm-5.2 # 47%
       - hf/Qwen/Qwen3-Coder-Next
       - google/gemini-3.6-flash
+      - workersai/@cf/meta/llama-3.3-70b-instruct-fp8-fast # zero-key floor
 
   HARD:
     # gpt-4.1 (github) is scarce (~50/day); spreading with a comparable second

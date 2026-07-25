@@ -16,7 +16,7 @@
 import type { AnthropicRequest, AnthropicResponse, OpenAIResponse } from '../adapters/types';
 import { hasMalformedToolCall, openAIToAnthropic } from '../adapters/openai';
 import { geminiToAnthropic, type GeminiResponse } from '../adapters/gemini';
-import { geminiBody, openAIBody } from './payload';
+import { geminiBody, openAIBody, openAIPayload } from './payload';
 import type { KompassState, FailureKind, ReserveLimits } from '../do/state';
 import type { ProviderConfig, RouterConfig } from './config';
 import {
@@ -131,8 +131,66 @@ export function counterKey(provider: string, model: string, p: ProviderConfig): 
   return p.model_limits?.[model] ? `${provider}:${model}` : provider;
 }
 
+/**
+ * Cloudflare Workers AI via the binding. There is no HTTP call to make, so the
+ * result is wrapped in a synthetic Response shaped like an OpenAI completion —
+ * that keeps tryChainEntry, the usage accounting and openAIToAnthropic
+ * completely unchanged rather than growing a third response path.
+ */
+async function callWorkersAi(
+  env: Env,
+  body: AnthropicRequest,
+  model: string,
+  signal: AbortSignal,
+): Promise<Response> {
+  const ai = env.AI;
+  if (!ai) return new Response('no AI binding', { status: 503 });
+  const payload = openAIPayload(body, model, false);
+  try {
+    const out = (await ai.run(model, {
+      messages: payload.messages,
+      max_tokens: payload.max_tokens,
+      ...(payload.tools ? { tools: payload.tools } : {}),
+    })) as {
+      response?: string;
+      tool_calls?: { name?: string; arguments?: unknown }[];
+      usage?: { prompt_tokens?: number; completion_tokens?: number };
+    };
+    if (signal.aborted) return new Response('aborted', { status: 499 });
+    // Workers AI returns tool calls with the arguments already parsed; the
+    // OpenAI shape expects them as a JSON string, so they are re-encoded here
+    // rather than teaching the adapter a second convention.
+    const toolCalls = (out.tool_calls ?? []).map((t, i) => ({
+      id: `wai_${i}`,
+      type: 'function' as const,
+      function: { name: t.name ?? '', arguments: JSON.stringify(t.arguments ?? {}) },
+    }));
+    return Response.json({
+      choices: [
+        {
+          message: {
+            role: 'assistant',
+            content: out.response ?? '',
+            ...(toolCalls.length ? { tool_calls: toolCalls } : {}),
+          },
+          finish_reason: toolCalls.length ? 'tool_calls' : 'stop',
+        },
+      ],
+      usage: {
+        prompt_tokens: out.usage?.prompt_tokens ?? 0,
+        completion_tokens: out.usage?.completion_tokens ?? 0,
+      },
+    });
+  } catch (e) {
+    // Surface the binding's own error text — a neuron-quota exhaustion reads
+    // very differently from a bad model id, and the router logs the detail.
+    return new Response(String(e).slice(0, 300), { status: 502 });
+  }
+}
+
 /** Always requests a plain (non-streaming) upstream response — see file header. */
 function callUpstream(
+  env: Env,
   p: ProviderConfig,
   key: string,
   body: AnthropicRequest,
@@ -142,6 +200,7 @@ function callUpstream(
   // Translation is cached per request (payload.ts) — re-deriving the megabyte
   // messages array on every chain attempt is what blew the isolate's resource
   // limits (error 1102).
+  if (p.kind === 'workers-ai') return callWorkersAi(env, body, model, signal);
   if (p.kind === 'gemini') {
     return fetch(`${p.base_url}/models/${model}:generateContent`, {
       method: 'POST',
@@ -269,8 +328,14 @@ async function tryChainEntry(
     attempts.push({ entry, status: 'skipped-multimodal', detail: 'text-only model' });
     return null;
   }
-  const key = providerKey(env, p, provider, vaultKeys);
-  if (!key) {
+  // workers-ai authenticates via the binding, so "no key" is its normal state.
+  const key: string =
+    p.kind === 'workers-ai' ? '' : (providerKey(env, p, provider, vaultKeys) ?? '');
+  if (p.kind === 'workers-ai' && !env.AI) {
+    attempts.push({ entry, status: 'skipped-no-binding', detail: 'no AI binding on this Worker' });
+    return null;
+  }
+  if (p.kind !== 'workers-ai' && !key) {
     attempts.push({ entry, status: 'skipped-no-key' });
     return null;
   }
@@ -291,7 +356,9 @@ async function tryChainEntry(
     // can't have this failure mode the same way — see docs/DECISIONS.md).
     let malformedToolCall = false;
 
-    if (live && body.stream === true) {
+    // The binding has no SSE surface, so a workers-ai entry always takes the
+    // buffered path; the client-facing stream is synthesized as usual.
+    if (live && body.stream === true && p.kind !== 'workers-ai') {
       const r = await tryLiveEntry(p, key, body, model);
       if (r.kind === 'live') {
         attempts.push({ entry, status: 200 });
@@ -320,7 +387,7 @@ async function tryChainEntry(
 
     if (!translated) {
       const signal = AbortSignal.timeout(TIMEOUT_MS);
-      const upstream = await callUpstream(p, key, body, model, signal);
+      const upstream = await callUpstream(env, p, key, body, model, signal);
 
       if (!upstream.ok) {
         const errText = (await upstream.text()).slice(0, 300);

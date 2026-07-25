@@ -234,3 +234,55 @@ export async function fetchModelRoster(settings: KompassSettings): Promise<Roste
   // Most reliable first — the picker should lead with models that answer.
   return [...byEntry.values()].sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
 }
+
+// ── Provider key vault on the user's own Worker (src/worker/vault.ts) ────────
+// Lets a chat-only user configure provider keys without installing anything.
+// Keys travel browser → their own Worker and are stored AES-GCM encrypted in
+// their own KV. Responses are always masked; no endpoint returns key material.
+
+export interface VaultStatus {
+  vault_enabled: boolean;
+  keys: Record<string, { masked: string; ts: number }>;
+}
+
+export async function listVaultKeys(settings: KompassSettings): Promise<VaultStatus> {
+  const res = await fetch(`${baseUrl(settings)}/keys`, { headers: headers(settings) });
+  if (!res.ok) throw new KompassApiError(res.status, await readErrorMessage(res));
+  return (await res.json()) as VaultStatus;
+}
+
+export async function putVaultKey(
+  settings: KompassSettings,
+  provider: string,
+  key: string,
+): Promise<{ masked: string }> {
+  const res = await fetch(`${baseUrl(settings)}/keys/${encodeURIComponent(provider)}`, {
+    method: 'POST',
+    headers: headers(settings),
+    body: JSON.stringify({ key }),
+  });
+  if (!res.ok) throw new KompassApiError(res.status, await readErrorMessage(res));
+  return (await res.json()) as { masked: string };
+}
+
+export async function deleteVaultKey(settings: KompassSettings, provider: string): Promise<void> {
+  const res = await fetch(`${baseUrl(settings)}/keys/${encodeURIComponent(provider)}`, {
+    method: 'DELETE',
+    headers: headers(settings),
+  });
+  if (!res.ok) throw new KompassApiError(res.status, await readErrorMessage(res));
+}
+
+/** Providers the gateway knows about, with signup links for the ones missing. */
+export async function listProviders(
+  settings: KompassSettings,
+): Promise<{ name: string; hasEnvKey: boolean }[]> {
+  const res = await fetch(`${baseUrl(settings)}/status`, { headers: headers(settings) });
+  if (!res.ok) throw new KompassApiError(res.status, await readErrorMessage(res));
+  const body = (await res.json()) as {
+    providers?: Record<string, { has_key?: boolean; enabled?: boolean }>;
+  };
+  return Object.entries(body.providers ?? {})
+    .filter(([, p]) => p.enabled !== false)
+    .map(([name, p]) => ({ name, hasEnvKey: Boolean(p.has_key) }));
+}

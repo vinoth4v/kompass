@@ -1,6 +1,7 @@
 'use client';
 import { Eye, EyeOff, LogOut, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
+import { ProvidersPanel } from './ProvidersPanel';
 import type { KompassSettings } from '@/lib/types';
 import { verifyConnection } from '@/lib/kompassClient';
 
@@ -41,9 +42,9 @@ export function SettingsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-line bg-[#0e1320] p-5">
+      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-line bg-elevated p-5 shadow-lg">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-sm font-semibold">Settings</h2>
+          <h2 className="text-base font-semibold text-ink">Settings</h2>
           <button
             onClick={onClose}
             className="rounded-lg p-1.5 text-ink-muted hover:bg-surface-hover"
@@ -103,6 +104,14 @@ export function SettingsModal({
             Save
           </button>
         </div>
+
+        {/* Provider keys live on the user's own Worker, so this is only useful
+            once a connection exists. */}
+        {settings.workerUrl && settings.bearer && (
+          <div className="mt-5 border-t border-line pt-4">
+            <ProvidersPanel settings={settings} />
+          </div>
+        )}
 
         <div className="mt-5 space-y-1 border-t border-line pt-4">
           <button

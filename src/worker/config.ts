@@ -19,7 +19,13 @@ export interface ProviderLimits {
 }
 
 export interface ProviderConfig {
-  kind: 'openai' | 'gemini';
+  /**
+   * 'workers-ai' is not an HTTP dialect — it dispatches through the Cloudflare
+   * AI binding, which needs no API key and no base_url because it authenticates
+   * as the account the Worker runs on. That is what lets a fresh deployment
+   * answer with zero provider signups.
+   */
+  kind: 'openai' | 'gemini' | 'workers-ai';
   base_url: string;
   key_env: string;
   enabled?: boolean;
@@ -211,11 +217,16 @@ export function validateConfig(cfg: unknown): RouterConfig {
   if (typeof c.allow_paid !== 'boolean') throw new Error('allow_paid must be boolean');
 
   for (const [name, p] of Object.entries(c.providers)) {
-    if (p.kind !== 'openai' && p.kind !== 'gemini')
+    if (p.kind !== 'openai' && p.kind !== 'gemini' && p.kind !== 'workers-ai')
       throw new Error(`provider ${name}: unsupported kind "${p.kind}"`);
-    if (!p.base_url?.startsWith('https://'))
-      throw new Error(`provider ${name}: base_url must be https`);
-    if (!p.key_env) throw new Error(`provider ${name}: key_env missing`);
+    // A workers-ai provider dispatches through the AI binding, so it has
+    // neither a URL to call nor a key to present. Requiring either would be
+    // asking for a value that cannot exist.
+    if (p.kind !== 'workers-ai') {
+      if (!p.base_url?.startsWith('https://'))
+        throw new Error(`provider ${name}: base_url must be https`);
+      if (!p.key_env) throw new Error(`provider ${name}: key_env missing`);
+    }
     if (!p.limits || typeof p.limits.rpm !== 'number' || typeof p.limits.rpd !== 'number')
       throw new Error(`provider ${name}: limits.rpm/rpd required`);
     // M6: every fit-related field is optional, but if present must be sane —

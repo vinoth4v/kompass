@@ -1,5 +1,18 @@
 'use client';
 import { LogoMark } from './Logo';
+
+/**
+ * 32 bytes from crypto.getRandomValues, hex-encoded. Deliberately not derived
+ * from anything the user types — a passphrase-shaped secret is exactly what
+ * makes these guessable — and never transmitted: this page has no backend.
+ */
+function randomSecret(): string {
+  const b = new Uint8Array(32);
+  crypto.getRandomValues(b);
+  return Array.from(b)
+    .map((x) => x.toString(16).padStart(2, '0'))
+    .join('');
+}
 import { AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { verifyConnection } from '@/lib/kompassClient';
@@ -11,6 +24,7 @@ export function LoginScreen({
 }) {
   const [workerUrl, setWorkerUrl] = useState('');
   const [bearer, setBearer] = useState('');
+  const [generated, setGenerated] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<'idle' | 'checking' | 'error'>('idle');
   const [error, setError] = useState('');
 
@@ -92,12 +106,70 @@ export function LoginScreen({
           </button>
         </form>
 
-        <p className="mt-4 text-center text-xs leading-relaxed text-white/35">
+        <p className="mt-4 text-center text-[0.75rem] leading-relaxed text-ink-muted">
           Your bearer is stored only in this browser and sent directly to your own Worker — never to
-          a third party. Find both values in your{' '}
-          <code className="rounded bg-surface-hover px-1 py-0.5">secrets/.secrets.json</code> or on
-          your <code className="rounded bg-surface-hover px-1 py-0.5">status.html</code> dashboard.
+          a third party.
         </p>
+
+        {/* A chat-only user has to be able to get from nothing to chatting
+            without leaving this app, and without installing anything. */}
+        <div className="mt-6 rounded-xl border border-line bg-surface p-4">
+          <p className="text-[0.82rem] font-medium text-ink">Don&rsquo;t have a gateway yet?</p>
+          <p className="mt-1 text-[0.75rem] leading-relaxed text-ink-muted">
+            Deploy one to your own Cloudflare account — nothing to install, and no AI provider
+            signup: it answers using Cloudflare Workers AI from the moment it exists.
+          </p>
+          <a
+            href="https://deploy.workers.cloudflare.com/?url=https://github.com/vinoth4v/kompass"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-2 text-[0.8rem] font-medium text-accent-contrast transition hover:bg-accent-hover"
+          >
+            Deploy to Cloudflare <ArrowRight size={14} />
+          </a>
+
+          <div className="mt-4 border-t border-line pt-3">
+            <p className="text-[0.75rem] text-ink-secondary">
+              Cloudflare will ask for two secrets. Generate them here — they are created in this
+              browser and never sent anywhere.
+            </p>
+            {(
+              [
+                ['KOMPASS_BEARER', 'signs you in'],
+                ['KOMPASS_MASTER_KEY', 'encrypts provider keys you add later'],
+              ] as const
+            ).map(([name, what]) => (
+              <div key={name} className="mt-2">
+                <label className="text-[0.7rem] text-ink-muted">
+                  <span className="font-mono text-ink-secondary">{name}</span> — {what}
+                </label>
+                <div className="mt-1 flex gap-2">
+                  <input
+                    readOnly
+                    value={generated[name] ?? ''}
+                    placeholder="click generate"
+                    className="min-w-0 flex-1 rounded-lg border border-line bg-elevated px-2.5 py-1.5 font-mono text-[0.7rem] text-ink outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const v = randomSecret();
+                      setGenerated((g) => ({ ...g, [name]: v }));
+                      void navigator.clipboard.writeText(v).catch(() => {});
+                    }}
+                    className="shrink-0 rounded-lg border border-line px-2.5 py-1.5 text-[0.72rem] text-ink-secondary transition hover:bg-surface-hover hover:text-ink"
+                  >
+                    {generated[name] ? 'Copied' : 'Generate'}
+                  </button>
+                </div>
+              </div>
+            ))}
+            <p className="mt-2 text-[0.68rem] leading-relaxed text-ink-faint">
+              Save both. Losing the bearer means redeploying; losing the master key only means
+              re-entering provider keys, since it is what decrypts them.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
