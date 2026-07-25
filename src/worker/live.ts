@@ -23,8 +23,8 @@ import type {
   AnthropicStopReason,
   AnthropicToolUseBlock,
 } from '../adapters/types';
-import { anthropicToOpenAI, mapFinishReason } from '../adapters/openai';
-import { anthropicToGemini } from '../adapters/gemini';
+import { mapFinishReason } from '../adapters/openai';
+import { geminiPayload, openAIPayload } from './payload';
 import type { ProviderConfig } from './config';
 
 // Headers must arrive fast even on cold starts; the first content token gets
@@ -117,12 +117,13 @@ export async function tryLiveEntry(
     init = {
       method: 'POST',
       headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
-      body: JSON.stringify(anthropicToGemini({ ...body, stream: false })),
+      body: JSON.stringify(geminiPayload(body)),
     };
   } else {
-    const oai = anthropicToOpenAI({ ...body, stream: true }, model);
-    // Some free providers reject stream_options; usage is estimated instead.
-    delete (oai as { stream_options?: unknown }).stream_options;
+    // Cached per-request translation (payload.ts); the canonical copy is built
+    // non-streaming so it never carries stream_options — some free providers
+    // reject it, and usage is estimated instead.
+    const oai = openAIPayload(body, model, true);
     url = `${p.base_url}/chat/completions`;
     init = {
       method: 'POST',

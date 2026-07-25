@@ -14,8 +14,9 @@
 // complete answer is resolved server-side first and the client-facing SSE
 // stream (when asked for) is synthesized via messageToAnthropicSSE.
 import type { AnthropicRequest, AnthropicResponse, OpenAIResponse } from '../adapters/types';
-import { anthropicToOpenAI, hasMalformedToolCall, openAIToAnthropic } from '../adapters/openai';
-import { anthropicToGemini, geminiToAnthropic, type GeminiResponse } from '../adapters/gemini';
+import { hasMalformedToolCall, openAIToAnthropic } from '../adapters/openai';
+import { geminiToAnthropic, type GeminiResponse } from '../adapters/gemini';
+import { geminiPayload, openAIPayload } from './payload';
 import type { KompassState, FailureKind, ReserveLimits } from '../do/state';
 import type { ProviderConfig, RouterConfig } from './config';
 import {
@@ -89,6 +90,17 @@ export interface RouteContext {
    * still wins over it. Not used on the normal path.
    */
   chainOverride?: string[];
+  /**
+   * Shared, mutable per-REQUEST cap on real upstream attempts (error 1102).
+   * One object is threaded through every routeRequest call a single request
+   * makes — the initial lane, each escalation hop, and the last-resort sweep —
+   * so the ceiling is on the request as a whole, not per lane. Only attempts
+   * that actually call a provider count; the cheap pre-skips (fit, quota,
+   * cooldown, privacy) are unbounded because they cost no serialization.
+   * Running out is not an error: routing stops early and the caller emits its
+   * normal friendly notice, which Claude Code treats as a completed turn.
+   */
+  budget?: { attemptsLeft: number };
 }
 
 function providerKey(env: Env, p: ProviderConfig): string | undefined {
@@ -108,12 +120,14 @@ function callUpstream(
   model: string,
   signal: AbortSignal,
 ): Promise<Response> {
-  const nonStreamBody: AnthropicRequest = { ...body, stream: false };
+  // Translation is cached per request (payload.ts) — re-deriving the megabyte
+  // messages array on every chain attempt is what blew the isolate's resource
+  // limits (error 1102).
   if (p.kind === 'gemini') {
     return fetch(`${p.base_url}/models/${model}:generateContent`, {
       method: 'POST',
       headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
-      body: JSON.stringify(anthropicToGemini(nonStreamBody)),
+      body: JSON.stringify(geminiPayload(body)),
       signal,
     });
   }
@@ -125,7 +139,7 @@ function callUpstream(
       'http-referer': 'https://github.com/vinoth4v/kompass',
       'x-title': 'Kompass',
     },
-    body: JSON.stringify(anthropicToOpenAI(nonStreamBody, model)),
+    body: JSON.stringify(openAIPayload(body, model, false)),
     signal,
   });
 }
@@ -414,6 +428,12 @@ export async function routeRequest(
   }
 
   for (const entry of order) {
+    // Checked BEFORE the reservation below so a budget-stopped request never
+    // burns quota it won't use.
+    if (ctx.budget && ctx.budget.attemptsLeft <= 0) {
+      attempts.push({ entry, status: 'skipped-attempt-budget' });
+      break;
+    }
     const t0 = Date.now();
     const cell = limitsByEntry[entry];
     if (ctx.stub && cell) {
@@ -445,6 +465,12 @@ export async function routeRequest(
       ctx.live === true,
     );
     const last = attempts[attempts.length - 1];
+    // Charge the budget only when a provider was actually called. tryChainEntry
+    // does its own cheap pre-skips (no key, disabled, privacy, text-only model)
+    // that never serialize a body and must not consume the request's ceiling.
+    if (ctx.budget && !(typeof last?.status === 'string' && last.status.startsWith('skipped-'))) {
+      ctx.budget.attemptsLeft--;
+    }
     // M7: latency for this entry's own attempt, attached for the trace store —
     // reserve() + tryChainEntry() together, matching what reportOutcome logs below.
     if (last) last.ms = Date.now() - t0;

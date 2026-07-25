@@ -108,6 +108,13 @@ function anthropicError(type: string, message: string, status: number): Response
   });
 }
 
+/**
+ * Hard ceiling on real upstream attempts per request (Cloudflare error 1102).
+ * Sized well above normal routing (1-3 attempts) and far below the full roster
+ * a last-resort sweep would otherwise walk.
+ */
+const MAX_UPSTREAM_ATTEMPTS = 8;
+
 function stateStub(env: Env) {
   return env.KOMPASS_STATE.get(env.KOMPASS_STATE.idFromName('global'));
 }
@@ -214,6 +221,14 @@ async function handleAnthropic(
   const privacySensitive = guard ? privacyMatch(guard, raw) : false;
 
   const forcedModel = c.req.header('x-kompass-model') ?? undefined;
+  // Error 1102: one shared ceiling on real upstream attempts for this request,
+  // across the initial lane, every escalation hop and the last-resort sweep.
+  // Before this, a single request could walk the entire roster (~40 entries)
+  // and each attempt re-serialized a multi-MB body; isolates were being killed
+  // during heavy sessions, which surfaces to Claude Code as a fatal 503 rather
+  // than a turn it can recover from. Normal traffic resolves in 1-3 attempts,
+  // so this only ever bites the pathological tail.
+  const budget = { attemptsLeft: MAX_UPSTREAM_ATTEMPTS };
   const routeOnce = (l: string, chainOverride?: string[]) =>
     routeRequest(c.env, cfg, l, body, {
       stub,
@@ -224,6 +239,7 @@ async function handleAnthropic(
       waitUntil: (p) => c.executionCtx.waitUntil(p),
       rawLength: raw.length,
       chainOverride,
+      budget,
     });
 
   const allAttempts: RouteAttempt[] = [];
@@ -696,6 +712,16 @@ app.get('/trace/:id', async (c) => {
 app.get('/traces', async (c) => {
   const n = Math.max(1, Math.min(500, Number(c.req.query('n')) || 50));
   return c.json({ traces: await stateStub(c.env).listTraces(n) });
+});
+
+// Admin: clear every model health cooldown. Recovery hatch for the case where a
+// failure burst cools the ENTIRE roster at once and subsequent requests get the
+// exhaustion notice without a single provider being tried. Quota counters are
+// deliberately left alone.
+app.post('/ledger/clear-cooldowns', async (c) => {
+  const result = await stateStub(c.env).clearCooldowns();
+  console.log(JSON.stringify({ cooldowns_cleared: result.cleared }));
+  return c.json(result);
 });
 
 // Test/admin helper backing the M2 multi-machine acceptance: burn provider budget.
