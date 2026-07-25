@@ -121,9 +121,24 @@ function AgentCard({ agent }: { agent: AgentState }) {
         </div>
       )}
 
+      {agent.fellBack && (
+        <div className="mt-2 rounded-md bg-amber-500/10 px-2 py-1 text-[11px] text-amber-200">
+          Preferred model was unavailable — ran on automatic lane routing instead.
+        </div>
+      )}
+
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/40">
         <span>{agent.searches} searches</span>
-        <span>{agent.reads} pages read</span>
+        <span
+          className={agent.phase === 'done' && agent.reads === 0 ? 'text-amber-300/80' : undefined}
+          title={
+            agent.phase === 'done' && agent.reads === 0
+              ? 'Answered without fetching any page — treat this finding with caution.'
+              : undefined
+          }
+        >
+          {agent.reads} pages read
+        </span>
         {agent.elapsedMs !== undefined && <span>{(agent.elapsedMs / 1000).toFixed(1)}s</span>}
         {agent.usage && <span>{agent.usage.input + agent.usage.output} tok</span>}
       </div>

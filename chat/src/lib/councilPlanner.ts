@@ -53,6 +53,16 @@ export interface CouncilPlan {
  *  and two of them were seated by hand in the run that failed. */
 const RESEARCH_LANES = ['AGENTIC', 'HARD', 'LONGCTX'];
 
+/**
+ * Lanes whose membership disqualifies a model regardless of where else it
+ * appears. LONGCTX keeps small models in its tail as last-resort fallbacks for
+ * huge contexts — gemini-3.5-flash-lite is in FAST, SIMPLE *and* LONGCTX, and
+ * lanes.yaml itself calls it "weakest reasoning — last". Reaching it through
+ * LONGCTX seated a FAST model on the council, which is the exact mistake the
+ * planner exists to prevent.
+ */
+const SMALL_MODEL_LANES = ['FAST', 'SIMPLE'];
+
 const SEAT_NAMES = ['Analyst A', 'Analyst B', 'Analyst C', 'Analyst D', 'Analyst E'];
 
 function providerOf(entry: string): string {
@@ -103,6 +113,9 @@ export function planCouncil(status: StatusSnapshot, desiredSeats = 3): CouncilPl
   const pool = new Set<string>();
   for (const lane of RESEARCH_LANES) {
     for (const entry of status.lanes?.[lane]?.chain ?? []) pool.add(entry);
+  }
+  for (const lane of SMALL_MODEL_LANES) {
+    for (const entry of status.lanes?.[lane]?.chain ?? []) pool.delete(entry);
   }
 
   let skippedCooling = 0;

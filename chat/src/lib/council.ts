@@ -53,6 +53,8 @@ export interface AgentState {
   servedBy?: string | null;
   usage?: { input: number; output: number };
   elapsedMs?: number;
+  /** The seat's preferred model was unavailable and it ran on lane routing. */
+  fellBack?: boolean;
 }
 
 export interface Disagreement {
@@ -262,9 +264,16 @@ async function runAgent(
   depth: ResearchDepth,
   emit: () => void,
   signal?: AbortSignal,
+  /** Overrides the seat's model — used for the lane-routing retry. */
+  modelOverride?: string,
 ): Promise<void> {
   const started = Date.now();
-  const { model, extraHeaders } = modelRequest(state.spec.model);
+  const { model, extraHeaders } = modelRequest(modelOverride ?? state.spec.model);
+  // Agents were answering from search snippets alone: 3 searches, 0 pages read,
+  // zero sources. An answer with no fetched source is precisely what this
+  // council must not produce, so it gets pushed back once before being allowed
+  // to conclude.
+  let nudgedForSources = false;
   const history: AnthropicMessageWire[] = [{ role: 'user', content: question }];
   const seenUrls = new Set<string>();
   let totalIn = 0;
@@ -305,11 +314,28 @@ async function runAgent(
     );
 
     if (toolUses.length === 0) {
-      state.answer =
+      const draft =
         response.content
           .filter((b): b is AnthropicTextBlockWire => b.type === 'text')
           .map((b) => b.text)
           .join('\n\n') || '(no answer)';
+
+      if (state.sources.length === 0 && !nudgedForSources && iter < DEPTH[depth].iterations - 1) {
+        nudgedForSources = true;
+        history.push({ role: 'assistant', content: response.content });
+        history.push({
+          role: 'user',
+          content:
+            'You have not fetched a single source yet — search snippets alone are not enough to ' +
+            'answer on. Pick the most promising result and call web_fetch on it, then answer ' +
+            'grounded in what you actually read.',
+        });
+        state.phase = 'thinking';
+        emit();
+        continue;
+      }
+
+      state.answer = draft;
       state.phase = 'done';
       state.detail = undefined;
       state.elapsedMs = Date.now() - started;
@@ -495,8 +521,30 @@ export async function runCouncil({
           emit();
           throw e;
         }
+        // Pinning a model via x-kompass-model gives the gateway a chain of
+        // exactly ONE entry, so a transient cooldown on that model kills the
+        // seat outright — the router's whole fallback ladder is bypassed. Retry
+        // once on lane routing: a seat that answers on a different model is far
+        // better than an empty chair, and the card says it fell back.
+        const pinned = !state.spec.model.startsWith('kompass');
+        if (pinned && !state.fellBack) {
+          state.fellBack = true;
+          state.error = undefined;
+          state.sources = [];
+          state.searches = 0;
+          state.reads = 0;
+          emit();
+          try {
+            await runAgent(settings, state, question, depth, emit, signal, 'kompass-agentic');
+            return;
+          } catch (e2) {
+            if (e2 instanceof DOMException && e2.name === 'AbortError') throw e2;
+            state.error = e2 instanceof Error ? e2.message : String(e2);
+          }
+        } else {
+          state.error = e instanceof Error ? e.message : String(e);
+        }
         state.phase = 'failed';
-        state.error = e instanceof Error ? e.message : String(e);
         state.detail = undefined;
         emit();
       }
