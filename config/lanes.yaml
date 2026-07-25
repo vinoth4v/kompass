@@ -74,7 +74,18 @@ lanes:
   FAST:
     spread_top: 1 # quality-first — do not spread (see rationale above)
     chain:
+      # Promoted to lead 2026-07-25. groq answers in ~90-190ms — 2.5-5x faster
+      # than flash-lite's observed ~480ms — and its 1000 rpd sat 100% unused for
+      # a week because nothing ever reached position 2 behind a 99%/141-request
+      # lead. gpt-oss-120b is NOT the llama-3.1-8b model that was demoted from
+      # this lane for vague/hedging answers: it's a 120B reasoning model,
+      # tool-calling probed ✓ in 192ms. Its 8k TPM ceiling is well clear of
+      # FAST's <1000-token definition, and any request that does exceed it is
+      # fit-filtered straight to flash-lite below — so the downside is bounded.
+      # Revert this one line if answer quality regresses; flash-lite is proven.
+      - groq/openai/gpt-oss-120b
       - google/gemini-3.5-flash-lite
+      - groq/openai/gpt-oss-20b
       - groq/llama-3.1-8b-instant
       # mistral-small released from classifier duty 2026-07-24 — fast small
       # generalist, natural FAST fit (JSON-mode probed ✓ 2026-07-23).
@@ -88,6 +99,11 @@ lanes:
     spread_top: 2 # top two are roughly comparable single-file coders
     chain:
       - openrouter/poolside/laguna-xs-2.1:free
+      # Into the spread pair 2026-07-25 (~190ms vs laguna-xs's 1-7s). Only the
+      # small end of SIMPLE fits its 8k TPM ceiling; anything larger is
+      # fit-filtered to laguna-xs, so this speeds up short turns without
+      # putting big ones at risk.
+      - groq/openai/gpt-oss-120b
       - nvidia/poolside/laguna-xs-2.1
       - mistral/codestral-2508
       - nvidia/nvidia/llama-3.3-nemotron-super-49b-v1
@@ -95,7 +111,8 @@ lanes:
       # all-rounder for webdesign-flavoured SIMPLE traffic.
       - nvidia/mistralai/mistral-small-4-119b-2603
       - sambanova/Meta-Llama-3.3-70B-Instruct
-      - groq/llama-3.3-70b-versatile
+      # groq/llama-3.3-70b-versatile removed from this position 2026-07-25 —
+      # HTTP 400 "Failed to call a function" on tool traffic (see providers.yaml).
       - nvidia/mistralai/mistral-medium-3.5-128b
       - google/gemini-3.5-flash-lite
       # second multimodal entry (google provider counter, not flash-lite's): a
@@ -109,23 +126,28 @@ lanes:
   # laguna-xs (nvidia) demoted below minimax 2026-07-23: repeatedly returned
   # truncated/empty streams during real sessions.
   AGENTIC:
-    spread_top: 2 # laguna-s and minimax-m3 are both proven strong agentic coders
+    # REORDERED 2026-07-25 by 7-day measured success rate. The old spread pair
+    # was laguna-s (40% over 35 requests) + minimax-m3 (81%), so roughly half of
+    # all first picks in the DEFAULT lane went to a model that failed 3 times in
+    # 5 — each failure costing a retry hop, and the poolside 429s ("temporarily
+    # rate-limited") arriving after a real wait. laguna-s and laguna-m.1 (44%)
+    # are not bad models; OpenRouter's free capacity for the larger poolside
+    # slugs is simply saturated. They stay as depth, below the proven entries.
+    spread_top: 2 # minimax-m3 (81%) + nemotron-3-super (86%), both tool-probed
     chain:
-      - openrouter/poolside/laguna-s-2.1:free
       - nvidia/minimaxai/minimax-m3
-      # laguna-m.1 added 2026-07-23 (design/frontend/game-code pass): larger laguna
-      # sibling, tool-probed ✓ (2.8s, first probe hit a transient upstream 429).
-      # Deliberately below the proven spread pair — promote into the spread only
-      # after real-session validation (see docs/DECISIONS.md).
-      - openrouter/poolside/laguna-m.1:free
-      - mistral/devstral-medium-latest
-      - openrouter/poolside/laguna-xs-2.1:free
-      - nvidia/z-ai/glm-5.2
-      - nvidia/poolside/laguna-xs-2.1
-      - hf/Qwen/Qwen3-Coder-Next
-      # nemotron-3-super-120b added 2026-07-23: tool-probed ✓ (~300ms), 262k ctx,
-      # solid webdesign/game-code fallback depth on the openrouter RPD budget.
+      # nemotron-3-super-120b: tool-probed ✓ (~300ms), 262k ctx, 86% over 21
+      # requests — promoted from the tail into the spread pair.
       - openrouter/nvidia/nemotron-3-super-120b-a12b:free
+      # 93% over 149 requests and 1-7s — the single most reliable entry in the
+      # router. Smaller than the leads, so it sits below them on capability.
+      - openrouter/poolside/laguna-xs-2.1:free
+      - mistral/devstral-medium-latest # 84%, coding specialist, but ~80s slow
+      - nvidia/poolside/laguna-xs-2.1 # 83%
+      - openrouter/poolside/laguna-s-2.1:free # 40% — upstream free capacity
+      - openrouter/poolside/laguna-m.1:free # 44% — same
+      - nvidia/z-ai/glm-5.2 # 47%
+      - hf/Qwen/Qwen3-Coder-Next
       - google/gemini-3.6-flash
 
   HARD:
@@ -226,3 +248,4 @@ disabled_models:
   - hf/Qwen/Qwen3-Coder-Next
   - nvidia/deepseek-ai/deepseek-v4-pro
   - google/gemini-3.1-pro-preview
+  - groq/llama-3.3-70b-versatile

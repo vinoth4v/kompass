@@ -223,3 +223,84 @@ describe('ledger TPM accounting', () => {
     }
   });
 });
+
+/**
+ * The status panel read snap.rpm/rpd[provider] while the ledger writes
+ * "provider:model" counters whenever model_limits declares one — so a busy
+ * provider reported 0/1.0k requests next to millions of tokens.
+ */
+describe('status quota panel counter aggregation', () => {
+  it('counts per-model counters toward their provider', async () => {
+    await env.CONFIG.put('config', JSON.stringify(tpmCfg()));
+
+    fetchMock
+      .get('https://tpm-spare.test')
+      .intercept({ path: '/v1/chat/completions', method: 'POST' })
+      .reply(200, OK_OPENAI);
+    const r = await SELF.fetch('https://kompass.test/v1/messages', {
+      method: 'POST',
+      headers: AUTH,
+      // Big enough that the tpm-limited lead is skipped and spare-1 serves it.
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 32,
+        messages: [{ role: 'user', content: 'z'.repeat(60_000) }],
+      }),
+    });
+    expect(r.status).toBe(200);
+    expect(r.headers.get('x-kompass-served-by')).toBe('tpm_spare/spare-1');
+
+    const status = (await (
+      await SELF.fetch('https://kompass.test/status', { headers: AUTH })
+    ).json()) as any;
+    // tpm_spare declares no model_limits, so it keys on the bare provider name;
+    // the aggregate must reflect the request either way.
+    expect(status.providers.tpm_spare.rpd.used).toBeGreaterThan(0);
+  });
+
+  it('breaks usage out per counter so per-model budgets stay visible', async () => {
+    const withModelLimits: RouterConfig = {
+      default_lane: 'AGENTIC',
+      allow_paid: false,
+      providers: {
+        agg: {
+          kind: 'openai',
+          base_url: 'https://agg.test/v1',
+          key_env: 'OPENROUTER_API_KEY',
+          limits: { rpm: 50, rpd: 500 },
+          // Own counter key "agg:scarce" — the case the old code read as 0.
+          model_limits: { scarce: { rpm: 5, rpd: 7, ctx: 1_000_000 } },
+        },
+      },
+      lanes: { AGENTIC: ['agg/scarce'] },
+    };
+    await env.CONFIG.put('config', JSON.stringify(withModelLimits));
+
+    fetchMock
+      .get('https://agg.test')
+      .intercept({ path: '/v1/chat/completions', method: 'POST' })
+      .reply(200, OK_OPENAI);
+    const r = await SELF.fetch('https://kompass.test/v1/messages', {
+      method: 'POST',
+      headers: AUTH,
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 32,
+        messages: [{ role: 'user', content: 'ping' }],
+        tools: [{ name: 'noop', description: 'noop', input_schema: { type: 'object' } }],
+      }),
+    });
+    expect(r.status).toBe(200);
+
+    const status = (await (
+      await SELF.fetch('https://kompass.test/status', { headers: AUTH })
+    ).json()) as any;
+    // Provider aggregate picks it up...
+    expect(status.providers.agg.rpd.used).toBe(1);
+    // ...and the per-counter breakdown reports it against the MODEL's own
+    // 7/day allowance, not the provider's 500.
+    expect(status.providers.agg.counters['agg:scarce']).toMatchObject({
+      rpd: { used: 1, limit: 7 },
+    });
+  });
+});

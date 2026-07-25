@@ -22,6 +22,7 @@ import {
   laneChainArray,
   laneOverrides,
   laneSpreadTop,
+  limitsFor,
   loadConfig,
   resolveLaneChain,
   validateConfig,
@@ -600,14 +601,36 @@ app.get('/status', async (c) => {
 
   const providers: Record<string, unknown> = {};
   for (const [name, p] of Object.entries(cfg?.providers ?? {})) {
-    const rpmUsed = snap.rpm[name]?.minute === minute ? snap.rpm[name].count : 0;
-    const rpdUsed = snap.rpd[name]?.day === day ? snap.rpd[name].count : 0;
+    // The ledger keys a counter per MODEL whenever model_limits declares one
+    // (counterKey() in router.ts), so reading snap.rpm/rpd[name] alone reported
+    // a flat 0 for every provider that uses model_limits — which is most of
+    // them. The token columns, keyed by bare provider name in recordUsage, kept
+    // showing real traffic right next to "0 / 1.0k requests", making the whole
+    // quota panel read as "nothing is being used" during a busy day (2026-07-25).
+    // Sum every counter belonging to this provider, and expose the individual
+    // counters too: per-model budgets are separate allowances, so the summed
+    // figure answers "am I using this provider" while `counters` is what you
+    // read before deciding a specific model has headroom left.
+    const counters: Record<string, unknown> = {};
+    let rpmUsed = 0;
+    let rpdUsed = 0;
+    const keys = [name, ...Object.keys(p.model_limits ?? {}).map((m) => `${name}:${m}`)];
+    for (const key of keys) {
+      const rm = snap.rpm[key]?.minute === minute ? snap.rpm[key].count : 0;
+      const rd = snap.rpd[key]?.day === day ? snap.rpd[key].count : 0;
+      rpmUsed += rm;
+      rpdUsed += rd;
+      if (rm === 0 && rd === 0) continue;
+      const lim = key === name ? p.limits : limitsFor(p, key.slice(name.length + 1));
+      counters[key] = { rpm: { used: rm, limit: lim.rpm }, rpd: { used: rd, limit: lim.rpd } };
+    }
     const tok = snap.tokens[name]?.day === day ? snap.tokens[name] : undefined;
     providers[name] = {
       enabled: p.enabled !== false,
       has_key: Boolean((c.env as unknown as Record<string, string>)[p.key_env]),
       rpm: { used: rpmUsed, limit: p.limits.rpm },
       rpd: { used: rpdUsed, limit: p.limits.rpd },
+      counters,
       tokens_today: { in: tok?.tin ?? 0, out: tok?.tout ?? 0 },
     };
   }

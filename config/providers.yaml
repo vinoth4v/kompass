@@ -136,16 +136,32 @@ providers:
     key_env: GROQ_API_KEY
     enabled: true
     trains_on_data: false
-    # Verified 2026-07-23 via x-ratelimit-limit-requests response headers (per-day):
-    # llama-3.3-70b/gpt-oss-120b 1000 RPD, llama-3.1-8b-instant 14400 RPD. rpm TODO(verify).
-    limits: { rpm: 30, rpd: 1000 }
-    # M6 (2026-07-24): ctx/max_out/tpm verified live at console.groq.com/docs/models —
-    # CORRECTS the earlier "TPM is tiny (6-12k)" guess in this file's history: the
-    # real free/dev-tier TPM is 250k-300k per model, two orders of magnitude higher.
-    # See docs/DECISIONS.md.
+    # TPM RE-CORRECTED 2026-07-25 — read from x-ratelimit-limit-* RESPONSE
+    # HEADERS on this key (service tier `on_demand`), not the docs page. The
+    # 2026-07-24 note this replaces took 250k-300k off console.groq.com/docs/
+    # models; those are DEV TIER numbers. The free tier this key is on is two
+    # orders of magnitude smaller, and the original "TPM is tiny (6-12k)" guess
+    # in this file's history was right after all. Confirmed by sending 15,088
+    # tokens to gpt-oss-120b: HTTP 413 "Request too large ... on tokens per
+    # minute (TPM): Limit 8000, Requested 15088".
+    #
+    # This is the whole reason groq showed 0/5 and then sat unused: every real
+    # coding request blew a ceiling the config claimed was 37x larger. With the
+    # true numbers the M6 fit filter skips groq for anything bigger and routes
+    # it only the small work it serves in ~90-190ms — the fastest provider here.
+    # Verified: the ceiling counts INPUT tokens at admission (max_tokens: 32000
+    # with a tiny prompt passes), which is exactly what fit.ts checks.
+    limits: { rpm: 30, rpd: 1000, tpm: 8000 }
     model_limits:
-      llama-3.1-8b-instant: { rpm: 30, rpd: 14400, ctx: 131072, max_out: 131072, tpm: 250000 }
-      llama-3.3-70b-versatile: { rpm: 30, rpd: 1000, ctx: 131072, max_out: 32768, tpm: 300000 }
+      # 120B reasoning model, tool-calling probed ✓ in 192ms 2026-07-25.
+      openai/gpt-oss-120b: { rpm: 30, rpd: 1000, ctx: 131072, max_out: 65536, tpm: 8000 }
+      openai/gpt-oss-20b: { rpm: 30, rpd: 1000, ctx: 131072, max_out: 65536, tpm: 8000 }
+      llama-3.1-8b-instant: { rpm: 30, rpd: 14400, ctx: 131072, max_out: 32768, tpm: 6000 }
+      # DISABLED 2026-07-25 (lanes.yaml disabled_models): returns HTTP 400
+      # "Failed to call a function. Please adjust your prompt." on a plain
+      # single-tool request — structurally unfit for Claude Code's tool traffic,
+      # and the 0/1 in the reliability table was this. gpt-oss-120b replaces it.
+      llama-3.3-70b-versatile: { rpm: 30, rpd: 1000, ctx: 131072, max_out: 32768, tpm: 8000 }
 
   # ── Get a free key: https://console.mistral.ai (Experiment tier) ────────────
   # NOTE: the free Experiment tier trains on your data → trains_on_data: true,
