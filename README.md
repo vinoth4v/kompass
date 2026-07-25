@@ -14,9 +14,17 @@ machine you code from. $0 infra, $0 models.
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/vinoth4v/kompass)
 
-You need a free [Cloudflare account](https://dash.cloudflare.com/sign-up) and nothing else.
-Cloudflare forks this repo, creates the KV namespace and Durable Object, and deploys — all in the
-browser.
+You need two free accounts and nothing installed: a
+[Cloudflare account](https://dash.cloudflare.com/sign-up) and a
+[GitHub](https://github.com/signup) (or GitLab) account. Cloudflare's deploy button
+[clones this repo into your own git account](https://developers.cloudflare.com/workers/platform/deploy-buttons/)
+so you can keep developing after deploying, then creates the KV namespace and Durable Object and
+deploys — all in the browser.
+
+> **Why GitHub?** It is Cloudflare's requirement, not ours: the deploy button only supports
+> github.com and gitlab.com sources, and it deploys by cloning into your account. If you would
+> rather not connect a git account, use the [clone-and-CLI path](#prefer-to-work-from-the-source)
+> below instead.
 
 **No provider signups.** A fresh deployment answers from
 [Workers AI](https://developers.cloudflare.com/workers-ai/) on your own Cloudflare account, because

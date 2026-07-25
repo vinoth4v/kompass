@@ -1740,12 +1740,14 @@
       <p class="kicker" id="quickstart">Get started</p>
       <h2>Deploy it in two clicks</h2>
       <p class="muted">
-        Nothing to install. You need a free
-        <a href="https://dash.cloudflare.com/sign-up">Cloudflare account</a> and nothing else — the
-        gateway answers from
+        Nothing to install. You need two free accounts —
+        <a href="https://dash.cloudflare.com/sign-up">Cloudflare</a> and
+        <a href="https://github.com/signup">GitHub</a> (or GitLab), because Cloudflare's deploy
+        button works by cloning this repo into your own git account. No AI provider signup though:
+        the gateway answers from
         <a href="https://developers.cloudflare.com/workers-ai/">Workers AI</a> on your own account
-        from the moment it deploys, with no provider signups at all. Add OpenRouter, NVIDIA or
-        Google later, when you actually want more capacity.
+        from the moment it deploys. Add OpenRouter, NVIDIA or Google later, when you actually want
+        more capacity.
       </p>
 
       <div class="deploy-card">
@@ -1758,8 +1760,9 @@
             >Deploy to Cloudflare</a
           >
           <span class="muted" style="font-size: 0.85rem"
-            >Cloudflare forks the repo, creates the KV namespace and Durable Object, and deploys —
-            all in the browser.</span
+            >Clones the repo into your GitHub or GitLab account, then creates the KV namespace and
+            Durable Object and deploys — all in the browser. Would rather not connect a git account?
+            Use the CLI path below.</span
           >
         </div>
 

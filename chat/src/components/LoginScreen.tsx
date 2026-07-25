@@ -117,7 +117,9 @@ export function LoginScreen({
           <p className="text-[0.82rem] font-medium text-ink">Don&rsquo;t have a gateway yet?</p>
           <p className="mt-1 text-[0.75rem] leading-relaxed text-ink-muted">
             Deploy one to your own Cloudflare account — nothing to install, and no AI provider
-            signup: it answers using Cloudflare Workers AI from the moment it exists.
+            signup: it answers using Cloudflare Workers AI from the moment it exists. Needs a GitHub
+            or GitLab account too, because Cloudflare&rsquo;s deploy button works by cloning the
+            repo into your own git account.
           </p>
           <a
             href="https://deploy.workers.cloudflare.com/?url=https://github.com/vinoth4v/kompass"
