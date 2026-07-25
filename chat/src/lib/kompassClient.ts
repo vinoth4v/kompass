@@ -180,6 +180,13 @@ export async function generateImage(
   return { b64: first.b64_json, mime: body.mime_type, model: body.model };
 }
 
+/** Raw /status snapshot — the evidence the council planner composes from. */
+export async function fetchStatus(settings: KompassSettings): Promise<unknown> {
+  const res = await fetch(`${baseUrl(settings)}/status`, { headers: headers(settings) });
+  if (!res.ok) throw new KompassApiError(res.status, await readErrorMessage(res));
+  return res.json();
+}
+
 export interface RosterEntry {
   /** "provider/model" as the gateway names it. */
   entry: string;

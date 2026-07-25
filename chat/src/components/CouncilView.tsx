@@ -5,7 +5,7 @@
 // away. Deliberately shows failed agents instead of hiding them — on free models
 // a partial council is the normal case, and a user judging an answer deserves to
 // know it came from two seats rather than four.
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -17,6 +17,7 @@ import {
   Globe,
   Loader2,
   Scale,
+  RefreshCw,
   Search,
   Send,
   Square,
@@ -30,7 +31,8 @@ import {
   type CouncilRun,
   type ResearchDepth,
 } from '@/lib/council';
-import { fetchModelRoster, type RosterEntry } from '@/lib/kompassClient';
+import { fetchModelRoster, fetchStatus, type RosterEntry } from '@/lib/kompassClient';
+import { planCouncil, type CouncilPlan, type StatusSnapshot } from '@/lib/councilPlanner';
 import type { KompassSettings } from '@/lib/types';
 
 /** Lane pseudo-models always available, even before the roster loads. */
@@ -176,14 +178,41 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
   const [agents, setAgents] = useState<AgentSpec[]>(() => defaultAgents(3, []));
   const [judgeModel, setJudgeModel] = useState('kompass-hard');
   const [depth, setDepth] = useState<ResearchDepth>('fast');
+  // Auto composition is the default and the point: the gateway knows which
+  // models are reliable, fast and have quota left, and the user cannot.
+  const [auto, setAuto] = useState(true);
+  const [plan, setPlan] = useState<CouncilPlan | null>(null);
+  const [planning, setPlanning] = useState(false);
   const [question, setQuestion] = useState('');
   const [run, setRun] = useState<CouncilRun | null>(null);
   const [busy, setBusy] = useState(false);
   const [configOpen, setConfigOpen] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Real roster from the gateway, so the picker only offers models that exist
-  // and are enabled right now.
+  const composePlan = useCallback(async () => {
+    setPlanning(true);
+    try {
+      const status = (await fetchStatus(settings)) as StatusSnapshot;
+      const p = planCouncil(status, agentCount);
+      setPlan(p);
+      setAgents(
+        p.seats.map((seat, i) => ({ id: `agent-${i}`, label: seat.label, model: seat.model })),
+      );
+      setJudgeModel(p.judge.model);
+    } catch {
+      // Gateway unreachable — leave whatever seats are configured in place.
+    } finally {
+      setPlanning(false);
+    }
+  }, [settings, agentCount]);
+
+  // Compose (and re-compose) whenever auto is on: cooldowns and quota move
+  // minute to minute, so a plan made five minutes ago may already be stale.
+  useEffect(() => {
+    if (auto) void composePlan();
+  }, [auto, composePlan]);
+
+  // Roster only backs the manual override below.
   useEffect(() => {
     let cancelled = false;
     fetchModelRoster(settings)
@@ -203,6 +232,7 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
   }, [settings]);
 
   useEffect(() => {
+    if (auto) return; // the planner owns the seats
     setAgents((prev) => {
       if (prev.length === agentCount) return prev;
       if (prev.length < agentCount) {
@@ -211,7 +241,7 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
       }
       return prev.slice(0, agentCount);
     });
-  }, [agentCount, roster]);
+  }, [agentCount, roster, auto]);
 
   const modelOptions = useMemo(
     () => [
@@ -276,7 +306,7 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
           )}
           Council setup
           <span className="ml-auto text-xs text-white/40">
-            {agentCount} agents · {depth} · judge: {judgeModel.split('/').pop()}
+            {auto ? 'auto' : 'manual'} · {agents.length} agents · {depth}
           </span>
         </button>
 
@@ -284,7 +314,18 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
           <div className="space-y-4 border-t border-white/10 p-4">
             <div className="flex flex-wrap items-center gap-4">
               <label className="flex items-center gap-2 text-xs text-white/60">
-                Agents
+                <input
+                  type="checkbox"
+                  checked={auto}
+                  disabled={busy}
+                  onChange={(e) => setAuto(e.target.checked)}
+                  className="accent-brand-500"
+                />
+                Compose automatically
+              </label>
+
+              <label className="flex items-center gap-2 text-xs text-white/60">
+                Up to
                 <select
                   value={agentCount}
                   onChange={(e) => setAgentCount(Number(e.target.value))}
@@ -297,6 +338,7 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
                     </option>
                   ))}
                 </select>
+                agents
               </label>
 
               <div className="flex items-center gap-1 text-xs text-white/60">
@@ -319,36 +361,87 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
                 </div>
               </div>
 
-              <label className="flex items-center gap-2 text-xs text-white/60">
-                <Gavel className="h-3.5 w-3.5" />
-                Judge
-                <select
-                  value={judgeModel}
-                  onChange={(e) => setJudgeModel(e.target.value)}
-                  disabled={busy}
-                  className="max-w-[16rem] rounded-md border border-white/10 bg-black/40 px-2 py-1 text-white/80"
+              {auto && (
+                <button
+                  onClick={() => void composePlan()}
+                  disabled={busy || planning}
+                  className="flex items-center gap-1.5 rounded-md border border-white/10 px-2 py-1 text-xs text-white/60 transition hover:bg-white/5 disabled:opacity-40"
                 >
-                  {modelOptions.map((m) => (
-                    <option key={m.value} value={m.value}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <RefreshCw className={`h-3 w-3 ${planning ? 'animate-spin' : ''}`} />
+                  re-check
+                </button>
+              )}
             </div>
 
-            <div className="space-y-2">
-              {agents.map((a, i) => (
-                <div key={a.id} className="flex items-center gap-2">
-                  <span className="w-20 shrink-0 text-xs text-white/50">{a.label}</span>
+            {/* The composed council, with the evidence behind each seat. The
+                point is not to hide the choice but to make it and show why. */}
+            {auto && plan && (
+              <div className="space-y-1.5">
+                {plan.seats.map((seat) => (
+                  <div
+                    key={seat.model}
+                    className="flex flex-wrap items-baseline gap-x-2 rounded-lg border border-white/5 bg-black/20 px-2.5 py-1.5"
+                  >
+                    <span className="w-20 shrink-0 text-xs text-white/50">{seat.label}</span>
+                    <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-white/80">
+                      {seat.model}
+                    </span>
+                    <span className="text-[11px] text-white/40">{seat.why}</span>
+                  </div>
+                ))}
+                <div className="flex flex-wrap items-baseline gap-x-2 rounded-lg border border-brand-500/20 bg-brand-500/5 px-2.5 py-1.5">
+                  <span className="flex w-20 shrink-0 items-center gap-1 text-xs text-white/50">
+                    <Gavel className="h-3 w-3" /> Judge
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-white/80">
+                    {plan.judge.model}
+                  </span>
+                  <span className="text-[11px] text-white/40">{plan.judge.why}</span>
+                </div>
+                {plan.notes.map((n, i) => (
+                  <p key={i} className="px-1 text-[11px] text-amber-200/70">
+                    {n}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            {auto && !plan && (
+              <p className="text-[11px] text-white/40">
+                {planning ? 'Reading gateway health…' : 'Could not reach the gateway to compose.'}
+              </p>
+            )}
+
+            {/* Manual override stays available, but off the main path. */}
+            {!auto && (
+              <div className="space-y-2">
+                {agents.map((a, i) => (
+                  <div key={a.id} className="flex items-center gap-2">
+                    <span className="w-20 shrink-0 text-xs text-white/50">{a.label}</span>
+                    <select
+                      value={a.model}
+                      disabled={busy}
+                      onChange={(e) =>
+                        setAgents((prev) =>
+                          prev.map((x, xi) => (xi === i ? { ...x, model: e.target.value } : x)),
+                        )
+                      }
+                      className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/40 px-2 py-1 text-xs text-white/80"
+                    >
+                      {modelOptions.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+                <div className="flex items-center gap-2">
+                  <span className="w-20 shrink-0 text-xs text-white/50">Judge</span>
                   <select
-                    value={a.model}
+                    value={judgeModel}
+                    onChange={(e) => setJudgeModel(e.target.value)}
                     disabled={busy}
-                    onChange={(e) =>
-                      setAgents((prev) =>
-                        prev.map((x, xi) => (xi === i ? { ...x, model: e.target.value } : x)),
-                      )
-                    }
                     className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/40 px-2 py-1 text-xs text-white/80"
                   >
                     {modelOptions.map((m) => (
@@ -358,13 +451,13 @@ export function CouncilView({ settings }: { settings: KompassSettings }) {
                     ))}
                   </select>
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
 
             <p className="text-[11px] leading-relaxed text-white/35">
-              Different models per seat produce genuine disagreement — identical models mostly
-              agree with themselves. Deep mode reads more pages per agent and takes noticeably
-              longer on free models.
+              {auto
+                ? 'Seats are chosen from live gateway health: measured success rate, median latency, remaining quota, and one model per provider so seats do not compete for the same rate limit. Re-checked each time you open this panel — cooldowns move minute to minute.'
+                : 'Manual seating. Watch for putting several seats on one provider: they share a rate-limit bucket and will starve each other under parallel load.'}
             </p>
           </div>
         )}
