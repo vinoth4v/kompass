@@ -17,6 +17,7 @@ import { bearerAuth } from './auth';
 import { routeEmbeddings, routeImageGeneration } from './capabilities';
 import { getCloudflareUsage } from './cf-usage';
 import {
+  allChainEntries,
   CONFIG_KV_KEY,
   laneChainArray,
   laneOverrides,
@@ -212,7 +213,7 @@ async function handleAnthropic(
   const privacySensitive = guard ? privacyMatch(guard, raw) : false;
 
   const forcedModel = c.req.header('x-kompass-model') ?? undefined;
-  const routeOnce = (l: string) =>
+  const routeOnce = (l: string, chainOverride?: string[]) =>
     routeRequest(c.env, cfg, l, body, {
       stub,
       sessionId,
@@ -221,6 +222,7 @@ async function handleAnthropic(
       live,
       waitUntil: (p) => c.executionCtx.waitUntil(p),
       rawLength: raw.length,
+      chainOverride,
     });
 
   const allAttempts: RouteAttempt[] = [];
@@ -249,6 +251,38 @@ async function handleAnthropic(
       (maxCtxSeen === undefined || outcome.largestCtx > maxCtxSeen)
     )
       maxCtxSeen = outcome.largestCtx;
+  }
+
+  // Last-resort pass (2026-07-25). The escalation ladder above only walks
+  // FAST→SIMPLE→AGENTIC→HARD, so a lane outside it — LONGCTX — has no lane
+  // "up" and used to give up the instant its own chain was spent. That is the
+  // lane carrying the heaviest requests (>128k tokens) down the shortest chain
+  // (4 entries, one of them the same model twice), so the terminal notice was
+  // firing while models in other lanes could still have held the request.
+  //
+  // Rather than escalate LONGCTX *upward* (models above it are mostly SMALLER,
+  // and would be dropped by the fit filter anyway), sweep every configured
+  // entry not already tried on this request. The fit filter is what makes this
+  // safe: entries too small for the request are skipped before dispatch, so a
+  // huge request naturally reaches only the big-context models wherever they
+  // happen to be declared. Quota, cooldowns, bans and the privacy guard all
+  // still apply — this widens the candidate set, not the rules.
+  let lastResort = false;
+  if (!outcome.response && !forcedModel) {
+    const tried = new Set(allAttempts.map((a) => a.entry));
+    const remaining = allChainEntries(cfg).filter((e) => !tried.has(e));
+    if (remaining.length > 0) {
+      console.log(JSON.stringify({ last_resort: { lane, candidates: remaining.length } }));
+      lastResort = true;
+      outcome = await routeOnce(lane, remaining);
+      allAttempts.push(...outcome.attempts);
+      allTooLargeSoFar = allTooLargeSoFar && outcome.allSkippedTooLarge === true;
+      if (
+        outcome.largestCtx !== undefined &&
+        (maxCtxSeen === undefined || outcome.largestCtx > maxCtxSeen)
+      )
+        maxCtxSeen = outcome.largestCtx;
+    }
   }
 
   // M7 trace store (SPEC_V2 §5/§6, guardrail §6.13/§6.14): redacted by default,
@@ -308,6 +342,7 @@ async function handleAnthropic(
         attempts: outcome.attempts.length,
         escalated_on_tool_errors: escalated || undefined,
         escalated_on_exhaustion: escalatedOnExhaustion || undefined,
+        served_by_last_resort: lastResort || undefined,
       }),
     );
     // Provenance headers (2026-07-24): which provider/model actually served this

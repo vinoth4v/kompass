@@ -27,7 +27,12 @@ import {
   resolveLaneSpreadTop,
 } from './config';
 import type { Env } from './env';
-import { filterChainByFit, largestCtx as fitLargestCtx, recordActualTokens } from './fit';
+import {
+  estimateInputTokens,
+  filterChainByFit,
+  largestCtx as fitLargestCtx,
+  recordActualTokens,
+} from './fit';
 import { tryLiveEntry, type LiveUsage } from './live';
 import { PENALTY } from './score';
 
@@ -76,6 +81,14 @@ export interface RouteContext {
   /** Raw request body length, captured once at ingress (never re-serialize —
    *  CPU budget). Feeds the M6 fit filter's byte→token estimate. */
   rawLength?: number;
+  /**
+   * Route this explicit chain instead of the lane's own (last-resort pass —
+   * index.ts). Everything downstream is unchanged: the fit filter, ban list,
+   * quota ledger and health cooldowns all still apply, so this widens *which*
+   * models may be tried, never the rules under which they're tried. `forced`
+   * still wins over it. Not used on the normal path.
+   */
+  chainOverride?: string[];
 }
 
 function providerKey(env: Env, p: ProviderConfig): string | undefined {
@@ -334,8 +347,10 @@ export async function routeRequest(
   body: AnthropicRequest,
   ctx: RouteContext,
 ): Promise<RouteOutcome> {
-  const chain = ctx.forced ? [ctx.forced] : resolveLaneChain(cfg, lane);
-  const spreadTop = ctx.forced ? 1 : resolveLaneSpreadTop(cfg, lane);
+  const chain = ctx.forced ? [ctx.forced] : (ctx.chainOverride ?? resolveLaneChain(cfg, lane));
+  // A last-resort chain is already the union of everything left — spread it and
+  // the ledger just fans one desperate request across more cold entries.
+  const spreadTop = ctx.forced || ctx.chainOverride ? 1 : resolveLaneSpreadTop(cfg, lane);
   const attempts: RouteAttempt[] = [];
   const multimodal = hasMultimodalBlocks(body);
   // M6: request size captured once at ingress (ctx.rawLength) — reused here for
@@ -403,7 +418,14 @@ export async function routeRequest(
     const cell = limitsByEntry[entry];
     if (ctx.stub && cell) {
       try {
-        const r = await ctx.stub.reserve(cell.key, cell.limits);
+        // Charge this request's estimated input tokens against the counter's
+        // TPM window (no-op for counters without a declared tpm).
+        const { provider } = parseChainEntry(entry);
+        const r = await ctx.stub.reserve(
+          cell.key,
+          cell.limits,
+          estimateInputTokens(provider, estBytes),
+        );
         if (!r.ok) {
           attempts.push({ entry, status: `skipped-${r.reason} exhausted` });
           continue;

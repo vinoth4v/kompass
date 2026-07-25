@@ -374,6 +374,27 @@ export function resolveLaneChain(cfg: RouterConfig, lane: string): string[] {
   return laneChainArray(cfg.lanes[lane] ?? cfg.lanes[cfg.default_lane]);
 }
 
+/**
+ * Every chat-lane entry configured anywhere, deduped, in lane-declaration then
+ * chain order. Feeds the last-resort pass in index.ts: a lane with no lane above
+ * it (LONGCTX) would otherwise end the turn the moment its own chain is spent,
+ * even though other lanes list models that could still hold the request. The
+ * caller is responsible for fit-filtering — this is the raw roster, nothing here
+ * is guaranteed to be big enough for any particular request.
+ */
+export function allChainEntries(cfg: RouterConfig): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const laneCfg of Object.values(cfg.lanes)) {
+    for (const entry of laneChainArray(laneCfg)) {
+      if (seen.has(entry)) continue;
+      seen.add(entry);
+      out.push(entry);
+    }
+  }
+  return out;
+}
+
 export function resolveLaneSpreadTop(cfg: RouterConfig, lane: string): number {
   return laneSpreadTop(cfg.lanes[lane] ?? cfg.lanes[cfg.default_lane], 1);
 }

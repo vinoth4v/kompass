@@ -92,7 +92,15 @@ providers:
     multimodal: true
     # TODO(verify): ai.google.dev no longer publishes free-tier numbers (dashboard-only,
     # needs browser). Conservative defaults; per-model overrides below.
-    limits: { rpm: 10, rpd: 500 }
+    #
+    # tpm added 2026-07-25 — this was the actual cause of the "free lanes are
+    # exhausted" reports. Google was returning 429 "exceeded your current quota"
+    # one second after a successful 148k-token call, while the ledger still
+    # showed rpd 3/500: the binding constraint is tokens per minute, not
+    # requests, and nothing was accounting for it. Request-count limits alone
+    # let LONGCTX offer Gemini rpm(10) × ~148k = ~1.5M tokens/minute. 250k is
+    # the widely-reported free-tier flash figure; TODO(verify) in AI Studio.
+    limits: { rpm: 10, rpd: 500, tpm: 250000 }
     # M6 (2026-07-24): every current Gemini 3.x model shares a verified 1,048,576-token
     # context window / 65,536-token max output (ai.google.dev/gemini-api/docs/models/<model>).
     # default_ctx covers any Gemini model referenced without its own model_limits entry
@@ -101,7 +109,11 @@ providers:
     # dashboard) — left unset rather than invented; see docs/DECISIONS.md.
     default_ctx: 1048576
     model_limits:
-      gemini-3.1-pro-preview: { rpm: 2, rpd: 50, ctx: 1048576, max_out: 65536 }
+      # Explicit entry added 2026-07-25 (the default_ctx comment above already
+      # claimed one existed). Gets its own counter so LONGCTX's token spend on
+      # flash stops sharing a TPM window with the classifier's flash-lite calls.
+      gemini-3.6-flash: { rpm: 10, rpd: 500, ctx: 1048576, max_out: 65536, tpm: 250000 }
+      gemini-3.1-pro-preview: { rpm: 2, rpd: 50, ctx: 1048576, max_out: 65536, tpm: 250000 }
       # classifier: SPEC cites ~1,500/day free for flash-lite; TODO(verify) exact
       # current numbers in the AI Studio dashboard (not published in docs anymore).
       gemini-3.5-flash-lite: { rpm: 15, rpd: 1000, ctx: 1048576, max_out: 65536 }

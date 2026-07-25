@@ -17,6 +17,10 @@ import { isExpired, pushTrace, type TraceRecord } from './trace';
 export interface ReserveLimits {
   rpm: number;
   rpd: number;
+  /** Tokens-per-minute ceiling, when the provider enforces one separately from
+   *  RPM/RPD. Optional — omitted means "no TPM accounting for this counter".
+   *  Structurally satisfied by config.ts's ProviderLimits (same field). */
+  tpm?: number;
 }
 
 export type FailureKind = '429' | '5xx' | 'timeout' | 'stream-error';
@@ -43,6 +47,11 @@ interface TokenCell {
 interface RpmCell {
   minute: number;
   count: number;
+}
+/** Rolling per-minute token spend, mirroring RpmCell (2026-07-25). */
+interface TpmCell {
+  minute: number;
+  tokens: number;
 }
 interface RpdCell {
   day: string;
@@ -103,15 +112,25 @@ export class KompassState extends DurableObject {
     return (await this.ctx.storage.get<RpdCell>(`rpd:${provider}`)) ?? { day: '', count: 0 };
   }
 
-  /** Remaining quota without consuming any. */
+  private async tpmCell(provider: string): Promise<TpmCell> {
+    return (await this.ctx.storage.get<TpmCell>(`tpm:${provider}`)) ?? { minute: 0, tokens: 0 };
+  }
+
+  /** Remaining quota without consuming any. `tpm` is Infinity when the counter
+   *  declares no TPM ceiling, so callers can compare uniformly. */
   private async remaining(provider: string, limits: ReserveLimits, now: number) {
     const minute = Math.floor(now / 60_000);
     const day = utcDay(now);
     const m = await this.rpm(provider);
     const d = await this.rpd(provider);
+    const t = limits.tpm !== undefined ? await this.tpmCell(provider) : undefined;
     return {
       rpm: limits.rpm - (m.minute === minute ? m.count : 0),
       rpd: limits.rpd - (d.day === day ? d.count : 0),
+      tpm:
+        limits.tpm !== undefined && t
+          ? limits.tpm - (t.minute === minute ? t.tokens : 0)
+          : Infinity,
     };
   }
 
@@ -212,6 +231,10 @@ export class KompassState extends DurableObject {
           skipped.push({ entry, reason: 'rpd exhausted' });
           continue;
         }
+        if (rem.tpm <= 0) {
+          skipped.push({ entry, reason: 'tpm exhausted' });
+          continue;
+        }
       }
       order.push(entry);
     }
@@ -241,15 +264,29 @@ export class KompassState extends DurableObject {
   }
 
   /**
-   * Consume one request from a counter's RPM+RPD budget. `counterKey` is the
+   * Consume one request from a counter's RPM+RPD+TPM budget. `counterKey` is the
    * provider name, or "provider:model" when the config sets model_limits (so a
    * 50/day pro model doesn't share its window with a 1000/day flash model).
    * Returns false when the budget is gone (raced by another machine between
    * filterChain and now).
+   *
+   * TPM (2026-07-25): request-count limits alone let a lane blow a provider's
+   * tokens-per-minute ceiling with a handful of huge requests — a 148k-token
+   * coding context at rpm:10 offers the provider 1.48M tokens/minute, and
+   * Gemini's free tier answered exactly as you'd expect (HTTP 429 "exceeded
+   * your current quota" one second after a success, with rpd showing 3/500
+   * used). `estTokens` is the fit filter's byte→token estimate for this
+   * request, charged up front; the estimate self-calibrates from real usage
+   * (fit.ts EWMA), so no post-hoc reconciliation is needed.
+   *
+   * A single request larger than the whole TPM ceiling is deliberately let
+   * through when the window is otherwise untouched — refusing it would strand
+   * the entry permanently, and structural oversize is the fit filter's job.
    */
   async reserve(
     counterKey: string,
     limits: ReserveLimits,
+    estTokens = 0,
   ): Promise<{ ok: boolean; reason?: string }> {
     const now = Date.now();
     const minute = Math.floor(now / 60_000);
@@ -263,8 +300,18 @@ export class KompassState extends DurableObject {
     const dCount = d.day === day ? d.count : 0;
     if (dCount >= limits.rpd) return { ok: false, reason: 'rpd' };
 
+    let tCount = 0;
+    if (limits.tpm !== undefined) {
+      const t = await this.tpmCell(counterKey);
+      tCount = t.minute === minute ? t.tokens : 0;
+      if (tCount > 0 && tCount + estTokens > limits.tpm) return { ok: false, reason: 'tpm' };
+    }
+
     await this.ctx.storage.put(`rpm:${counterKey}`, { minute, count: mCount + 1 });
     await this.ctx.storage.put(`rpd:${counterKey}`, { day, count: dCount + 1 });
+    if (limits.tpm !== undefined) {
+      await this.ctx.storage.put(`tpm:${counterKey}`, { minute, tokens: tCount + estTokens });
+    }
     return { ok: true };
   }
 

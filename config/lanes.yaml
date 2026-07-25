@@ -148,7 +148,7 @@ lanes:
       - nvidia/meta/llama-3.2-90b-vision-instruct
 
   LONGCTX:
-    spread_top: 2 # both leads are 1M-context models of comparable quality
+    spread_top: 2 # leads are minimax-m3 and nemotron-3-ultra — comparable quality
     # github/openai/gpt-4.1 removed 2026-07-23: hard-capped at 8000 tokens per
     # request on the free Models tier ("Request body too large... Max size: 8000
     # tokens") — structurally incompatible with this lane. Kept in HARD only,
@@ -160,18 +160,41 @@ lanes:
     # from the smallest declared `ctx` in the AGENTIC chain (currently 128,000,
     # from mistral/devstral-medium-latest, in the AGENTIC chain above), falling back to 60k only when
     # no AGENTIC entry declares a ctx. See src/worker/dispatcher.ts longctxThreshold().
+    # WIDENED 2026-07-25: this lane was 4 entries (3 distinct models — the two
+    # nemotron-3-ultra lines are the same weights via different providers), and
+    # it carries the heaviest traffic in the router. With ~1 in 6 attempts
+    # ending in a cooldown, three distinct models routinely went cold together
+    # and the turn died. Ordered below by measured success rate at real long-
+    # context load, not by nominal capability. Everything here is fit-filtered
+    # per request anyway, so a 262k entry simply drops out of a >262k request.
     chain:
-      - google/gemini-3.6-flash
-      - nvidia/nvidia/nemotron-3-ultra-550b-a55b
-      - nvidia/minimaxai/minimax-m3
-      - openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
+      # 1M-context leads, best observed reliability first.
+      - nvidia/minimaxai/minimax-m3 # 1M ctx, ~84%
+      - nvidia/nvidia/nemotron-3-ultra-550b-a55b # 262k ctx, ~88%
+      - openrouter/nvidia/nemotron-3-ultra-550b-a55b:free # 1M ctx, ~69%
+      # Demoted from lead 2026-07-25: 1M ctx but the free tier returns 429
+      # "exceeded your current quota" well before the declared rpd (see the
+      # google TODO(verify) note in providers.yaml) — as lead it burned the
+      # head of the chain on a near-certain rejection.
+      - google/gemini-3.6-flash # 1M ctx, ~62%
+      - nvidia/deepseek-ai/deepseek-v4-flash # 1M ctx, ~75%
+      - nvidia/z-ai/glm-5.2 # 1M ctx, ~42%
+      # 262k tail: individually very reliable, lower ceiling on hard reasoning —
+      # a worse answer beats the "free lanes are exhausted" notice.
+      - openrouter/poolside/laguna-xs-2.1:free # 262k ctx, ~95%
+      - nvidia/stepfun-ai/step-3.7-flash # 262k ctx, ~89%
+      - openrouter/nvidia/nemotron-3-super-120b-a12b:free # 262k ctx, ~86%
+      - nvidia/poolside/laguna-xs-2.1 # 262k ctx, ~77%
+      - google/gemini-3.5-flash-lite # 1M ctx, ~100%, weakest reasoning — last
+      # Deliberately NOT here: nvidia/deepseek-ai/deepseek-v4-pro (1M ctx but
+      # 0/9 success on this account — see `kompass status` reliability table).
 
-# Non-chat capabilities (2026-07-24): each is an ordered fallback chain over the
-# same providers/ledger. Upstream shapes live-probed before wiring — flux returns
-# JSON b64, SDXL returns raw PNG bytes, bge-m3 native run, gemini batchEmbed.
-# Excluded after probing: nvidia baai/bge-m3 (account-gated "Something went
-# wrong"), google gemini-3.1-flash-image (429 "check your plan" on free tier),
-# cfai flux-2-klein (requires multipart input — not worth a third body shape).
+      # Non-chat capabilities (2026-07-24): each is an ordered fallback chain over the
+      # same providers/ledger. Upstream shapes live-probed before wiring — flux returns
+      # JSON b64, SDXL returns raw PNG bytes, bge-m3 native run, gemini batchEmbed.
+      # Excluded after probing: nvidia baai/bge-m3 (account-gated "Something went
+      # wrong"), google gemini-3.1-flash-image (429 "check your plan" on free tier),
+      # cfai flux-2-klein (requires multipart input — not worth a third body shape).
 images:
   chain:
     - cfai/@cf/black-forest-labs/flux-1-schnell
@@ -185,3 +208,5 @@ embeddings:
   chain:
     - cfai/@cf/baai/bge-m3
     - google/gemini-embedding-001
+disabled_models:
+  - hf/Qwen/Qwen3-Coder-Next
