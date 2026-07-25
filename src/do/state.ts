@@ -214,10 +214,16 @@ export class KompassState extends DurableObject {
 
     const candidates = sticky ? [sticky, ...chain.filter((e) => e !== sticky)] : [...chain];
 
+    // Entries held back ONLY by a health cooldown, with when each expires. If
+    // the pass below leaves nothing routable, the soonest-expiring of these is
+    // reinstated — see the rescue block after the loop.
+    const cooling: Array<{ entry: string; until: number }> = [];
+
     for (const entry of candidates) {
       const cool = await this.ctx.storage.get<number>(`cool:${entry}`);
       if (cool && cool > now) {
         skipped.push({ entry, reason: `cooldown ${Math.round((cool - now) / 1000)}s` });
+        cooling.push({ entry, until: cool });
         continue;
       }
       const cell = limitsByEntry[entry];
@@ -237,6 +243,29 @@ export class KompassState extends DurableObject {
         }
       }
       order.push(entry);
+    }
+
+    // Cooldown rescue (2026-07-25). A cooldown is a HEURISTIC — "this model
+    // misbehaved recently" — not a hard limit like quota. When a burst fails
+    // every model at once (a load spike, a bad-request storm, an upstream-wide
+    // wobble), the whole chain goes cold together and requests get the
+    // "free lanes are exhausted" notice without a single provider ever being
+    // called, for a full 10 minutes. Trying one cold model beats certain
+    // failure: reinstate the entry whose cooldown expires soonest, i.e. the one
+    // that failed longest ago and is most likely to have recovered.
+    //
+    // Deliberately narrow: only when NOTHING else is routable, only one entry,
+    // and never for quota-exhausted entries (rpm/rpd/tpm are real ceilings — a
+    // call there is a guaranteed rejection and can burn a paid allowance). The
+    // caller's own attempt budget still bounds how often this can fire.
+    if (order.length === 0 && cooling.length > 0) {
+      let soonest = cooling[0]!;
+      for (const c of cooling) if (c.until < soonest.until) soonest = c;
+      order.push(soonest.entry);
+      skipped.push({
+        entry: soonest.entry,
+        reason: `cooldown-rescue (all ${cooling.length} cooling; trying the soonest to recover)`,
+      });
     }
 
     if (!sticky && spreadTop > 1 && order.length > 1) {
@@ -659,6 +688,22 @@ export class KompassState extends DurableObject {
    * provider's daily budget. Lets the deployed smoke prove exhaustion-fallback
    * and then undo the damage.
    */
+  /**
+   * Drop every active health cooldown. Cooldowns are a 10-minute penalty per
+   * failing model, which is right when one provider is genuinely sick — but a
+   * burst that fails EVERY model at once (a load test, a bad-request storm, an
+   * upstream-wide wobble) ices the whole roster, and then perfectly healthy
+   * requests get "free lanes are exhausted" for ten minutes with zero provider
+   * calls even attempted. This is the manual reset for that state; the ledger's
+   * quota counters are untouched, so it can't be used to dodge rate limits.
+   */
+  async clearCooldowns(): Promise<{ cleared: number }> {
+    const all = await this.ctx.storage.list({ prefix: 'cool:' });
+    const keys = [...all.keys()];
+    if (keys.length) await this.ctx.storage.delete(keys);
+    return { cleared: keys.length };
+  }
+
   async burn(provider: string, n: number): Promise<{ day: string; count: number }> {
     const now = Date.now();
     const day = utcDay(now);
