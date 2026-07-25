@@ -5,7 +5,10 @@ export default defineWorkersConfig({
     include: ['test/**/*.test.ts'],
     poolOptions: {
       workers: {
-        wrangler: { configPath: './wrangler.jsonc' },
+        // Not wrangler.jsonc: that declares the Workers AI binding, which has no
+        // local Miniflare implementation and forces the pool into remote mode
+        // (fails without `wrangler login`). See test/config-parity.test.ts.
+        wrangler: { configPath: './wrangler.test.jsonc' },
         miniflare: {
           kvNamespaces: ['CONFIG'],
           bindings: {

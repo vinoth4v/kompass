@@ -16,8 +16,9 @@ export default tseslint.config(
     },
   },
   {
-    // Plain-JS Node launcher: give it Node globals so no-undef doesn't fire.
-    files: ['bin/**/*.mjs'],
+    // Plain-JS Node scripts (the CLI launcher, the config-parity check): give
+    // them Node globals so no-undef doesn't fire.
+    files: ['bin/**/*.mjs', 'scripts/**/*.mjs'],
     languageOptions: {
       globals: { process: 'readonly', URL: 'readonly', console: 'readonly' },
     },

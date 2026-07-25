@@ -48,6 +48,13 @@ import {
 } from './escalation';
 import { compactionConfig, compactRequest, type CompactionResult } from './compact';
 import { compilePrivacyGuard, privacyMatch } from './privacy';
+import {
+  deleteProviderKey,
+  listProviderKeys,
+  loadVaultKeys,
+  putProviderKey,
+  vaultAvailable,
+} from './vault';
 import { routeRequest, type RouteAttempt } from './router';
 import { compileQualityPatterns, isCorrectiveTurn, PENALTY } from './score';
 import { FAVICON_SVG, STATUS_HTML } from './status-page';
@@ -272,6 +279,12 @@ async function handleAnthropic(
   const guard = anyTrainingProvider ? compilePrivacyGuard(cfg) : null;
   const privacySensitive = guard ? privacyMatch(guard, raw) : false;
 
+  // Resolved once per request, not per chain attempt (see vault.ts).
+  const vaultKeys = await loadVaultKeys(c.env).catch((e) => {
+    console.log(`vault unavailable: ${String(e).slice(0, 120)}`);
+    return {} as Record<string, string>;
+  });
+
   const forcedModel = c.req.header('x-kompass-model') ?? undefined;
   // Error 1102: one shared ceiling on real upstream attempts for this request,
   // across the initial lane, every escalation hop and the last-resort sweep.
@@ -294,6 +307,7 @@ async function handleAnthropic(
       rawLength: effectiveLength,
       chainOverride,
       budget,
+      vaultKeys,
     });
 
   const allAttempts: RouteAttempt[] = [];
@@ -641,6 +655,54 @@ app.post('/v1/messages/count_tokens', async (c) => {
   // Raw length ÷ 4 — no parse, no re-stringify (CPU budget, see /v1/messages).
   const raw = await c.req.text();
   return c.json({ input_tokens: Math.ceil(raw.length / 4) });
+});
+
+// ── Provider key vault (src/worker/vault.ts) ────────────────────────────────
+// Lets a browser-only user add provider keys with nothing installed. Behind the
+// same auth gate as every other route. Responses are ALWAYS masked — no handler
+// here ever returns key material, including the one that just stored it.
+
+app.get('/keys', async (c) => {
+  return c.json({
+    vault_enabled: vaultAvailable(c.env),
+    keys: await listProviderKeys(c.env),
+  });
+});
+
+app.post('/keys/:provider', async (c) => {
+  const provider = c.req.param('provider');
+  const cfg = await loadConfig(c.env.CONFIG);
+  if (cfg && !cfg.providers[provider]) {
+    return anthropicError('invalid_request_error', `unknown provider "${provider}"`, 400);
+  }
+  let body: { key?: string };
+  try {
+    body = (await c.req.json()) as { key?: string };
+  } catch {
+    return anthropicError('invalid_request_error', 'body must be JSON', 400);
+  }
+  const key = typeof body.key === 'string' ? body.key.trim() : '';
+  if (!key) return anthropicError('invalid_request_error', 'key (string) is required', 400);
+  if (!vaultAvailable(c.env)) {
+    return anthropicError(
+      'api_error',
+      'key vault disabled: KOMPASS_MASTER_KEY is not set on this Worker',
+      503,
+    );
+  }
+  try {
+    const entry = await putProviderKey(c.env, provider, key);
+    // Masked in the log line too — a key must never reach logs intact.
+    console.log(JSON.stringify({ vault_put: provider, masked: entry.masked }));
+    return c.json({ ok: true, provider, masked: entry.masked, stored_at: entry.ts });
+  } catch (e) {
+    return anthropicError('api_error', String(e).slice(0, 200), 500);
+  }
+});
+
+app.delete('/keys/:provider', async (c) => {
+  await deleteProviderKey(c.env, c.req.param('provider'));
+  return c.json({ ok: true, provider: c.req.param('provider') });
 });
 
 // Hot-reload: the CLI compiles config/*.yaml → JSON and POSTs it here (SPEC P0 #4).

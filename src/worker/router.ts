@@ -101,10 +101,29 @@ export interface RouteContext {
    * normal friendly notice, which Claude Code treats as a completed turn.
    */
   budget?: { attemptsLeft: number };
+  /** Decrypted vault keys for this request (src/worker/vault.ts), consulted
+   *  when a provider has no environment secret. */
+  vaultKeys?: Record<string, string>;
 }
 
-function providerKey(env: Env, p: ProviderConfig): string | undefined {
-  return (env as unknown as Record<string, string | undefined>)[p.key_env];
+/**
+ * Provider credential, environment secret first, encrypted vault second.
+ *
+ * Order matters: a `wrangler secret` set by an operator must win over anything
+ * a browser session wrote, so adding the vault cannot silently change which
+ * credential an existing deployment uses. The vault is resolved once per
+ * request into `vaultKeys` (see loadVaultKeys) rather than decrypted per
+ * attempt — an AES operation on every hop of the fallback ladder buys nothing.
+ */
+function providerKey(
+  env: Env,
+  p: ProviderConfig,
+  provider?: string,
+  vaultKeys?: Record<string, string>,
+): string | undefined {
+  const fromEnv = (env as unknown as Record<string, string | undefined>)[p.key_env];
+  if (fromEnv) return fromEnv;
+  return provider ? vaultKeys?.[provider] : undefined;
 }
 
 /** Ledger counter key: per provider, or per provider:model when model_limits applies. */
@@ -220,6 +239,7 @@ async function tryChainEntry(
   privacySensitive = false,
   multimodal = false,
   live = false,
+  vaultKeys?: Record<string, string>,
 ): Promise<EntrySuccess | null> {
   const { provider, model } = parseChainEntry(entry);
   const p = cfg.providers[provider];
@@ -249,7 +269,7 @@ async function tryChainEntry(
     attempts.push({ entry, status: 'skipped-multimodal', detail: 'text-only model' });
     return null;
   }
-  const key = providerKey(env, p);
+  const key = providerKey(env, p, provider, vaultKeys);
   if (!key) {
     attempts.push({ entry, status: 'skipped-no-key' });
     return null;
@@ -463,6 +483,7 @@ export async function routeRequest(
       ctx.privacySensitive,
       multimodal,
       ctx.live === true,
+      ctx.vaultKeys,
     );
     const last = attempts[attempts.length - 1];
     // Charge the budget only when a provider was actually called. tryChainEntry

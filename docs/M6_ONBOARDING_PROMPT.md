@@ -47,7 +47,7 @@ Add to each provider block in `config/providers.yaml` (the URLs already exist as
 openrouter:
   # ...existing...
   signup_url: https://openrouter.ai/keys
-  auth_method: oauth_pkce        # oauth_pkce | paste | wrangler | gh_cli
+  auth_method: oauth_pkce # oauth_pkce | paste | wrangler | gh_cli
   key_pattern: '^sk-or-v1-[A-Za-z0-9]{32,}$'
   probe_model: poolside/laguna-xs-2.1:free
   tier_note: >
@@ -56,12 +56,14 @@ openrouter:
 ```
 
 Rules:
+
 - `probe_model` must be a model already present in `lanes.yaml` for that provider — no new model IDs.
-- `key_pattern` is a *format* check only. It is never a substitute for the live probe.
+- `key_pattern` is a _format_ check only. It is never a substitute for the live probe.
 - Provider ordering in the file defines wizard order. Put `openrouter` first.
 - Add a top-level `required: [cloudflare, openrouter]` list. Everything else is optional.
 
 **AC**
+
 - [ ] Schema validated at config-compile time; a provider missing `signup_url` or `probe_model` fails the build with a readable error
 - [ ] Existing `config push` path still passes tests unchanged
 
@@ -72,19 +74,22 @@ Rules:
 One provider, end to end. `init` will reuse this — build it standalone first.
 
 Flow:
+
 1. Print the provider's `tier_note` and open `signup_url` in the default browser (`open` / `xdg-open` / `start`; on failure print the URL).
 2. **Clipboard watch** — poll the clipboard (`pbpaste` / `xclip -o` / PowerShell `Get-Clipboard`) every 500ms for a string matching `key_pattern`. On match, auto-fill and show a masked confirmation (`sk-or-v1-…a3f9`). Ctrl-C or `p` falls back to a masked manual prompt. Time out to manual prompt after 120s.
 3. Validate against `key_pattern`. On mismatch, show what was expected and re-prompt.
-4. **Live probe** — a 1-token completion against `probe_model`. Surface the provider's actual error text on failure (a 401 from a wrong-scoped key must say so *now*, not at 2am mid-session).
+4. **Live probe** — a 1-token completion against `probe_model`. Surface the provider's actual error text on failure (a 401 from a wrong-scoped key must say so _now_, not at 2am mid-session).
 5. On success, capture any rate-limit headers the provider exposes (we already do this for Groq's `x-ratelimit-limit-requests`) and append a line to `docs/DECISIONS.md` with observed limits.
 6. Write to `secrets/.secrets.json`, chmod `0600`, then `wrangler secret bulk` if already deployed.
 
 Constraints:
+
 - Key material must never reach stdout, logs, or shell history unmasked.
 - Idempotent: re-running on a configured provider offers replace / keep / probe-only.
 - `--no-clipboard` flag for users who don't want polling.
 
 **AC**
+
 - [ ] A deliberately wrong key is rejected at `keys add` time with the provider's own error message
 - [ ] `keys add nvidia` on a fresh machine completes in under 90 seconds including signup
 - [ ] Unit test: clipboard watcher matches the right pattern and ignores unrelated clipboard content
@@ -97,6 +102,7 @@ Constraints:
 This is the highest-value single piece — OpenRouter carries the AGENTIC and SIMPLE leads and 1000 RPD.
 
 Flow (verify current endpoints at `openrouter.ai/docs` before coding — log what you confirm):
+
 1. Generate a code verifier; `code_challenge` = base64url(SHA-256(verifier)), `code_challenge_method=S256`.
 2. Start a localhost callback server; retry across a small port range if bound.
 3. Open `https://openrouter.ai/auth?callback_url=http://localhost:<port>/callback&code_challenge=<challenge>&code_challenge_method=S256`.
@@ -108,6 +114,7 @@ Flow (verify current endpoints at `openrouter.ai/docs` before coding — log wha
 **Verify and report:** does a PKCE-issued key inherit the account's 1000 RPD tier, or start at 50 RPD? If it can land at 50, `init` must tell the user about the one-time $10 unlock at the moment it matters, not bury it in docs.
 
 **AC**
+
 - [ ] `kompass keys add openrouter` completes with zero pasted key material on a machine with a browser
 - [ ] Same command works over SSH via the paste-the-redirect-URL path
 - [ ] Verifier/challenge pair unit-tested against a known S256 vector
@@ -128,6 +135,7 @@ Remove the manual API-token step from local installs (BUILD_PLAN §2.1 becomes C
 Keep the `CLOUDFLARE_API_TOKEN` path working for CI and non-interactive installs — `wrangler login` is the default, not the only option. Update `docs/BUILD_PLAN.md` §2 to reflect the new prerequisite list.
 
 **AC**
+
 - [ ] Fresh machine with no `CLOUDFLARE_API_TOKEN` reaches a deployed worker with one browser click and no manual token creation
 - [ ] `wrangler.toml` KV ID is written automatically; re-running is idempotent and does not create a duplicate namespace
 - [ ] CI path (token env var, no browser) still works — asserted in the existing CI job
@@ -149,6 +157,7 @@ kompass init --minimal  # stops after the required set + deploy + smoke
 - Final output: the deployed URL, the `claude-free()` snippet ready to paste, and the web app URL.
 
 **AC**
+
 - [ ] `kompass init --minimal` on a clean checkout produces a working deployed endpoint with zero pasted API keys
 - [ ] Interrupt at any step, re-run, resumes correctly (tested for at least 3 interruption points)
 - [ ] Scripted in CI up to the deploy boundary (fresh-clone dry run, per M4 precedent)
@@ -160,6 +169,7 @@ kompass init --minimal  # stops after the required set + deploy + smoke
 This replaces the Cloudflare-key-in-the-browser pattern. **Read this whole stage before designing.**
 
 **Design:**
+
 - **"Username" is the workers.dev handle.** `vinoth` → `https://kompass.vinoth.workers.dev`. Provide an "advanced: custom URL" escape hatch for custom domains. This keeps us stateless — no central directory service, which would break SPEC §3 ("no multi-tenant SaaS", "keys never shared with a third-party operator").
 - **Passphrase** is set during `init` and changeable via `kompass passwd`. Offer a generated 4-word diceware default; enforce a minimum entropy floor if the user supplies their own.
 - Worker stores `KOMPASS_PASS_HASH`, `KOMPASS_PASS_SALT`, `KOMPASS_PASS_ITER` as secrets. Hashing via WebCrypto `subtle` PBKDF2-SHA256 — no Node APIs, no new deps.
@@ -174,6 +184,7 @@ This replaces the Cloudflare-key-in-the-browser pattern. **Read this whole stage
 **CORS:** the worker must accept the web app origin and `localhost`. Credentials travel in the `Authorization` header, **not cookies** — this avoids CSRF entirely. Do not add cookie auth.
 
 **AC**
+
 - [ ] `POST /auth/login` with correct passphrase returns a session token; the token authenticates `/v1/messages` and `/status`
 - [ ] Existing bearer-token path unchanged — full M0–M5 test suite still green, unmodified
 - [ ] 6th failed login within 15 min is locked out; unit-tested against the DO
@@ -196,6 +207,7 @@ New login screen: **two fields, handle and passphrase.** Nothing else.
 - Add `kompass ui` to serve the same static bundle locally, for users who would rather not trust a hosted page at all. Mention it on the login screen.
 
 **AC**
+
 - [ ] Login with handle + passphrase reaches a working chat session against the user's own worker
 - [ ] Network tab shows zero requests carrying credentials to any non-workers.dev origin
 - [ ] No Cloudflare API key field exists anywhere in the app; grep-asserted in test
@@ -220,6 +232,7 @@ Ranked by capacity added, drawn from `providers.yaml` — no hardcoded copy. Use
 Also add `kompass keys doctor` — re-probe every configured key, report dead / degraded / rate-limited, suggest fixes.
 
 **AC**
+
 - [ ] Nudge fires at the threshold and names the highest-capacity unconfigured provider
 - [ ] Nudge never fires when all providers are configured
 - [ ] `keys doctor` correctly reports a revoked key as dead
@@ -237,6 +250,7 @@ Rewrite for the new reality. The current README quick-start is now wrong.
 - **`docs/MORNING_REPORT.md`:** regenerate per BUILD_PLAN §7.
 
 **AC**
+
 - [ ] A reader who has never seen Kompass can get to a working endpoint from the README alone
 - [ ] Fresh-clone README dry run scripted in CI (extends the existing M4 job)
 - [ ] No doc still instructs anyone to paste a Cloudflare API key into a web page
