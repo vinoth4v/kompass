@@ -1,18 +1,12 @@
 'use client';
-import {
-  Image as ImageIcon,
-  Menu,
-  MessageSquare,
-  Moon,
-  Sun,
-  Telescope,
-} from 'lucide-react';
+import { Image as ImageIcon, Menu, MessageSquare, Moon, Sun, Telescope, Users } from 'lucide-react';
 import { LANE_CHOICES, type Conversation, type ConversationMode, type LaneChoice } from '@/lib/types';
 
 const modes: { value: ConversationMode; label: string; icon: typeof MessageSquare }[] = [
   { value: 'chat', label: 'Chat', icon: MessageSquare },
   { value: 'image', label: 'Image', icon: ImageIcon },
   { value: 'research', label: 'Research', icon: Telescope },
+  { value: 'council', label: 'Council', icon: Users },
 ];
 
 export function TopBar({

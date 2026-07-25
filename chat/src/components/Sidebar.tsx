@@ -1,7 +1,7 @@
 'use client';
-import { Check, Image as ImageIcon, MessageSquare, Plus, Search, Settings, Telescope, Trash2, X } from 'lucide-react';
+import { Check, Image as ImageIcon, MessageSquare, Plus, Search, Settings, Telescope, Trash2, Users, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import type { Conversation } from '@/lib/types';
+import type { Conversation, ConversationMode } from '@/lib/types';
 
 function relTime(ts: number): string {
   const s = Math.max(0, (Date.now() - ts) / 1000);
@@ -11,7 +11,12 @@ function relTime(ts: number): string {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
-const modeIcon = { chat: MessageSquare, image: ImageIcon, research: Telescope };
+const modeIcon: Record<ConversationMode, typeof MessageSquare> = {
+  chat: MessageSquare,
+  image: ImageIcon,
+  research: Telescope,
+  council: Users,
+};
 
 export function Sidebar({
   conversations,

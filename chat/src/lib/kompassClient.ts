@@ -126,10 +126,13 @@ export async function sendMessage(
   settings: KompassSettings,
   req: SendMessageRequest,
   signal?: AbortSignal,
+  /** Extra gateway headers — the Council uses x-kompass-model to pin one agent
+   *  to one concrete model so the seats genuinely differ. */
+  extraHeaders?: Record<string, string>,
 ): Promise<SendMessageResult> {
   const res = await fetch(`${baseUrl(settings)}/v1/messages`, {
     method: 'POST',
-    headers: headers(settings),
+    headers: headers(settings, extraHeaders),
     body: JSON.stringify(req),
     signal,
   });
@@ -168,4 +171,43 @@ export async function generateImage(
   const first = body.data[0];
   if (!first) throw new KompassApiError(502, 'No image returned.');
   return { b64: first.b64_json, mime: body.mime_type, model: body.model };
+}
+
+export interface RosterEntry {
+  /** "provider/model" as the gateway names it. */
+  entry: string;
+  /** Measured success rate from the gateway's own reliability table, when known. */
+  rate?: number;
+  lanes: string[];
+}
+
+/**
+ * Real model roster from the gateway's /status, for the Council's model picker.
+ * Deliberately reads the LIVE config rather than hardcoding a list: lanes.yaml
+ * changes as models are added, demoted and disabled, and a picker offering a
+ * disabled model would just produce confusing failures.
+ */
+export async function fetchModelRoster(settings: KompassSettings): Promise<RosterEntry[]> {
+  const res = await fetch(`${baseUrl(settings)}/status`, { headers: headers(settings) });
+  if (!res.ok) throw new KompassApiError(res.status, await readErrorMessage(res));
+  const body = (await res.json()) as {
+    lanes?: Record<string, { chain: string[] }>;
+    perf?: Record<string, { rate: number }>;
+    disabled_models?: string[];
+  };
+  const disabled = new Set(body.disabled_models ?? []);
+  const byEntry = new Map<string, RosterEntry>();
+  for (const [lane, cfg] of Object.entries(body.lanes ?? {})) {
+    for (const entry of cfg.chain ?? []) {
+      if (disabled.has(entry)) continue;
+      const existing = byEntry.get(entry);
+      if (existing) {
+        if (!existing.lanes.includes(lane)) existing.lanes.push(lane);
+      } else {
+        byEntry.set(entry, { entry, rate: body.perf?.[entry]?.rate, lanes: [lane] });
+      }
+    }
+  }
+  // Most reliable first — the picker should lead with models that answer.
+  return [...byEntry.values()].sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
 }

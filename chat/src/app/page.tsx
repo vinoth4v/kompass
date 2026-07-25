@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { Composer } from '@/components/Composer';
+import { CouncilView } from '@/components/CouncilView';
 import { LoginScreen } from '@/components/LoginScreen';
 import { MessageList } from '@/components/MessageList';
 import { SettingsModal } from '@/components/SettingsModal';
@@ -291,7 +292,14 @@ export default function Page() {
           }
         />
 
-        {active ? (
+        {active?.mode === 'council' ? (
+          // Council owns its whole surface: its state is a structured run
+          // (agents, phases, verdict), not a message list, so it does not use
+          // MessageList/Composer at all.
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <CouncilView settings={settings} />
+          </div>
+        ) : active ? (
           <>
             <MessageList
               messages={active.messages}

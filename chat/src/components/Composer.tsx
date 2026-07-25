@@ -7,6 +7,7 @@ const PLACEHOLDERS: Record<ConversationMode, string> = {
   chat: 'Message Kompass AI… (attach an image to ask about it)',
   image: 'Describe the image you want to generate…',
   research: 'What do you want researched? Kompass will search the web and cite sources…',
+  council: 'Ask the council…',
 };
 
 function fileToAttachment(file: File): Promise<ImageAttachment> {

@@ -42,7 +42,7 @@ export interface ChatMessage {
   sources?: { title: string; url: string }[];
 }
 
-export type ConversationMode = 'chat' | 'image' | 'research';
+export type ConversationMode = 'chat' | 'image' | 'research' | 'council';
 
 export interface Conversation {
   id: string;

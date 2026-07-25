@@ -1,5 +1,5 @@
 'use client';
-import { Image as ImageIcon, MessageSquare, Telescope } from 'lucide-react';
+import { Image as ImageIcon, MessageSquare, Telescope, Users } from 'lucide-react';
 import { useEffect, useRef } from 'react';
 import type { ChatMessage, ConversationMode } from '@/lib/types';
 import { MessageBubble } from './MessageBubble';
@@ -20,9 +20,19 @@ const EXAMPLES: Record<ConversationMode, string[]> = {
     'Compare three open-weight coding models released this year',
     'Summarize best practices for LLM gateway rate limiting',
   ],
+  // Council has its own surface (CouncilView) and never renders MessageList,
+  // but the Record must stay exhaustive over ConversationMode.
+  council: [],
 };
 
-const emptyIcon = { chat: MessageSquare, image: ImageIcon, research: Telescope };
+const emptyIcon: Record<ConversationMode, typeof MessageSquare> = {
+  chat: MessageSquare,
+  image: ImageIcon,
+  research: Telescope,
+  // Unreachable — council renders CouncilView, not MessageList — but the map
+  // must cover every mode for the lookup below to typecheck.
+  council: Users,
+};
 
 export function MessageList({
   messages,
