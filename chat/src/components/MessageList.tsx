@@ -100,6 +100,25 @@ export function MessageList({
             onDelete={() => onDelete(m.id)}
           />
         ))}
+        {(() => {
+          // Only the newest reply offers follow-ups: older ones are history, and
+          // chips under every message turn the thread into a wall of buttons.
+          const last = messages[messages.length - 1];
+          if (busy || !last || last.role !== 'assistant' || !last.followups?.length) return null;
+          return (
+            <div className="kompass-fade-in flex flex-wrap gap-2 pt-1">
+              {last.followups.map((q) => (
+                <button
+                  key={q}
+                  onClick={() => onExample(q)}
+                  className="rounded-full border border-line bg-surface px-3.5 py-2 text-left text-[0.8rem] text-ink-secondary transition duration-200 hover:border-line-strong hover:bg-surface-hover hover:text-ink"
+                >
+                  {q}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
         {busy && (
           <div className="kompass-thinking flex items-center text-ink-muted" aria-label="Thinking">
             <span />

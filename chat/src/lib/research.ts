@@ -14,6 +14,32 @@ import {
 import type { KompassSettings } from './types';
 import { TOOLS, executeTool } from './tools';
 
+/**
+ * Asked for in the same call rather than a second request: an extra round trip
+ * per turn against free models costs a lane hop and several seconds, for three
+ * short strings. Parsed out and stripped before display — a model that ignores
+ * the format simply yields no chips, which is a fine failure mode.
+ */
+const FOLLOWUP_INSTRUCTION =
+  'After your answer, add a final line in exactly this form, with two or three short ' +
+  'questions the user would plausibly want to ask next, separated by " | ":\n' +
+  'FOLLOWUPS: question one | question two | question three\n' +
+  'Make them specific to what you just said, not generic. Omit the line entirely if no ' +
+  'follow-up would genuinely help.';
+
+/** Pull the FOLLOWUPS line out of a reply and return the cleaned text. */
+export function extractFollowups(text: string): { text: string; followups?: string[] } {
+  const m = /^[ \t]*FOLLOWUPS:[ \t]*(.+)$/im.exec(text);
+  if (!m) return { text };
+  const followups = (m[1] ?? '')
+    .split('|')
+    .map((q) => q.trim().replace(/^[-*\d.\s]+/, ''))
+    .filter((q) => q.length > 3 && q.length < 160)
+    .slice(0, 3);
+  const cleaned = (text.slice(0, m.index) + text.slice(m.index + m[0].length)).trimEnd();
+  return { text: cleaned, followups: followups.length ? followups : undefined };
+}
+
 const RESEARCH_SYSTEM_PROMPT =
   'You are a careful research assistant. For exact current facts (weather, FX rates, stock and ' +
   'crypto prices, live scores, World Bank indicators) call get_data; for recent events call ' +
@@ -22,12 +48,15 @@ const RESEARCH_SYSTEM_PROMPT =
   'current sources, then web_fetch 2-4 of the most promising results to read their ' +
   'full content before answering. Synthesize a clear, well-organized answer in ' +
   'markdown. Be explicit about uncertainty if sources are thin or conflicting — ' +
-  'never fabricate facts or sources.';
+  'never fabricate facts or sources.\n\n' +
+  FOLLOWUP_INSTRUCTION;
 
 const MAX_ITERATIONS = 6;
 
 export interface ResearchResult {
   text: string;
+  /** Suggested next questions, stripped out of the reply text. */
+  followups?: string[];
   sources: { title: string; url: string }[];
   usage: { input: number; output: number };
   servedBy: string | null;
@@ -126,7 +155,8 @@ const CHAT_SYSTEM_PROMPT =
   'code, explaining a concept, editing text, reasoning about something the user gave you. ' +
   "Searching those wastes the user's time.\n\n" +
   'If a search returns nothing useful, say so rather than filling the gap from memory and ' +
-  'presenting it as current.';
+  'presenting it as current.\n\n' +
+  FOLLOWUP_INSTRUCTION;
 
 const CHAT_MAX_ITERATIONS = 4;
 
@@ -178,12 +208,14 @@ export async function runChatWithTools(
       (b): b is AnthropicToolUseBlockWire => b.type === 'tool_use',
     );
     if (toolUses.length === 0) {
-      const text = response.content
+      const raw = response.content
         .filter((b): b is AnthropicTextBlockWire => b.type === 'text')
         .map((b) => b.text)
         .join('\n\n');
+      const { text, followups } = extractFollowups(raw);
       return {
         text: text || '(empty response)',
+        followups,
         sources,
         usage: { input: totalIn, output: totalOut },
         servedBy,

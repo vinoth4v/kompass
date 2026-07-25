@@ -1,5 +1,5 @@
 'use client';
-import { Check, Copy, Download, Pencil, RefreshCw, Trash2 } from 'lucide-react';
+import { Check, Copy, Download, Paperclip, Pencil, RefreshCw, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
@@ -80,15 +80,26 @@ export function MessageBubble({
       >
         {message.images && message.images.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            {message.images.map((img, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={i}
-                src={`data:${img.mediaType};base64,${img.data}`}
-                alt={img.name}
-                className="max-h-52 rounded-xl border border-line object-cover"
-              />
-            ))}
+            {message.images.map((img, i) =>
+              img.kind !== 'image' ? (
+                <span
+                  key={i}
+                  className="flex max-w-[240px] items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-[0.78rem] text-ink-secondary"
+                  title={img.name}
+                >
+                  <Paperclip size={13} className="shrink-0 text-ink-muted" />
+                  <span className="truncate">{img.name}</span>
+                </span>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={i}
+                  src={`data:${img.mediaType};base64,${img.data}`}
+                  alt={img.name}
+                  className="max-h-52 rounded-xl border border-line object-cover"
+                />
+              ),
+            )}
           </div>
         )}
 

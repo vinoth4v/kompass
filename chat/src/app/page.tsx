@@ -42,10 +42,29 @@ function deriveTitle(text: string): string {
 function toWireMessages(messages: ChatMessage[]): AnthropicMessageWire[] {
   return messages.map((m) => {
     if (m.role === 'user' && m.images?.length) {
-      const blocks: AnthropicContentBlockWire[] = m.images.map((img) => ({
-        type: 'image',
-        source: { type: 'base64', media_type: img.mediaType, data: img.data },
-      }));
+      const blocks: AnthropicContentBlockWire[] = [];
+      for (const a of m.images) {
+        if (a.kind === 'image') {
+          blocks.push({
+            type: 'image',
+            source: { type: 'base64', media_type: a.mediaType, data: a.data },
+          });
+        } else if (a.kind === 'document') {
+          blocks.push({
+            type: 'document',
+            source: { type: 'base64', media_type: a.mediaType, data: a.data },
+            title: a.name,
+          });
+        } else {
+          // Text files go in as TEXT, fenced and named. Every model can read
+          // this — no vision required — and the fence stops file contents from
+          // being mistaken for instructions.
+          blocks.push({
+            type: 'text',
+            text: `Attached file: ${a.name}\n\n\u0060\u0060\u0060\n${a.text ?? ''}\n\u0060\u0060\u0060`,
+          });
+        }
+      }
       if (m.text) blocks.push({ type: 'text', text: m.text });
       return { role: 'user', content: blocks };
     }
@@ -184,6 +203,7 @@ export default function Page() {
           role: 'assistant',
           text: result.text,
           sources: result.sources,
+          followups: result.followups,
           servedBy: result.servedBy ?? undefined,
           lane: result.lane ?? undefined,
           usage: { input: result.usage.input, output: result.usage.output },
@@ -204,6 +224,7 @@ export default function Page() {
           role: 'assistant',
           text: result.text,
           sources: result.sources.length > 0 ? result.sources : undefined,
+          followups: result.followups,
           servedBy: result.servedBy ?? undefined,
           lane: result.lane ?? undefined,
           usage: { input: result.usage.input, output: result.usage.output },

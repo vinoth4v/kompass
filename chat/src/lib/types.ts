@@ -19,18 +19,36 @@ export const LANE_CHOICES: { value: LaneChoice; label: string; hint: string }[] 
   { value: 'kompass-longctx', label: 'Long context', hint: '>60k-token contexts, 1M window' },
 ];
 
-export interface ImageAttachment {
+/**
+ * A file the user attached. Three kinds, because they reach the model by three
+ * different routes:
+ *   image    — an image block; needs a vision-capable model.
+ *   document — a PDF as a base64 document block; Gemini reads these natively.
+ *   text     — source, markdown, csv, json… read in the browser and sent as
+ *              TEXT. This is the important one: it works with every model in
+ *              the roster, vision or not, and most files people want to ask
+ *              about are text.
+ */
+export interface Attachment {
+  kind: 'image' | 'document' | 'text';
   mediaType: string;
-  data: string; // base64, no data: prefix
+  /** base64 payload for image/document; empty for text attachments. */
+  data: string;
+  /** Decoded contents for kind: 'text'. */
+  text?: string;
   name: string;
+  size?: number;
 }
+
+/** Legacy alias — the field on ChatMessage is still called `images`. */
+export type ImageAttachment = Attachment;
 
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   /** Plain text content. Rendered as markdown for assistant messages. */
   text: string;
-  images?: ImageAttachment[];
+  images?: Attachment[];
   /** Set on assistant messages produced by image-generation mode. */
   generatedImage?: { b64: string; mime: string };
   createdAt: number;
@@ -40,6 +58,8 @@ export interface ChatMessage {
   error?: boolean;
   /** Research mode: sources cited in this reply. */
   sources?: { title: string; url: string }[];
+  /** Suggested next questions, parsed out of the reply (see research.ts). */
+  followups?: string[];
 }
 
 export type ConversationMode = 'chat' | 'image' | 'research' | 'council';

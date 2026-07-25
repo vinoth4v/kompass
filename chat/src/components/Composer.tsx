@@ -1,26 +1,67 @@
 'use client';
-import { ImagePlus, Send, Square, X } from 'lucide-react';
+import { FileText, Image as ImageIcon, Paperclip, Send, Square, X } from 'lucide-react';
 import { useRef, useState } from 'react';
-import type { ConversationMode, ImageAttachment } from '@/lib/types';
+import type { Attachment, ConversationMode } from '@/lib/types';
+
+/** Extensions treated as text even when the browser reports no MIME type —
+ *  which it routinely does for source files. */
+const TEXT_EXTENSIONS =
+  /\.(txt|md|markdown|csv|tsv|json|jsonl|ya?ml|toml|ini|cfg|conf|log|xml|html?|css|scss|jsx?|tsx?|mjs|cjs|py|rb|go|rs|java|kt|swift|c|h|cpp|hpp|cs|php|sh|bash|zsh|sql|graphql|env|dockerfile|makefile|gitignore)$/i;
+
+const MAX_TEXT_BYTES = 400_000;
+
+function classify(file: File): Attachment['kind'] {
+  if (file.type.startsWith('image/')) return 'image';
+  if (file.type === 'application/pdf') return 'document';
+  return 'text';
+}
 
 const PLACEHOLDERS: Record<ConversationMode, string> = {
-  chat: 'Message Kompass AI… (attach an image to ask about it)',
+  chat: 'Message Kompass AI… (attach images, PDFs, code or data to ask about them)',
   image: 'Describe the image you want to generate…',
   research: 'What do you want researched? Kompass will search the web and cite sources…',
   council: 'Ask the council…',
 };
 
-function fileToAttachment(file: File): Promise<ImageAttachment> {
-  return new Promise((resolve, reject) => {
+async function fileToAttachment(file: File): Promise<Attachment> {
+  const kind = classify(file);
+
+  if (kind === 'text') {
+    if (!file.type.startsWith('text/') && !TEXT_EXTENSIONS.test(file.name) && file.type !== '') {
+      throw new Error(`unsupported file type: ${file.type || file.name}`);
+    }
+    const text = await file.text();
+    return {
+      kind: 'text',
+      mediaType: file.type || 'text/plain',
+      data: '',
+      // Truncated rather than refused: a 2MB log is still worth asking about,
+      // and the model is told plainly that the tail was cut.
+      text:
+        text.length > MAX_TEXT_BYTES
+          ? `${text.slice(0, MAX_TEXT_BYTES)}\n\n… [truncated ${text.length - MAX_TEXT_BYTES} characters]`
+          : text,
+      name: file.name,
+      size: file.size,
+    };
+  }
+
+  const data = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
-      const data = result.slice(result.indexOf(',') + 1);
-      resolve({ mediaType: file.type || 'image/png', data, name: file.name });
+      resolve(result.slice(result.indexOf(',') + 1));
     };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+  return {
+    kind,
+    mediaType: file.type || 'application/octet-stream',
+    data,
+    name: file.name,
+    size: file.size,
+  };
 }
 
 export function Composer({
@@ -31,11 +72,12 @@ export function Composer({
 }: {
   mode: ConversationMode;
   busy: boolean;
-  onSend: (text: string, images: ImageAttachment[]) => void;
+  onSend: (text: string, images: Attachment[]) => void;
   onStop: () => void;
 }) {
   const [text, setText] = useState('');
-  const [images, setImages] = useState<ImageAttachment[]>([]);
+  const [images, setImages] = useState<Attachment[]>([]);
+  const [attachError, setAttachError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -58,8 +100,12 @@ export function Composer({
 
   const handleFiles = async (files: FileList | null) => {
     if (!files) return;
-    const picked = await Promise.all(Array.from(files).slice(0, 4).map(fileToAttachment));
-    setImages((prev) => [...prev, ...picked].slice(0, 4));
+    setAttachError(null);
+    const settled = await Promise.allSettled(Array.from(files).slice(0, 6).map(fileToAttachment));
+    const ok = settled.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+    const failed = settled.filter((r) => r.status === 'rejected').length;
+    if (failed > 0) setAttachError(`${failed} file(s) could not be attached.`);
+    setImages((prev) => [...prev, ...ok].slice(0, 6));
   };
 
   return (
@@ -68,20 +114,39 @@ export function Composer({
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
-        if (mode === 'chat') void handleFiles(e.dataTransfer.files);
+        if (mode !== 'image') void handleFiles(e.dataTransfer.files);
       }}
     >
       <div className="mx-auto w-full max-w-thread">
+        {attachError && <p className="mb-2 text-[0.75rem] text-danger">{attachError}</p>}
         {images.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-2">
             {images.map((img, i) => (
               <div key={i} className="group relative">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={`data:${img.mediaType};base64,${img.data}`}
-                  alt={img.name}
-                  className="h-16 w-16 rounded-xl border border-line object-cover"
-                />
+                {img.kind === 'image' ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={`data:${img.mediaType};base64,${img.data}`}
+                    alt={img.name}
+                    className="h-16 w-16 rounded-xl border border-line object-cover"
+                  />
+                ) : (
+                  <div className="flex h-16 max-w-[190px] items-center gap-2 rounded-xl border border-line bg-surface px-3">
+                    {img.kind === 'document' ? (
+                      <FileText size={16} className="shrink-0 text-ink-muted" />
+                    ) : (
+                      <ImageIcon size={16} className="shrink-0 text-ink-muted opacity-0" />
+                    )}
+                    <div className="min-w-0">
+                      <div className="truncate text-[0.78rem] text-ink">{img.name}</div>
+                      <div className="text-[0.7rem] text-ink-muted">
+                        {img.kind === 'document'
+                          ? 'PDF'
+                          : `${Math.max(1, Math.round((img.text?.length ?? 0) / 1024))} KB text`}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 <button
                   onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
                   className="absolute -right-1.5 -top-1.5 rounded-full bg-elevated p-1 text-ink shadow-md ring-1 ring-line-strong transition hover:bg-surface-hover"
@@ -94,7 +159,7 @@ export function Composer({
         )}
 
         <div className="flex items-end gap-1.5 rounded-[1.6rem] border border-line bg-elevated p-2 shadow-md transition-colors duration-200 focus-within:border-line-strong">
-          {mode === 'chat' && (
+          {mode !== 'image' && (
             <>
               <input
                 ref={fileInputRef}
@@ -107,9 +172,9 @@ export function Composer({
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="shrink-0 rounded-full p-2.5 text-ink-muted transition hover:bg-surface-hover hover:text-ink"
-                title="Attach image"
+                title="Attach files — images, PDFs, code, CSV, JSON, logs"
               >
-                <ImagePlus size={18} />
+                <Paperclip size={18} />
               </button>
             </>
           )}

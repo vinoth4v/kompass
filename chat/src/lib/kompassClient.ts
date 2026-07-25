@@ -28,11 +28,20 @@ export interface AnthropicToolResultBlockWire {
   content: string;
   is_error?: boolean;
 }
+/** Mirrors the Worker's AnthropicDocumentBlock — PDFs travel as base64 here,
+ *  and Gemini reads them natively (src/adapters/gemini.ts). */
+export interface AnthropicDocumentBlockWire {
+  type: 'document';
+  source: { type: 'base64' | 'text' | 'url'; media_type?: string; data?: string; url?: string };
+  title?: string;
+}
+
 export type AnthropicContentBlockWire =
   | AnthropicTextBlockWire
   | AnthropicImageBlockWire
   | AnthropicToolUseBlockWire
-  | AnthropicToolResultBlockWire;
+  | AnthropicToolResultBlockWire
+  | AnthropicDocumentBlockWire;
 
 export interface AnthropicMessageWire {
   role: 'user' | 'assistant';
