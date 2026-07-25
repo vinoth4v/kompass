@@ -3,8 +3,9 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  // chat/ is a fully separate Next.js app (own package.json, own node_modules,
-  // own .eslintrc.json) — it lints itself via `npm run lint` inside chat/, not
+  // The chat app moved to its own repository (vinoth4v/kompass-chat) on
+  // 2026-07-25 and lints itself there. The ignore entry is kept so a local
+  // clone of it inside this tree, or a stale checkout, still cannot drag
   // via this root flat config.
   { ignores: ['node_modules', 'dist', '.wrangler', 'coverage', 'chat'] },
   eslint.configs.recommended,

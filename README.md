@@ -261,9 +261,9 @@ Everything runs locally: sessions are saved under `~/.kompass/ui/`, tools execut
 your machine, and the browser only ever talks to the local server — your Kompass
 bearer never reaches the page. The sidebar shows live per-provider quota.
 
-## Kompass AI — hosted chat app (`chat/`)
+## Kompass AI — hosted chat app (separate repo)
 
-A full **Next.js app you deploy to your own Vercel account**, for when you want a
+A full **Next.js app in its own repository** ([vinoth4v/kompass-chat](https://github.com/vinoth4v/kompass-chat)), deployable to your own Vercel account, for when you want a
 gateway UI reachable from any device — not just your laptop. Live reference deploy:
 **https://kompass-chat.vercel.app** (point it at your own worker + bearer to use it
 for real; each user hosts their own instance, same one-user model as the gateway
@@ -292,6 +292,8 @@ Deploy your own:
 
 ```sh
 cd chat && npm install && npm run build
+git clone https://github.com/vinoth4v/kompass-chat && cd kompass-chat
+npm install
 vercel link && vercel deploy --prod    # or: vercel --prod
 ```
 
