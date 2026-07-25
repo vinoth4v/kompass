@@ -21,9 +21,21 @@
 // but `wrangler secret put` needs a local CLI install. This vault exists so a
 // browser-only, non-technical user can add a provider key from the chat UI with
 // nothing installed.
+import type { KompassState } from '../do/state';
 import type { Env } from './env';
 
-const KV_PREFIX = 'vault:';
+/** Strongly consistent store — see the DO's vault section for why not KV. */
+export type VaultStore = DurableObjectStub<KompassState>;
+
+/**
+ * Entries are stored in the DURABLE OBJECT, not KV.
+ *
+ * KV is eventually consistent: a key stored successfully did not appear in the
+ * listing for tens of seconds, so the UI re-read after saving, saw nothing, and
+ * looked like it had silently failed. An index key read with get() did not fix
+ * it either — KV gives no read-after-write guarantee at all. Durable Object
+ * storage is strongly consistent, so a stored key is visible immediately.
+ */
 /** Domain separation, so this key derivation can never collide with another. */
 const HKDF_INFO = 'kompass-provider-key-vault-v1';
 
@@ -98,7 +110,12 @@ function masterKey(env: Env): string {
   return k;
 }
 
-export async function putProviderKey(env: Env, provider: string, key: string): Promise<VaultEntry> {
+export async function putProviderKey(
+  env: Env,
+  store: VaultStore,
+  provider: string,
+  key: string,
+): Promise<VaultEntry> {
   const aes = await deriveKey(masterKey(env));
   // A fresh 96-bit nonce per write. GCM nonce reuse under the same key is
   // catastrophic (it leaks the keystream), so this is never derived or stored
@@ -115,16 +132,20 @@ export async function putProviderKey(env: Env, provider: string, key: string): P
     ts: Date.now(),
     masked: maskKey(key),
   };
-  await env.CONFIG.put(KV_PREFIX + provider, JSON.stringify(entry));
+  await store.vaultPut(provider, entry);
   return entry;
 }
 
-export async function getProviderKey(env: Env, provider: string): Promise<string | null> {
+export async function getProviderKey(
+  env: Env,
+  store: VaultStore,
+  provider: string,
+): Promise<string | null> {
   if (!vaultAvailable(env)) return null;
-  const raw = await env.CONFIG.get(KV_PREFIX + provider);
-  if (!raw) return null;
+  const stored = await store.vaultGet(provider);
+  if (!stored) return null;
   try {
-    const entry = JSON.parse(raw) as VaultEntry;
+    const entry = stored as VaultEntry;
     const aes = await deriveKey(masterKey(env));
     const pt = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: unb64(entry.iv) },
@@ -141,26 +162,20 @@ export async function getProviderKey(env: Env, provider: string): Promise<string
   }
 }
 
-export async function deleteProviderKey(env: Env, provider: string): Promise<void> {
-  await env.CONFIG.delete(KV_PREFIX + provider);
+export async function deleteProviderKey(store: VaultStore, provider: string): Promise<void> {
+  await store.vaultDelete(provider);
 }
 
 /** Masked inventory for the UI — never returns key material. */
 export async function listProviderKeys(
   env: Env,
+  store: VaultStore,
 ): Promise<Record<string, { masked: string; ts: number }>> {
   const out: Record<string, { masked: string; ts: number }> = {};
   if (!vaultAvailable(env)) return out;
-  const list = await env.CONFIG.list({ prefix: KV_PREFIX });
-  for (const k of list.keys) {
-    const raw = await env.CONFIG.get(k.name);
-    if (!raw) continue;
-    try {
-      const entry = JSON.parse(raw) as VaultEntry;
-      out[k.name.slice(KV_PREFIX.length)] = { masked: entry.masked, ts: entry.ts };
-    } catch {
-      /* skip unreadable entries rather than failing the whole listing */
-    }
+  for (const [provider, raw] of Object.entries(await store.vaultAll())) {
+    const entry = raw as VaultEntry;
+    if (entry?.masked) out[provider] = { masked: entry.masked, ts: entry.ts };
   }
   return out;
 }
@@ -171,16 +186,25 @@ export async function listProviderKeys(
  * decrypt per attempt would put an AES operation on every hop of the fallback
  * ladder for no benefit.
  */
-export async function loadVaultKeys(env: Env): Promise<Record<string, string>> {
+export async function loadVaultKeys(env: Env, store: VaultStore): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   if (!vaultAvailable(env)) return out;
-  const list = await env.CONFIG.list({ prefix: KV_PREFIX });
-  await Promise.all(
-    list.keys.map(async (k) => {
-      const provider = k.name.slice(KV_PREFIX.length);
-      const key = await getProviderKey(env, provider);
-      if (key) out[provider] = key;
-    }),
-  );
+  // One DO round trip for every entry, then decrypt locally — cheaper than a
+  // call per provider, and this runs once per request.
+  const aes = await deriveKey(masterKey(env));
+  for (const [provider, raw] of Object.entries(await store.vaultAll())) {
+    const entry = raw as VaultEntry;
+    if (!entry?.ct) continue;
+    try {
+      const pt = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: unb64(entry.iv) },
+        aes,
+        unb64(entry.ct),
+      );
+      out[provider] = new TextDecoder().decode(pt);
+    } catch {
+      /* rotated master key — treat as unconfigured, never throw */
+    }
+  }
   return out;
 }

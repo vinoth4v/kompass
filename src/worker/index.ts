@@ -77,7 +77,10 @@ app.use(
   '*',
   cors({
     origin: '*',
-    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    // DELETE is required by the chat app's provider panel (remove a stored
+    // key). Its absence made the browser's preflight fail while curl, which
+    // sends no preflight, worked — so the button silently did nothing.
+    allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
     allowHeaders: [
       'content-type',
       'authorization',
@@ -280,7 +283,7 @@ async function handleAnthropic(
   const privacySensitive = guard ? privacyMatch(guard, raw) : false;
 
   // Resolved once per request, not per chain attempt (see vault.ts).
-  const vaultKeys = await loadVaultKeys(c.env).catch((e) => {
+  const vaultKeys = await loadVaultKeys(c.env, stub).catch((e) => {
     console.log(`vault unavailable: ${String(e).slice(0, 120)}`);
     return {} as Record<string, string>;
   });
@@ -665,7 +668,7 @@ app.post('/v1/messages/count_tokens', async (c) => {
 app.get('/keys', async (c) => {
   return c.json({
     vault_enabled: vaultAvailable(c.env),
-    keys: await listProviderKeys(c.env),
+    keys: await listProviderKeys(c.env, stateStub(c.env)),
   });
 });
 
@@ -691,7 +694,7 @@ app.post('/keys/:provider', async (c) => {
     );
   }
   try {
-    const entry = await putProviderKey(c.env, provider, key);
+    const entry = await putProviderKey(c.env, stateStub(c.env), provider, key);
     // Masked in the log line too — a key must never reach logs intact.
     console.log(JSON.stringify({ vault_put: provider, masked: entry.masked }));
     return c.json({ ok: true, provider, masked: entry.masked, stored_at: entry.ts });
@@ -701,7 +704,7 @@ app.post('/keys/:provider', async (c) => {
 });
 
 app.delete('/keys/:provider', async (c) => {
-  await deleteProviderKey(c.env, c.req.param('provider'));
+  await deleteProviderKey(stateStub(c.env), c.req.param('provider'));
   return c.json({ ok: true, provider: c.req.param('provider') });
 });
 

@@ -704,6 +704,34 @@ export class KompassState extends DurableObject {
     return { cleared: keys.length };
   }
 
+  // ── Provider key vault (src/worker/vault.ts) ──────────────────────────────
+  // Ciphertext lives HERE rather than in KV because KV is eventually
+  // consistent: a key stored successfully did not appear in the listing for
+  // tens of seconds, so the UI re-read, saw nothing, and looked like it had
+  // silently failed. Durable Object storage is strongly consistent, so a key is
+  // visible the instant it is written. The data is a handful of small blobs, so
+  // the DO is a comfortable home for it.
+
+  async vaultPut(provider: string, entry: unknown): Promise<void> {
+    await this.ctx.storage.put(`vault:${provider}`, entry);
+  }
+
+  async vaultGet(provider: string): Promise<unknown | null> {
+    return (await this.ctx.storage.get(`vault:${provider}`)) ?? null;
+  }
+
+  async vaultDelete(provider: string): Promise<void> {
+    await this.ctx.storage.delete(`vault:${provider}`);
+  }
+
+  /** Every stored entry, keyed by provider. */
+  async vaultAll(): Promise<Record<string, unknown>> {
+    const out: Record<string, unknown> = {};
+    const all = await this.ctx.storage.list({ prefix: 'vault:' });
+    for (const [k, v] of all) out[k.slice('vault:'.length)] = v;
+    return out;
+  }
+
   async burn(provider: string, n: number): Promise<{ day: string; count: number }> {
     const now = Date.now();
     const day = utcDay(now);
