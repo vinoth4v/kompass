@@ -229,6 +229,28 @@ async function callClassifier(
  * Full dispatch: heuristics → DO verdict cache → classifier (metered against the
  * classifier provider's ledger) → AGENTIC fallback.
  */
+/**
+ * A request carrying tools must land on a model that can actually call them.
+ *
+ * The classifier prompt is written for CODING requests — its SIMPLE tier is
+ * literally "single-file code edits, docstrings" — so a non-coding tool request
+ * has no honest bucket and gets filed low. Observed live: the chat surface
+ * asked for a PDF with create_document attached, was classified SIMPLE, drew
+ * `mistral/codestral-2508` (a code model) and got back "I currently don't have
+ * the tools needed to assist with that particular request" — while the tools
+ * were sitting in the request.
+ *
+ * Small and code-specialised models are the ones that populate FAST and SIMPLE,
+ * and they are exactly the ones unreliable at tool use. So tools set a FLOOR of
+ * AGENTIC. It is never raised above what the classifier chose: HARD and LONGCTX
+ * stay where they are.
+ */
+export function floorForTools(lane: Lane, body: AnthropicRequest, cfg: RouterConfig): Lane {
+  if (!body.tools?.length) return lane;
+  if (lane !== 'FAST' && lane !== 'SIMPLE') return lane;
+  return cfg.lanes.AGENTIC ? 'AGENTIC' : lane;
+}
+
 export async function dispatch(
   env: Env,
   cfg: RouterConfig,
@@ -239,7 +261,9 @@ export async function dispatch(
   const t0 = Date.now();
 
   const h = heuristicLane(body, rawLength, cfg);
-  if (h && cfg.lanes[h]) return { lane: h, source: 'heuristic', ms: Date.now() - t0 };
+  if (h && cfg.lanes[h]) {
+    return { lane: floorForTools(h, body, cfg), source: 'heuristic', ms: Date.now() - t0 };
+  }
 
   const cc = classifierConfig(cfg);
   if (!cc) return { lane: FALLBACK_LANE, source: 'fallback', ms: Date.now() - t0 };
@@ -252,7 +276,8 @@ export async function dispatch(
       const cached = await stub.getVerdict(key);
       if (cached && cfg.lanes[cached.lane]) {
         return {
-          lane: cached.lane,
+          // Verdicts cached before the tool floor existed are still raw.
+          lane: floorForTools(cached.lane, body, cfg),
           source: 'cache',
           ms: Date.now() - t0,
           confidence: cached.confidence,
@@ -289,10 +314,13 @@ export async function dispatch(
       }
       const verdict = await callClassifier(env, cfg, entry, cc.timeout_ms, digest);
       if (verdict) {
-        const lane =
+        const lane = floorForTools(
           verdict.confidence < cc.confidence_floor || !cfg.lanes[verdict.lane]
             ? FALLBACK_LANE
-            : verdict.lane;
+            : verdict.lane,
+          body,
+          cfg,
+        );
         if (stub) {
           // Awaited: a dangling promise is cancelled when the Worker invocation ends,
           // which silently disabled the cache (observed live: 8/8 classifier calls).

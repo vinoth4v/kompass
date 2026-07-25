@@ -298,10 +298,16 @@ async function handleAnthropic(
   const vcfg = voiceConfig(cfg);
   let voiceTier: string | undefined;
   let voiceStrip: ReturnType<typeof compileStrip> | undefined;
-  if (
-    vcfg &&
-    appliesToRequest(vcfg, body, c.req.header(vcfg.apply_to?.header ?? 'x-kompass-surface'))
-  ) {
+  const surface = vcfg ? c.req.header(vcfg.apply_to?.header ?? 'x-kompass-surface') : undefined;
+
+  // Stripping is decided SEPARATELY from composition. A tool-carrying turn must
+  // keep its own shape — telling it to answer in three sentences would break
+  // real work — but it must still have leaked artifacts removed. Conflating the
+  // two meant a model that printed "<tool_call> <function=get_news> …" as prose
+  // shipped that markup straight to the user.
+  if (vcfg && appliesToStrip(vcfg, surface)) voiceStrip = compileStrip(cfg) ?? undefined;
+
+  if (vcfg && appliesToRequest(vcfg, body, surface)) {
     // A heuristic or forced lane produces no tier, so fall back to size: a
     // short question gets a short answer even when the classifier never ran.
     const tier =

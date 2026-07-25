@@ -215,7 +215,7 @@ export class VoiceSanitizer {
 
   /** Feed a chunk, get back what is safe to emit now. */
   push(chunk: string): string {
-    let buf = this.applyBlocksAndLines(this.tail + chunk);
+    const buf = this.applyBlocksAndLines(this.tail + chunk);
 
     // An opener with no closer yet: hold from the tag onward, or the block's
     // contents stream straight through while its closer is still in flight.

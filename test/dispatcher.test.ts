@@ -1,7 +1,7 @@
 // M3 acceptance: heuristic short-circuit, classifier verdict, cache, 429 fallback.
 import { SELF, env, fetchMock } from 'cloudflare:test';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { estimateTokens, heuristicLane } from '../src/worker/dispatcher';
+import { estimateTokens, floorForTools, heuristicLane } from '../src/worker/dispatcher';
 import type { AnthropicRequest } from '../src/adapters/types';
 import type { RouterConfig } from '../src/worker/config';
 
@@ -292,5 +292,41 @@ describe('M3 dispatcher (integration)', () => {
       }),
     });
     expect(res.status).toBe(200);
+  });
+});
+
+describe('tool floor', () => {
+  // Live failure: the chat surface asked for a PDF with create_document
+  // attached, was classified SIMPLE, drew mistral/codestral-2508 and replied
+  // "I currently don't have the tools needed" — with the tools in the request.
+  const lanes = {
+    lanes: { FAST: {}, SIMPLE: {}, AGENTIC: {}, HARD: {} },
+  } as unknown as RouterConfig;
+  const plain: AnthropicRequest = {
+    model: 'kompass',
+    max_tokens: 1024,
+    messages: [{ role: 'user', content: 'i want a PDF' }],
+  };
+  const withTools = { ...plain, tools: TOOLS } as AnthropicRequest;
+
+  it('promotes SIMPLE to AGENTIC when the request carries tools', () => {
+    expect(floorForTools('SIMPLE', withTools, lanes)).toBe('AGENTIC');
+  });
+
+  it('promotes FAST to AGENTIC when the request carries tools', () => {
+    expect(floorForTools('FAST', withTools, lanes)).toBe('AGENTIC');
+  });
+
+  it('is a floor, not a reassignment — HARD stays HARD', () => {
+    expect(floorForTools('HARD', withTools, lanes)).toBe('HARD');
+  });
+
+  it('leaves a tool-less request exactly where the classifier put it', () => {
+    expect(floorForTools('SIMPLE', plain, lanes)).toBe('SIMPLE');
+  });
+
+  it('does not invent a lane the config does not define', () => {
+    const noAgentic = { lanes: { SIMPLE: {} } } as unknown as RouterConfig;
+    expect(floorForTools('SIMPLE', withTools, noAgentic)).toBe('SIMPLE');
   });
 });

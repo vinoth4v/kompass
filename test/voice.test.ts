@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   VoiceSanitizer,
   appliesToRequest,
+  appliesToStrip,
   compileStrip,
   composeVoice,
   sanitizeText,
@@ -196,5 +197,51 @@ describe('voice: artifacts observed live', () => {
     const text =
       'You are completely right, and I apologize for the previous error. The answer is X.';
     expect(sanitizeText(strip, text)).toBe('The answer is X.');
+  });
+});
+
+describe('voice: strip is actually wired to the request path', () => {
+  // This suite exists because the wiring was silently absent: index.ts declared
+  // `voiceStrip`, imported appliesToStrip, and never assigned one — so every
+  // strip rule in voice.yaml was dead config for as long as it shipped. Unit
+  // tests on the sanitizer all passed, because the sanitizer was never the
+  // broken part.
+  it('applies stripping to a tool-carrying chat turn', () => {
+    // The exact combination that leaked: chat surface AND tools present.
+    const v = { ...VOICE, apply_to: { header: 'x-kompass-surface', value: 'chat' } };
+    const withTools = body({ tools: [{ name: 'get_news', input_schema: {} }] as never });
+
+    // Composition must skip it — a tool turn must not be told to be terse.
+    expect(appliesToRequest(v, withTools, 'chat')).toBe(false);
+    // Stripping must NOT skip it.
+    expect(appliesToStrip(v, 'chat')).toBe(true);
+  });
+
+  it('does not strip for a non-chat surface', () => {
+    const v = { ...VOICE, apply_to: { header: 'x-kompass-surface', value: 'chat' } };
+    expect(appliesToStrip(v, undefined)).toBe(false);
+    expect(appliesToStrip(v, 'claude-code')).toBe(false);
+  });
+});
+
+describe('voice: curly apostrophes', () => {
+  // Models overwhelmingly emit U+2019, not ASCII '. Patterns written with the
+  // straight quote matched in tests and missed in production.
+  const CURLY: VoiceConfig = {
+    ...VOICE,
+    strip: {
+      blocks: [],
+      lines: [],
+      openers: ["^\\s*(You(\\s+are|['’]re)\\s+(completely\\s+)?right)\\b[^.]*\\.\\s*"],
+    },
+  };
+  const strip = compileStrip({ ...cfg(CURLY), version: 'curly' } as never)!;
+
+  it('strips an opener written with a curly apostrophe', () => {
+    expect(sanitizeText(strip, 'You’re completely right about that. Paris.')).toBe('Paris.');
+  });
+
+  it('still strips the straight-quote form', () => {
+    expect(sanitizeText(strip, "You're completely right about that. Paris.")).toBe('Paris.');
   });
 });

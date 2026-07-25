@@ -491,11 +491,11 @@ export const DEFAULT_CONFIG: RouterConfig = {
       "openers": [
         "^\\s*(Great|Excellent|Good|Wonderful|Perfect|Nice)\\s+(question|point|catch)[!.]?\\s*",
         "^\\s*(Certainly|Of course|Sure thing|Absolutely)[!,.]?\\s*",
-        "^\\s*(You\\s+(are|'re)\\s+(completely\\s+|absolutely\\s+|quite\\s+)?right|Apologies|I\\s+apologi[sz]e|Sorry\\s+about\\s+that)\\b[^.]*\\.\\s*",
+        "^\\s*(You(\\s+are|['\\u2019]re)\\s+(completely\\s+|absolutely\\s+|quite\\s+)?right|Apologies|I\\s+apologi[sz]e|Sorry\\s+about\\s+that)\\b[^.]*\\.\\s*",
         "^\\s*(My\\s+apologies|Thank\\s+you\\s+for\\s+(the\\s+)?(correction|pointing))\\b[^.]*\\.\\s*",
-        "^\\s*I'?m\\s+(an?\\s+)?(AI|language model|assistant)\\b[^.]*\\.\\s*",
+        "^\\s*I['\\u2019]?m\\s+(an?\\s+)?(AI|language model|assistant)\\b[^.]*\\.\\s*",
         "^\\s*As an? (AI|language model|assistant)\\b[^,]*,\\s*",
-        "^\\s*(I'?ll|Let me|I will|I can) (help|assist|try|explain|start|begin)\\b[^.]*\\.\\s*"
+        "^\\s*(I['\\u2019]?ll|Let me|I will|I can) (help|assist|try|explain|start|begin)\\b[^.]*\\.\\s*"
       ]
     },
     "apply_to": {
