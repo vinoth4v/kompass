@@ -129,23 +129,37 @@ lanes:
       - google/gemini-3.6-flash
 
   HARD:
-    # gpt-4.1 (github) is scarce (~50/day); spreading with deepseek-v4-pro (both
-    # excellent, comparable) conserves that quota instead of exhausting it daily.
+    # gpt-4.1 (github) is scarce (~50/day); spreading with a comparable second
+    # model conserves that quota instead of exhausting it daily. That partner
+    # was deepseek-v4-pro until 2026-07-25 — see the disabled tail below for why
+    # it was demoted; minimax-m3 (~84% measured) took its place in the pair.
     spread_top: 2
     chain:
       - github/openai/gpt-4.1
-      - nvidia/deepseek-ai/deepseek-v4-pro
-      - sambanova/DeepSeek-V3.2
       - nvidia/minimaxai/minimax-m3
-      - google/gemini-3.1-pro-preview
-      - openrouter/poolside/laguna-s-2.1:free
+      - sambanova/DeepSeek-V3.2
       - nvidia/deepseek-ai/deepseek-v4-flash
-      # multimodal fallback: gemini-3.1-pro is scarce (2 rpm / 50 rpd) — PDF/image
-      # requests on HARD need a second multimodal option before exhausting.
+      - openrouter/poolside/laguna-s-2.1:free
+      # multimodal fallback — PDF/image requests on HARD need a second
+      # multimodal option before exhausting (gemini-3.1-pro used to be it).
       - google/gemini-3.6-flash
       # non-google vision fallback (multimodal_models in providers.yaml); slow
       # (~8s probe) but keeps HARD alive for image/PDF when google is out.
       - nvidia/meta/llama-3.2-90b-vision-instruct
+      # ── Disabled 2026-07-25 (kept here as a record; see disabled_models) ──
+      # deepseek-v4-pro: 0/9 live. Probed direct — the NIM endpoint accepts the
+      # request and NEVER responds (240s, no status at all), so every attempt
+      # burned the full 90s router timeout. As the spread partner above that
+      # stalled ~half of all HARD traffic for 90s before falling through. The
+      # v4-flash sibling sheds load honestly instead ("ResourceExhausted:
+      # Worker local total request limit reached (809/48)" — NVIDIA's shared
+      # free capacity is heavily oversubscribed), which is why it stays.
+      - nvidia/deepseek-ai/deepseek-v4-pro
+      # gemini-3.1-pro-preview: 0/6 live, and the config's "2 rpm / 50 rpd" was
+      # fiction — the API reports `limit: 0` on every free-tier quota metric for
+      # this model (GenerateRequestsPerDayPerProjectPerModel-FreeTier). It is
+      # paid-only; on this key every call is a guaranteed 429.
+      - google/gemini-3.1-pro-preview
 
   LONGCTX:
     spread_top: 2 # leads are minimax-m3 and nemotron-3-ultra — comparable quality
@@ -210,3 +224,5 @@ embeddings:
     - google/gemini-embedding-001
 disabled_models:
   - hf/Qwen/Qwen3-Coder-Next
+  - nvidia/deepseek-ai/deepseek-v4-pro
+  - google/gemini-3.1-pro-preview
