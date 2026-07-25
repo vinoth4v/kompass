@@ -15,7 +15,7 @@ import {
   type AnthropicContentBlockWire,
   type AnthropicMessageWire,
 } from '@/lib/kompassClient';
-import { runResearch } from '@/lib/research';
+import { runChatWithTools, runResearch } from '@/lib/research';
 import {
   clearAllData,
   loadConversations,
@@ -185,22 +185,23 @@ export default function Page() {
           createdAt: Date.now(),
         });
       } else {
-        const { response, servedBy, lane: servedLane } = await sendMessage(
+        // Chat can reach the web too, but only when the model judges the answer
+        // depends on current facts — ordinary conversation still costs one
+        // request. Same ground-truth citation rule as research mode.
+        const result = await runChatWithTools(
           settings,
-          { model: lane, max_tokens: 4096, messages: toWireMessages(messages) },
+          lane,
+          toWireMessages(messages),
           controller.signal,
         );
-        const text = response.content
-          .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
-          .map((b) => b.text)
-          .join('\n\n');
         appendAssistant(conversationId, {
           id: newId(),
           role: 'assistant',
-          text: text || '(empty response)',
-          servedBy: servedBy ?? undefined,
-          lane: servedLane ?? undefined,
-          usage: { input: response.usage.input_tokens, output: response.usage.output_tokens },
+          text: result.text,
+          sources: result.sources.length > 0 ? result.sources : undefined,
+          servedBy: result.servedBy ?? undefined,
+          lane: result.lane ?? undefined,
+          usage: { input: result.usage.input, output: result.usage.output },
           createdAt: Date.now(),
         });
       }

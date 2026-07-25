@@ -329,6 +329,56 @@ async function arxiv(query: string): Promise<SearchResult[]> {
   return out;
 }
 
+
+/**
+ * Marginalia — an independent, non-commercial index with a genuinely keyless
+ * public API. Not a scrape, so datacenter IPs are not refused. Its index favours
+ * small independent sites over SEO-optimised commercial pages, which is a real
+ * strength for research and a real weakness for mainstream/news queries.
+ */
+async function marginalia(query: string): Promise<SearchResult[]> {
+  const res = await fetch(
+    `https://api.marginalia.nu/public/search/${encodeURIComponent(query)}`,
+    { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(12_000) },
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = (await res.json()) as {
+    results?: { url?: string; title?: string; description?: string }[];
+  };
+  return (json.results ?? [])
+    .filter((r) => r.url)
+    .slice(0, 8)
+    .map((r) => ({
+      title: stripTags(r.title ?? r.url!),
+      url: r.url!,
+      snippet: stripTags(r.description ?? ''),
+    }));
+}
+
+/** mwmbl — an open-source, community-crawled index. Keyless API, modest
+ *  coverage. Titles arrive as bolded segments, which are joined back together. */
+async function mwmbl(query: string): Promise<SearchResult[]> {
+  const res = await fetch(`https://api.mwmbl.org/api/v1/search/?s=${encodeURIComponent(query)}`, {
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = (await res.json()) as {
+    url?: string;
+    title?: { value?: string }[];
+    extract?: { value?: string }[];
+  }[];
+  const join = (parts?: { value?: string }[]) => (parts ?? []).map((p) => p.value ?? '').join('');
+  return (Array.isArray(json) ? json : [])
+    .filter((r) => r.url)
+    .slice(0, 8)
+    .map((r) => ({
+      title: stripTags(join(r.title)) || r.url!,
+      url: r.url!,
+      snippet: stripTags(join(r.extract)).slice(0, 300),
+    }));
+}
+
 const KEYED: Backend[] = [
   { name: 'brave', run: brave },
   { name: 'tavily', run: tavily },
@@ -336,10 +386,14 @@ const KEYED: Backend[] = [
   { name: 'exa', run: exa },
 ];
 
+// Keyless general web. The scraped engines are listed first for quality but all
+// of them refuse datacenter IPs; marginalia and mwmbl are real APIs and do not.
 const KEYLESS_WEB: Backend[] = [
   { name: 'duckduckgo', run: ddgHtml },
   { name: 'duckduckgo-lite', run: ddgLite },
   { name: 'mojeek', run: mojeek },
+  { name: 'marginalia', run: marginalia },
+  { name: 'mwmbl', run: mwmbl },
 ];
 
 const SPECIALIST: Backend[] = [

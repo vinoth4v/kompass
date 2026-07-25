@@ -200,3 +200,92 @@ export async function runResearch(
     lane: servedLane,
   };
 }
+
+
+const CHAT_SYSTEM_PROMPT =
+  'You are Kompass AI, a helpful assistant with access to web search.\n\n' +
+  'Use web_search (and then web_fetch on the most promising results) whenever the answer ' +
+  'depends on facts you cannot be confident about from memory: current events, releases, ' +
+  'versions, prices, people, "latest"/"best" questions, anything dated, or anything where being ' +
+  'out of date would mislead. When you do, cite what you read.\n\n' +
+  'Do NOT search for things you already know or that do not depend on current facts — writing ' +
+  'code, explaining a concept, editing text, reasoning about something the user gave you. ' +
+  'Searching those wastes the user\'s time.\n\n' +
+  'If a search returns nothing useful, say so rather than filling the gap from memory and ' +
+  'presenting it as current.';
+
+const CHAT_MAX_ITERATIONS = 4;
+
+/**
+ * Chat with optional web access. Same tools and same ground-truth citation rule
+ * as research mode — a source is recorded only when a fetch actually succeeds —
+ * but the model decides whether to use them at all, so ordinary conversation
+ * costs exactly one request as before.
+ */
+export async function runChatWithTools(
+  settings: KompassSettings,
+  lane: string,
+  history: AnthropicMessageWire[],
+  signal?: AbortSignal,
+): Promise<ResearchResult> {
+  const messages = [...history];
+  const sources: { title: string; url: string }[] = [];
+  const seenUrls = new Set<string>();
+  let totalIn = 0;
+  let totalOut = 0;
+  let servedBy: string | null = null;
+  let servedLane: string | null = null;
+
+  for (let iter = 0; iter < CHAT_MAX_ITERATIONS; iter++) {
+    const lastStep = iter === CHAT_MAX_ITERATIONS - 1;
+    const { response, servedBy: sb, lane: ln } = await sendMessage(
+      settings,
+      {
+        model: lane,
+        max_tokens: 4096,
+        system: CHAT_SYSTEM_PROMPT,
+        messages,
+        // Withhold tools on the final step so the turn always ends in an answer
+        // rather than an unfinished tool call.
+        ...(lastStep ? {} : { tools: TOOLS }),
+      },
+      signal,
+    );
+    servedBy = sb;
+    servedLane = ln;
+    totalIn += response.usage.input_tokens;
+    totalOut += response.usage.output_tokens;
+
+    const toolUses = response.content.filter(
+      (b): b is AnthropicToolUseBlockWire => b.type === 'tool_use',
+    );
+    if (toolUses.length === 0) {
+      const text = response.content
+        .filter((b): b is AnthropicTextBlockWire => b.type === 'text')
+        .map((b) => b.text)
+        .join('\n\n');
+      return {
+        text: text || '(empty response)',
+        sources,
+        usage: { input: totalIn, output: totalOut },
+        servedBy,
+        lane: servedLane,
+      };
+    }
+
+    messages.push({ role: 'assistant', content: response.content });
+    const toolResults: AnthropicToolResultBlockWire[] = [];
+    for (const call of toolUses) {
+      toolResults.push(await runTool(call, sources, seenUrls, signal));
+    }
+    messages.push({ role: 'user', content: toolResults });
+  }
+
+  return {
+    text: '(no answer)',
+    sources,
+    usage: { input: totalIn, output: totalOut },
+    servedBy,
+    lane: servedLane,
+  };
+}

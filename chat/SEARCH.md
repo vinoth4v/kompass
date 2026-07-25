@@ -13,12 +13,18 @@ outside.
 Set any of these as Vercel environment variables. They are read server-side only
 and never reach the browser. Any provider without a key is skipped silently.
 
-| Variable | Provider | Free tier |
+| Variable | Provider | Terms (verify before relying on these) |
 | --- | --- | --- |
-| `BRAVE_API_KEY` | [Brave Search API](https://api.search.brave.com/) | 2,000 queries/month |
-| `TAVILY_API_KEY` | [Tavily](https://tavily.com/) | 1,000 credits/month, built for agents |
-| `SERPER_API_KEY` | [Serper](https://serper.dev/) | 2,500 one-off credits, Google results |
-| `EXA_API_KEY` | [Exa](https://exa.ai/) | free tier, neural/semantic search |
+| `BRAVE_API_KEY` | [Brave Search API](https://api.search.brave.com/) | **not free**: $5 per 1,000 requests, with $5 of credit each month — so roughly 1,000 requests/month at no charge, but billing must be set up |
+| `TAVILY_API_KEY` | [Tavily](https://tavily.com/) | free tier advertised, built for agents |
+| `SERPER_API_KEY` | [Serper](https://serper.dev/) | one-off free credits, Google results |
+| `EXA_API_KEY` | [Exa](https://exa.ai/) | free tier advertised, neural/semantic search |
+
+Brave was documented here as "2,000 queries/month free". That was wrong — the
+dashboard shows per-request pricing with a monthly credit. Check each provider's
+current pricing yourself rather than trusting this table; these terms change.
+
+**None of these are required.** Tiers 2 and 3 below need no key and no signup.
 
 ```sh
 vercel env add BRAVE_API_KEY production
@@ -28,12 +34,22 @@ vercel deploy --prod
 Adding even one of these is the single biggest quality win available: the tiers
 below cannot match a general web index.
 
-## Tier 2 — scraped general web (no key, blocked on Vercel)
+## Tier 2 — keyless general web
 
-DuckDuckGo HTML, DuckDuckGo Lite, Mojeek. Measured live from the deployed
-function: DuckDuckGo returns a challenge page and Mojeek returns HTTP 403 —
-**every one of them blocks datacenter IPs**. They are kept because a local or
-self-hosted deployment is not blocked, and they cost nothing when they fail.
+| Backend | Kind | Datacenter IPs |
+| --- | --- | --- |
+| DuckDuckGo HTML | scrape | blocked (challenge page) |
+| DuckDuckGo Lite | scrape | blocked |
+| Mojeek | scrape | blocked (HTTP 403) |
+| Marginalia | real API | works |
+| mwmbl | real API | works |
+
+The scrapes are kept because a local or self-hosted deployment is not blocked,
+and they cost nothing when they fail. Marginalia and mwmbl are proper APIs, so
+they cannot be refused the way a scrape can. Marginalia's index favours small
+independent sites over commercial SEO pages — a strength for research, a
+weakness for mainstream and news queries. mwmbl is community-crawled with modest
+coverage.
 
 ## Tier 3 — keyless specialist APIs (always available)
 
