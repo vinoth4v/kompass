@@ -10,23 +10,31 @@ machine you code from. $0 infra, $0 models.
 
 **Website & Setup Builder:** https://kompass-iota.vercel.app · **Docs:** https://kompass-iota.vercel.app/docs.html · MIT · Node 20+
 
-## Install (the easy way)
+## Install (two clicks, nothing to install)
 
-```sh
-mkdir my-kompass && cd my-kompass
-npx kompass-gateway init   # wizard asks for your Cloudflare token + provider keys, then deploys everything
-source ~/.zshrc            # activate claude-free in the current shell
-```
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/vinoth4v/kompass)
 
-The wizard handles everything: it installs Claude Code if it's missing, prompts for your
-Cloudflare API token if it isn't set (no `export` step needed), collects provider keys, deploys
-the Worker, and adds `claude-free` to your shell.
+You need a free [Cloudflare account](https://dash.cloudflare.com/sign-up) and nothing else.
+Cloudflare forks this repo, creates the KV namespace and Durable Object, and deploys — all in the
+browser.
 
-It also creates two files in that directory — `config/lanes.yaml` and `config/providers.yaml`
-(your lane/model config, yours to edit) and `wrangler.jsonc` (your Cloudflare settings). The
-Worker source itself stays inside the installed package, so `npm update -g kompass-gateway`
-upgrades the gateway without touching your configuration. Re-run `kompass config push` after
-editing any config.
+**No provider signups.** A fresh deployment answers from
+[Workers AI](https://developers.cloudflare.com/workers-ai/) on your own Cloudflare account, because
+a Workers AI _binding_ needs no API key at all — it authenticates as the account the Worker runs on.
+Add OpenRouter, NVIDIA or Google later, when you actually want more capacity; the gateway tells you
+when you're approaching a limit.
+
+Cloudflare will ask for two secrets during the deploy. Generate both on the
+[landing page](https://kompass-iota.vercel.app#quickstart) — they're produced in your browser with
+`crypto.getRandomValues` and never sent anywhere:
+
+| Secret               | What it does                                                              |
+| -------------------- | ------------------------------------------------------------------------- |
+| `KOMPASS_BEARER`     | signs you in, from Claude Code or the chat app                            |
+| `KOMPASS_MASTER_KEY` | encrypts any provider keys you add later (AES-GCM, stored in your own KV) |
+
+Then open **[kompass-chat.vercel.app](https://kompass-chat.vercel.app)**, enter your worker URL and
+bearer, and start chatting.
 
 **Prefer to work from the source?** The clone path is fully supported and is what contributors use:
 
@@ -36,9 +44,9 @@ pnpm kompass init
 ```
 
 Every `kompass` command below works identically either way — write `pnpm kompass <cmd>` in a
-clone, `kompass <cmd>` when installed.
-
-Token: [dash.cloudflare.com → API Tokens → "Edit Cloudflare Workers" template + KV Storage:Edit scope](https://dash.cloudflare.com/profile/api-tokens).
+clone, `kompass <cmd>` when installed. The CLI path needs a Cloudflare API token
+([API Tokens → "Edit Cloudflare Workers" template + KV Storage:Edit](https://dash.cloudflare.com/profile/api-tokens));
+the Deploy-to-Cloudflare button above does not.
 
 **Setting up on a second machine or after a re-clone:** copy `secrets/.secrets.json` from your
 first machine (it includes your Cloudflare token and provider keys), then run `pnpm kompass init`
@@ -50,7 +58,13 @@ pnpm exec wrangler secret bulk secrets/.secrets.json            # sync bearer + 
 pnpm kompass config push --url https://kompass.<you>.workers.dev  # restore lane config in KV
 ```
 
-### Where to create the free API keys
+### Optional: add providers for more capacity
+
+None of these are required — a fresh deployment already answers from Workers AI. Add them when the
+gateway tells you a limit is close. Keys added from the chat app are encrypted (AES-GCM) into your
+own KV; keys set as Worker secrets take precedence over those.
+
+#### Where to create the free API keys
 
 | Provider              | Create key at                                             | Notes                                                                 |
 | --------------------- | --------------------------------------------------------- | --------------------------------------------------------------------- |

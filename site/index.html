@@ -418,6 +418,50 @@
       }
 
       /* steps */
+      .deploy-card {
+        border: 1px solid var(--line, rgba(255, 255, 255, 0.12));
+        border-radius: 14px;
+        padding: 1.25rem;
+        margin: 1.25rem 0 0.5rem;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .deploy-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.9rem;
+      }
+      .secret-gen {
+        margin-top: 1.25rem;
+        padding-top: 1.1rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+      .secret-field {
+        margin-top: 0.7rem;
+      }
+      .secret-field label {
+        display: block;
+        font-size: 0.82rem;
+        margin-bottom: 0.3rem;
+      }
+      .secret-row {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+      }
+      .secret-row input {
+        flex: 1 1 22rem;
+        min-width: 0;
+        padding: 0.55rem 0.7rem;
+        border-radius: 9px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(0, 0, 0, 0.35);
+        color: inherit;
+        font-size: 0.82rem;
+      }
       .step {
         display: flex;
         gap: 1rem;
@@ -1694,11 +1738,72 @@
 
       <!-- ============ QUICKSTART ============ -->
       <p class="kicker" id="quickstart">Get started</p>
-      <h2>Install in 10 minutes</h2>
+      <h2>Deploy it in two clicks</h2>
       <p class="muted">
-        Prereqs: <a href="https://nodejs.org">Node 20+</a>, <a href="https://pnpm.io">pnpm</a>, a
-        free <a href="https://dash.cloudflare.com/sign-up">Cloudflare account</a>, and at least one
-        free provider key (<a href="https://openrouter.ai/keys">OpenRouter</a>,
+        Nothing to install. You need a free
+        <a href="https://dash.cloudflare.com/sign-up">Cloudflare account</a> and nothing else — the
+        gateway answers from
+        <a href="https://developers.cloudflare.com/workers-ai/">Workers AI</a> on your own account
+        from the moment it deploys, with no provider signups at all. Add OpenRouter, NVIDIA or
+        Google later, when you actually want more capacity.
+      </p>
+
+      <div class="deploy-card">
+        <div class="deploy-row">
+          <a
+            class="btn primary"
+            href="https://deploy.workers.cloudflare.com/?url=https://github.com/vinoth4v/kompass"
+            target="_blank"
+            rel="noopener"
+            >Deploy to Cloudflare</a
+          >
+          <span class="muted" style="font-size: 0.85rem"
+            >Cloudflare forks the repo, creates the KV namespace and Durable Object, and deploys —
+            all in the browser.</span
+          >
+        </div>
+
+        <div class="secret-gen">
+          <b>During the deploy, Cloudflare asks for two secrets.</b>
+          <span class="muted"
+            >Generate them here — they are produced in your browser with
+            <span class="mono">crypto.getRandomValues</span> and never sent anywhere.</span
+          >
+
+          <div class="secret-field">
+            <label for="gen-bearer">KOMPASS_BEARER<span class="muted"> — signs you in</span></label>
+            <div class="secret-row">
+              <input id="gen-bearer" class="mono" readonly placeholder="click generate" />
+              <button class="btn ghost" data-gen="gen-bearer">Generate</button>
+              <button class="btn ghost" data-copy="gen-bearer">Copy</button>
+            </div>
+          </div>
+
+          <div class="secret-field">
+            <label for="gen-master"
+              >KOMPASS_MASTER_KEY<span class="muted"> — encrypts stored provider keys</span></label
+            >
+            <div class="secret-row">
+              <input id="gen-master" class="mono" readonly placeholder="click generate" />
+              <button class="btn ghost" data-gen="gen-master">Generate</button>
+              <button class="btn ghost" data-copy="gen-master">Copy</button>
+            </div>
+          </div>
+
+          <p class="muted" style="font-size: 0.82rem; margin-top: 0.6rem">
+            Save both somewhere safe. Losing the bearer means redeploying; losing the master key
+            only means re-entering your provider keys, since it is what decrypts them.
+          </p>
+        </div>
+      </div>
+
+      <p class="kicker" style="margin-top: 2.5rem">Prefer the command line?</p>
+      <h3 style="margin-top: 0.2rem">Install from source</h3>
+      <p class="muted">
+        The CLI path is unchanged and is what contributors use. Prereqs:
+        <a href="https://nodejs.org">Node 20+</a>, <a href="https://pnpm.io">pnpm</a>, a free
+        <a href="https://dash.cloudflare.com/sign-up">Cloudflare account</a>, and at least one free
+        provider key (<a href="https://openrouter.ai/keys">OpenRouter</a>,
         <a href="https://build.nvidia.com">NVIDIA Build</a>,
         <a href="https://aistudio.google.com/apikey">Google AI Studio</a>,
         <a href="https://console.groq.com/keys">Groq</a>).
@@ -2231,6 +2336,41 @@ pnpm smoke -- --url ${url}`;
           setTimeout(() => (btn.textContent = 'copy'), 1200);
         };
       }
+    </script>
+    <script>
+      // Secrets are generated in the browser and never leave it: 32 random
+      // bytes from crypto.getRandomValues, hex-encoded. Deliberately not
+      // derived from anything the user types — a passphrase-shaped secret is
+      // exactly what makes these guessable.
+      (function () {
+        function generate() {
+          var b = new Uint8Array(32);
+          crypto.getRandomValues(b);
+          return Array.from(b)
+            .map(function (x) {
+              return x.toString(16).padStart(2, '0');
+            })
+            .join('');
+        }
+        document.querySelectorAll('[data-gen]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            document.getElementById(btn.dataset.gen).value = generate();
+          });
+        });
+        document.querySelectorAll('[data-copy]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var el = document.getElementById(btn.dataset.copy);
+            if (!el.value) el.value = generate();
+            navigator.clipboard.writeText(el.value).then(function () {
+              var was = btn.textContent;
+              btn.textContent = 'Copied';
+              setTimeout(function () {
+                btn.textContent = was;
+              }, 1400);
+            });
+          });
+        });
+      })();
     </script>
   </body>
 </html>
