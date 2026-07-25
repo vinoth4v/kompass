@@ -11,7 +11,7 @@ import { SELF, env, fetchMock } from 'cloudflare:test';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { RouterConfig } from '../src/worker/config';
 import type { AnthropicRequest } from '../src/adapters/types';
-import { geminiPayload, openAIPayload } from '../src/worker/payload';
+import { geminiBody, geminiPayload, openAIBody, openAIPayload } from '../src/worker/payload';
 
 beforeAll(() => {
   fetchMock.activate();
@@ -112,6 +112,27 @@ describe('per-request payload cache (error 1102)', () => {
 
   it('never carries stream_options (some free providers reject it)', () => {
     expect(openAIPayload(body, 'model-a', true).stream_options).toBeUndefined();
+  });
+
+  it('openAIBody splices model/stream into a cached tail, equivalent to a full stringify', () => {
+    // The point of the tail cache is skipping JSON.stringify per attempt. If the
+    // splice ever diverges from the real serialization, providers get a
+    // malformed body — so compare against the uncached path. Compared PARSED,
+    // not byte-for-byte: the splice puts model/stream first, and JSON key order
+    // carries no meaning (nor does any provider depend on it).
+    for (const [model, stream] of [
+      ['model-a', false],
+      ['model-b', true],
+    ] as const) {
+      const spliced = openAIBody(body, model, stream);
+      expect(JSON.parse(spliced)).toEqual(openAIPayload(body, model, stream));
+      const parsed = JSON.parse(spliced) as Record<string, unknown>;
+      expect(parsed.model).toBe(model);
+      expect(parsed.stream).toBe(stream);
+    }
+    // Deterministic across attempts, and the gemini body needs no splicing.
+    expect(openAIBody(body, 'x', false)).toBe(openAIBody(body, 'x', false));
+    expect(JSON.parse(geminiBody(body))).toEqual(geminiPayload(body));
   });
 
   it('caches per request object, not globally', () => {

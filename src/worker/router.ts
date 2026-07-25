@@ -16,7 +16,7 @@
 import type { AnthropicRequest, AnthropicResponse, OpenAIResponse } from '../adapters/types';
 import { hasMalformedToolCall, openAIToAnthropic } from '../adapters/openai';
 import { geminiToAnthropic, type GeminiResponse } from '../adapters/gemini';
-import { geminiPayload, openAIPayload } from './payload';
+import { geminiBody, openAIBody } from './payload';
 import type { KompassState, FailureKind, ReserveLimits } from '../do/state';
 import type { ProviderConfig, RouterConfig } from './config';
 import {
@@ -127,7 +127,7 @@ function callUpstream(
     return fetch(`${p.base_url}/models/${model}:generateContent`, {
       method: 'POST',
       headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
-      body: JSON.stringify(geminiPayload(body)),
+      body: geminiBody(body),
       signal,
     });
   }
@@ -139,7 +139,7 @@ function callUpstream(
       'http-referer': 'https://github.com/vinoth4v/kompass',
       'x-title': 'Kompass',
     },
-    body: JSON.stringify(openAIPayload(body, model, false)),
+    body: openAIBody(body, model, false),
     signal,
   });
 }

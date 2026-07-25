@@ -24,7 +24,7 @@ import type {
   AnthropicToolUseBlock,
 } from '../adapters/types';
 import { mapFinishReason } from '../adapters/openai';
-import { geminiPayload, openAIPayload } from './payload';
+import { geminiBody, openAIBody } from './payload';
 import type { ProviderConfig } from './config';
 
 // Headers must arrive fast even on cold starts; the first content token gets
@@ -117,13 +117,13 @@ export async function tryLiveEntry(
     init = {
       method: 'POST',
       headers: { 'x-goog-api-key': key, 'content-type': 'application/json' },
-      body: JSON.stringify(geminiPayload(body)),
+      body: geminiBody(body),
     };
   } else {
     // Cached per-request translation (payload.ts); the canonical copy is built
     // non-streaming so it never carries stream_options — some free providers
     // reject it, and usage is estimated instead.
-    const oai = openAIPayload(body, model, true);
+    const oai = openAIBody(body, model, true);
     url = `${p.base_url}/chat/completions`;
     init = {
       method: 'POST',
@@ -133,7 +133,7 @@ export async function tryLiveEntry(
         'http-referer': 'https://github.com/vinoth4v/kompass',
         'x-title': 'Kompass',
       },
-      body: JSON.stringify(oai),
+      body: oai,
     };
   }
 

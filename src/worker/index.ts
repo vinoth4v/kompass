@@ -109,11 +109,22 @@ function anthropicError(type: string, message: string, status: number): Response
 }
 
 /**
- * Hard ceiling on real upstream attempts per request (Cloudflare error 1102).
- * Sized well above normal routing (1-3 attempts) and far below the full roster
- * a last-resort sweep would otherwise walk.
+ * Ceiling on real upstream attempts per request (Cloudflare error 1102), scaled
+ * by request size.
+ *
+ * Every attempt holds a serialized copy of the request body while its fetch is
+ * in flight, so the memory a single request can pin is roughly size × attempts
+ * — and the isolate's 128MB is shared with every concurrent request. A flat 8
+ * was still too generous for the big end: a ~180k-token session request
+ * (Claude Code at 89% context) kept tipping isolates over even after the
+ * payload cache landed. Small requests keep the full budget; the ones that
+ * actually threaten the isolate get fewer swings.
  */
-const MAX_UPSTREAM_ATTEMPTS = 8;
+function attemptBudgetFor(estTokens: number): number {
+  if (estTokens > 100_000) return 3;
+  if (estTokens > 40_000) return 5;
+  return 8;
+}
 
 function stateStub(env: Env) {
   return env.KOMPASS_STATE.get(env.KOMPASS_STATE.idFromName('global'));
@@ -228,7 +239,7 @@ async function handleAnthropic(
   // during heavy sessions, which surfaces to Claude Code as a fatal 503 rather
   // than a turn it can recover from. Normal traffic resolves in 1-3 attempts,
   // so this only ever bites the pathological tail.
-  const budget = { attemptsLeft: MAX_UPSTREAM_ATTEMPTS };
+  const budget = { attemptsLeft: attemptBudgetFor(estimateTokens(body, raw.length)) };
   const routeOnce = (l: string, chainOverride?: string[]) =>
     routeRequest(c.env, cfg, l, body, {
       stub,
