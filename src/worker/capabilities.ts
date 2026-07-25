@@ -34,8 +34,23 @@ interface CapabilityOutcome<T> {
   used?: string;
 }
 
-function providerKey(env: Env, p: ProviderConfig): string | undefined {
-  return (env as unknown as Record<string, string | undefined>)[p.key_env];
+/**
+ * Environment secret first, then the encrypted vault — mirroring router.ts.
+ *
+ * Missing the vault here was a real bug: a user added a Cloudflare Workers AI
+ * key through the chat app's provider panel, chat worked, and image generation
+ * still reported `skipped-no-key`. Anything that resolves a provider credential
+ * has to consult both stores, or capabilities silently disagree with routing.
+ */
+function providerKey(
+  env: Env,
+  p: ProviderConfig,
+  provider?: string,
+  vaultKeys?: Record<string, string>,
+): string | undefined {
+  const fromEnv = (env as unknown as Record<string, string | undefined>)[p.key_env];
+  if (fromEnv) return fromEnv;
+  return provider ? vaultKeys?.[provider] : undefined;
 }
 
 /** Workers AI native run endpoint, derived from the provider's OpenAI-compat base_url:
@@ -65,6 +80,7 @@ async function walkChain<T>(
   chain: string[],
   lane: string,
   stub: DurableObjectStub<KompassState> | null,
+  vaultKeys: Record<string, string> | undefined,
   attempt: EntryFn<T>,
 ): Promise<CapabilityOutcome<T>> {
   const attempts: CapabilityAttempt[] = [];
@@ -83,7 +99,7 @@ async function walkChain<T>(
       attempts.push({ entry, status: 'skipped-disabled-model' });
       continue;
     }
-    const key = providerKey(env, p);
+    const key = providerKey(env, p, provider, vaultKeys);
     if (!key) {
       attempts.push({ entry, status: 'skipped-no-key' });
       continue;
@@ -210,9 +226,16 @@ export async function routeImageGeneration(
   cfg: RouterConfig,
   prompt: string,
   stub: DurableObjectStub<KompassState> | null,
+  vaultKeys?: Record<string, string>,
 ): Promise<CapabilityOutcome<GeneratedImage>> {
-  return walkChain(env, cfg, cfg.images?.chain ?? [], 'IMAGES', stub, (p, key, model, signal) =>
-    generateImageOnEntry(p, key, model, prompt, signal),
+  return walkChain(
+    env,
+    cfg,
+    cfg.images?.chain ?? [],
+    'IMAGES',
+    stub,
+    vaultKeys,
+    (p, key, model, signal) => generateImageOnEntry(p, key, model, prompt, signal),
   );
 }
 
@@ -295,6 +318,7 @@ export async function routeEmbeddings(
   cfg: RouterConfig,
   inputs: string[],
   stub: DurableObjectStub<KompassState> | null,
+  vaultKeys?: Record<string, string>,
 ): Promise<CapabilityOutcome<number[][]>> {
   return walkChain(
     env,
@@ -302,6 +326,7 @@ export async function routeEmbeddings(
     cfg.embeddings?.chain ?? [],
     'EMBEDDINGS',
     stub,
+    vaultKeys,
     (p, key, model, signal) => embedOnEntry(p, key, model, inputs, signal),
   );
 }

@@ -17,6 +17,10 @@ export default defineWorkersConfig({
             GOOGLE_AI_KEY: 'test-google-key',
             NVIDIA_API_KEY: 'test-nvidia-key',
             CF_WORKERS_AI_KEY: 'test-cfai-key',
+            // Enables the encrypted key vault inside the Worker under test.
+            // Without it, SELF.fetch requests see a disabled vault and every
+            // vault-backed credential resolves to "not configured".
+            KOMPASS_MASTER_KEY: 'test-master-key-0123456789abcdef',
           },
         },
       },

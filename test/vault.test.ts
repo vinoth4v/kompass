@@ -1,8 +1,13 @@
 // Encrypted provider-key vault. The properties that matter are security
 // properties, so they are asserted directly rather than inferred from a
 // round-trip working.
-import { env } from 'cloudflare:test';
-import { describe, expect, it } from 'vitest';
+import { SELF, env, fetchMock } from 'cloudflare:test';
+import { beforeAll, describe, expect, it } from 'vitest';
+
+beforeAll(() => {
+  fetchMock.activate();
+  fetchMock.disableNetConnect();
+});
 import {
   deleteProviderKey,
   getProviderKey,
@@ -15,7 +20,9 @@ import {
 
 const KEY = 'sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789';
 // vitest.config.ts binds this; a deployment without it has the vault disabled.
-const withMaster = { ...env, KOMPASS_MASTER_KEY: 'test-master-key-0123456789abcdef' } as typeof env;
+// Bound in vitest.config.ts, so the Worker under test shares it — the vault has
+// to be enabled INSIDE the worker for SELF.fetch paths, not just in this file.
+const withMaster = env;
 
 /** The DO stub that now stores vault entries — see the DO's vault section. */
 const store = () => env.KOMPASS_STATE.get(env.KOMPASS_STATE.idFromName('global'));
@@ -60,9 +67,10 @@ describe('provider key vault', () => {
   });
 
   it('is disabled, not broken, without a master key', async () => {
-    expect(vaultAvailable(env)).toBe(false);
-    expect(await getProviderKey(env, store(), 'openrouter')).toBeNull();
-    expect(await loadVaultKeys(env, store())).toEqual({});
+    const noMaster = { ...env, KOMPASS_MASTER_KEY: undefined } as unknown as typeof env;
+    expect(vaultAvailable(noMaster)).toBe(false);
+    expect(await getProviderKey(noMaster, store(), 'openrouter')).toBeNull();
+    expect(await loadVaultKeys(noMaster, store())).toEqual({});
   });
 
   it('listing exposes only masked values', async () => {
@@ -107,5 +115,56 @@ describe('vault inventory does not depend on KV list()', () => {
     await putProviderKey(withMaster, store(), 'real', KEY);
     const list = await listProviderKeys(withMaster, store());
     expect(Object.keys(list)).not.toContain('__index');
+  });
+});
+
+describe('vault keys reach the capability routes, not just chat', () => {
+  it('image generation authenticates with a key stored only in the vault', async () => {
+    // The bug: a user added a Workers AI key through the chat app's provider
+    // panel, chat worked, and image generation still said "skipped-no-key" —
+    // capabilities.ts had its own providerKey() that read env only.
+    const VAULT_KEY = 'cf-vault-only-key-abcdef0123456789';
+    await env.CONFIG.put(
+      'config',
+      JSON.stringify({
+        default_lane: 'AGENTIC',
+        allow_paid: false,
+        providers: {
+          imgprov: {
+            kind: 'openai',
+            base_url: 'https://img.test/v1',
+            // Deliberately an env var that is NOT bound in vitest.config.ts, so
+            // the only way this request can authenticate is via the vault.
+            key_env: 'DEFINITELY_UNSET_KEY',
+            limits: { rpm: 30, rpd: 300 },
+          },
+        },
+        lanes: { AGENTIC: ['imgprov/@cf/test/model'] },
+        images: { chain: ['imgprov/@cf/test/model'] },
+      }),
+    );
+    await putProviderKey(withMaster, store(), 'imgprov', VAULT_KEY);
+
+    let seenAuth: string | null = null;
+    fetchMock
+      .get('https://img.test')
+      .intercept({ path: '/run/@cf/test/model', method: 'POST' })
+      .reply(200, (opts) => {
+        const h = opts.headers as Record<string, string> | undefined;
+        seenAuth = h?.authorization ?? h?.Authorization ?? null;
+        return { result: { image: 'aGVsbG8=' }, success: true };
+      });
+
+    const res = await SELF.fetch('https://kompass.test/v1/images/generations', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer test-bearer-token' },
+      body: JSON.stringify({ prompt: 'a lion' }),
+    });
+
+    // The mocked upstream body does not have to satisfy the image parser — the
+    // property under test is that the request was ATTEMPTED, carrying a key
+    // that exists ONLY in the vault, instead of being skipped as "no-key".
+    void res;
+    expect(seenAuth).toBe(`Bearer ${VAULT_KEY}`);
   });
 });

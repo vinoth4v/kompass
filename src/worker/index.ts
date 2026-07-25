@@ -583,7 +583,9 @@ app.post('/v1/images/generations', async (c) => {
   if (!cfg.images?.chain?.length) {
     return openaiError('image generation not configured (images.chain in lanes.yaml)', 501);
   }
-  const outcome = await routeImageGeneration(c.env, cfg, body.prompt, stateStub(c.env));
+  const stub = stateStub(c.env);
+  const vaultKeys = await loadVaultKeys(c.env, stub).catch(() => ({}) as Record<string, string>);
+  const outcome = await routeImageGeneration(c.env, cfg, body.prompt, stub, vaultKeys);
   console.log(JSON.stringify({ images: outcome.used ?? null, attempts: outcome.attempts.length }));
   if (!outcome.result) {
     return openaiError(
@@ -620,7 +622,9 @@ app.post('/v1/embeddings', async (c) => {
   if (!cfg.embeddings?.chain?.length) {
     return openaiError('embeddings not configured (embeddings.chain in lanes.yaml)', 501);
   }
-  const outcome = await routeEmbeddings(c.env, cfg, inputs, stateStub(c.env));
+  const stub = stateStub(c.env);
+  const vaultKeys = await loadVaultKeys(c.env, stub).catch(() => ({}) as Record<string, string>);
+  const outcome = await routeEmbeddings(c.env, cfg, inputs, stub, vaultKeys);
   console.log(
     JSON.stringify({ embeddings: outcome.used ?? null, attempts: outcome.attempts.length }),
   );
