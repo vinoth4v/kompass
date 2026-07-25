@@ -147,6 +147,18 @@ export interface RouterConfig {
    *  unmodified pre-M8 config has none of this, and corrective-turn
    *  detection is off, matching the SPEC_V2 §9 default. */
   quality?: QualityConfig;
+  /**
+   * Server-side context compaction (see compact.ts). Optional and defaulted;
+   * `enabled: false` turns it off entirely. This shortens huge tool results in
+   * OLDER turns before forwarding — it is not, and cannot be, Claude Code's
+   * client-side /compact.
+   */
+  compaction?: {
+    enabled?: boolean;
+    trigger_tokens?: number;
+    keep_recent?: number;
+    block_chars?: number;
+  };
   /** Image generation chain for POST /v1/images/generations (optional capability). */
   images?: CapabilityConfig;
   /** Embeddings chain for POST /v1/embeddings (optional capability). */

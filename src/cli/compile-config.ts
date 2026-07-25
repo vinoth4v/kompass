@@ -13,6 +13,7 @@ export function compileConfig(configDir = 'config'): RouterConfig {
     allow_paid: boolean;
     lanes: RouterConfig['lanes'];
     dispatcher?: RouterConfig['dispatcher'];
+    compaction?: RouterConfig['compaction'];
     privacy?: RouterConfig['privacy'];
     deprecated_models?: RouterConfig['deprecated_models'];
     images?: RouterConfig['images'];
@@ -26,6 +27,7 @@ export function compileConfig(configDir = 'config'): RouterConfig {
     allow_paid: lanesDoc.allow_paid,
     lanes: lanesDoc.lanes,
     dispatcher: lanesDoc.dispatcher,
+    compaction: lanesDoc.compaction,
     privacy: lanesDoc.privacy,
     deprecated_models: lanesDoc.deprecated_models,
     images: lanesDoc.images,

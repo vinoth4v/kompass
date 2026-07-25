@@ -40,6 +40,33 @@ dispatcher:
   cache_ttl_s: 300
   confidence_floor: 0.6
 
+# Server-side context compaction (2026-07-25, src/worker/compact.ts).
+#
+# NOT Claude Code's /compact — that one runs on your machine, summarizes the
+# conversation and rewrites the session's own history, so its saving persists
+# across turns. A gateway cannot trigger it: nothing in the Anthropic protocol
+# carries "please compact", and requests arrive with their history already
+# assembled. What this does instead is shrink the request being FORWARDED.
+#
+# In a coding session the bulk is tool results — file dumps, test output, git
+# diffs — and in OLD turns those are the least useful bytes present: the model
+# already acted on them. So blocks over block_chars in turns older than the last
+# keep_recent are truncated head+tail with an explicit marker, and everything
+# else (message count, roles, tool_use/tool_result pairing, ids) is left exactly
+# as it was. Nothing is ever removed, only shortened, because breaking the
+# tool_use↔tool_result pairing makes providers reject the whole conversation.
+#
+# Effects: smaller upstream bodies (less isolate memory — see error 1102),
+# more requests fitting more models, fewer lane exhaustions. Cost: the model
+# genuinely cannot see the elided middle of old tool output, so it may re-read a
+# file it already read. Responses carry x-kompass-compacted when it fired.
+# Set enabled: false to turn it off.
+compaction:
+  enabled: true
+  trigger_tokens: 60000 # below this, nothing is touched
+  keep_recent: 6 # most recent messages left verbatim
+  block_chars: 2000 # kept per truncated block
+
 # M5 privacy guard: requests matching any pattern are never sent to providers
 # flagged trains_on_data: true (they fall through to non-training providers).
 privacy:

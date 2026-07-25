@@ -46,6 +46,7 @@ import {
   syntheticNotice,
   syntheticNoticeStream,
 } from './escalation';
+import { compactionConfig, compactRequest, type CompactionResult } from './compact';
 import { compilePrivacyGuard, privacyMatch } from './privacy';
 import { routeRequest, type RouteAttempt } from './router';
 import { compileQualityPatterns, isCorrectiveTurn, PENALTY } from './score';
@@ -78,7 +79,12 @@ app.use(
       'x-kompass-model',
       'x-kompass-trace',
     ],
-    exposeHeaders: ['x-kompass-served-by', 'x-kompass-lane', 'x-kompass-trace-id'],
+    exposeHeaders: [
+      'x-kompass-served-by',
+      'x-kompass-lane',
+      'x-kompass-trace-id',
+      'x-kompass-compacted',
+    ],
     maxAge: 86400,
   }),
 );
@@ -139,6 +145,7 @@ function stateStub(env: Env) {
  */
 async function handleAnthropic(
   c: Context<{ Bindings: Env }>,
+  // Reassigned by server-side compaction below.
   body: AnthropicRequest,
   raw: string,
   laneOverride?: string,
@@ -151,6 +158,31 @@ async function handleAnthropic(
     return anthropicError('api_error', 'no config in KV — run `kompass config push`', 503);
   }
 
+  // Server-side compaction (compact.ts) runs FIRST, so everything downstream —
+  // the fit filter, token estimates, the payload cache, the attempt budget —
+  // sees the reduced request. `raw` deliberately still describes the original
+  // body: it is what the privacy guard scans and what the trace digest
+  // identifies, and compaction must never shrink what gets security-checked.
+  let compaction: CompactionResult | undefined;
+  const cc = compactionConfig(cfg);
+  if (cc) {
+    const result = compactRequest(body, estimateTokens(body, raw.length), cc);
+    if (result.truncated > 0) {
+      compaction = result;
+      body = result.body;
+      console.log(
+        JSON.stringify({
+          compacted: { before: result.before, after: result.after, blocks: result.truncated },
+        }),
+      );
+    }
+  }
+
+  // Everything that reasons about SIZE must use the post-compaction size, or a
+  // request we just shrank would still be lane-classified and fit-filtered as
+  // if it were huge. `raw` stays the original for the privacy scan and digest.
+  const effectiveLength = compaction ? compaction.after * 4 : raw.length;
+
   const stub = stateStub(c.env);
   // A pinned lane (x-kompass-lane header or kompass-<lane> model name) skips the
   // dispatcher entirely — no classifier latency or quota for pre-routed traffic.
@@ -158,7 +190,7 @@ async function handleAnthropic(
   // M3 dispatcher: heuristics → cached/live classifier verdict → safe fallback.
   const verdict = pinned
     ? { lane: pinned, source: 'forced' as const, ms: 0 }
-    : await dispatch(c.env, cfg, body, stub, raw.length);
+    : await dispatch(c.env, cfg, body, stub, effectiveLength);
   let lane = verdict.lane;
 
   // Claude Code stamps a stable per-session metadata.user_id — the stickiness key.
@@ -239,7 +271,9 @@ async function handleAnthropic(
   // during heavy sessions, which surfaces to Claude Code as a fatal 503 rather
   // than a turn it can recover from. Normal traffic resolves in 1-3 attempts,
   // so this only ever bites the pathological tail.
-  const budget = { attemptsLeft: attemptBudgetFor(estimateTokens(body, raw.length)) };
+  const budget = {
+    attemptsLeft: attemptBudgetFor(estimateTokens(body, effectiveLength)),
+  };
   const routeOnce = (l: string, chainOverride?: string[]) =>
     routeRequest(c.env, cfg, l, body, {
       stub,
@@ -248,7 +282,7 @@ async function handleAnthropic(
       privacySensitive,
       live,
       waitUntil: (p) => c.executionCtx.waitUntil(p),
-      rawLength: raw.length,
+      rawLength: effectiveLength,
       chainOverride,
       budget,
     });
@@ -336,7 +370,7 @@ async function handleAnthropic(
       lane,
       verdict: verdict.source,
       confidence: verdict.confidence,
-      est_in: estimateTokens(body, raw.length),
+      est_in: estimateTokens(body, effectiveLength),
       chain_considered: resolveLaneChain(cfg, lane),
       attempts: allAttempts.map((a) => ({
         model: a.entry,
@@ -380,6 +414,11 @@ async function handleAnthropic(
     const headers = new Headers(outcome.response.headers);
     if (outcome.used) headers.set('x-kompass-served-by', outcome.used);
     headers.set('x-kompass-lane', lane);
+    // Visible, not silent: a shortened context is something the user must be
+    // able to see when judging an answer.
+    if (compaction) {
+      headers.set('x-kompass-compacted', `${compaction.before}->${compaction.after} tokens`);
+    }
     return finish(
       new Response(outcome.response.body, { status: outcome.response.status, headers }),
     );
