@@ -174,17 +174,27 @@ lanes:
     # rate-limited") arriving after a real wait. laguna-s and laguna-m.1 (44%)
     # are not bad models; OpenRouter's free capacity for the larger poolside
     # slugs is simply saturated. They stay as depth, below the proven entries.
-    spread_top: 2 # minimax-m3 (81%) + nemotron-3-super (86%), both tool-probed
+    # REORDERED AGAIN 2026-07-25 (evening) — this time by measured LATENCY as
+    # well as success rate. The previous ordering used success rate alone, which
+    # left minimax-m3 leading the DEFAULT lane at a median of 30.2s while the
+    # model directly below it answered in 3.0s. Median latency of successful
+    # attempts over the last 200 traces, against the same window's success rate:
+    #
+    #   nemotron-3-super-120b:free   3.0s   96% (25/26)
+    #   poolside/laguna-xs-2.1:free  3.4s   97% (36/37)
+    #   minimax-m3                  30.2s   79% (23/29)
+    #
+    # There is no capability trade being made here: minimax-m3 is 10x slower AND
+    # less reliable. Its one distinction is a 1M context, which AGENTIC does not
+    # need (the fit filter routes anything genuinely huge to LONGCTX). It stays
+    # in the chain as depth, just not where it costs every other turn 27s.
+    spread_top: 2 # the two ~3s / ~96% entries
     chain:
-      - nvidia/minimaxai/minimax-m3
-      # nemotron-3-super-120b: tool-probed ✓ (~300ms), 262k ctx, 86% over 21
-      # requests — promoted from the tail into the spread pair.
       - openrouter/nvidia/nemotron-3-super-120b-a12b:free
-      # 93% over 149 requests and 1-7s — the single most reliable entry in the
-      # router. Smaller than the leads, so it sits below them on capability.
       - openrouter/poolside/laguna-xs-2.1:free
-      - mistral/devstral-medium-latest # 84%, coding specialist, but ~80s slow
       - nvidia/poolside/laguna-xs-2.1 # 83%
+      - mistral/devstral-medium-latest # 84%, coding specialist
+      - nvidia/minimaxai/minimax-m3 # 30.2s median — demoted from the lead
       - openrouter/poolside/laguna-s-2.1:free # 40% — upstream free capacity
       - openrouter/poolside/laguna-m.1:free # 44% — same
       - nvidia/z-ai/glm-5.2 # 47%
@@ -245,10 +255,18 @@ lanes:
     # context load, not by nominal capability. Everything here is fit-filtered
     # per request anyway, so a 262k entry simply drops out of a >262k request.
     chain:
-      # 1M-context leads, best observed reliability first.
-      - nvidia/minimaxai/minimax-m3 # 1M ctx, ~84%
-      - nvidia/nvidia/nemotron-3-ultra-550b-a55b # 262k ctx, ~88%
-      - openrouter/nvidia/nemotron-3-ultra-550b-a55b:free # 1M ctx, ~69%
+      # REORDERED 2026-07-25 (evening) by measured latency, same exercise as
+      # AGENTIC above. The fit filter is what makes leading with 262k entries
+      # safe: a request too big for one is skipped before dispatch, so genuinely
+      # >262k contexts still fall through to the 1M models below. Most LONGCTX
+      # traffic is 128k-262k and now gets a ~3s answer instead of a ~30s one.
+      # Medians: nemotron-3-super 3.0s, laguna-xs 3.4s, nemotron-3-ultra:free
+      # 8.3s, minimax-m3 30.2s, nvidia's nemotron-3-ultra 33.4s.
+      - openrouter/nvidia/nemotron-3-super-120b-a12b:free # 262k, 3.0s, 96%
+      - openrouter/poolside/laguna-xs-2.1:free # 262k, 3.4s, 97%
+      - openrouter/nvidia/nemotron-3-ultra-550b-a55b:free # 1M ctx, 8.3s, ~69%
+      - nvidia/minimaxai/minimax-m3 # 1M ctx, 30.2s — kept for >262k requests
+      - nvidia/nvidia/nemotron-3-ultra-550b-a55b # 262k ctx, 33.4s
       # Demoted from lead 2026-07-25: 1M ctx but the free tier returns 429
       # "exceeded your current quota" well before the declared rpd (see the
       # google TODO(verify) note in providers.yaml) — as lead it burned the
@@ -258,9 +276,7 @@ lanes:
       - nvidia/z-ai/glm-5.2 # 1M ctx, ~42%
       # 262k tail: individually very reliable, lower ceiling on hard reasoning —
       # a worse answer beats the "free lanes are exhausted" notice.
-      - openrouter/poolside/laguna-xs-2.1:free # 262k ctx, ~95%
       - nvidia/stepfun-ai/step-3.7-flash # 262k ctx, ~89%
-      - openrouter/nvidia/nemotron-3-super-120b-a12b:free # 262k ctx, ~86%
       - nvidia/poolside/laguna-xs-2.1 # 262k ctx, ~77%
       - google/gemini-3.5-flash-lite # 1M ctx, ~100%, weakest reasoning — last
       # Deliberately NOT here: nvidia/deepseek-ai/deepseek-v4-pro (1M ctx but
