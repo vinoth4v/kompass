@@ -144,12 +144,16 @@ export async function init(): Promise<void> {
     console.log('  All four are free tiers, no credit card. Leave any blank to skip it.\n');
     console.log('  Re-installing on a second machine? Paste your existing bearer token to avoid');
     console.log('  rotating it (which would break any other machines already using it).');
-    const existingBearer = (await ask('Existing KOMPASS_BEARER (leave blank to generate new)')).trim();
+    const existingBearer = (
+      await ask('Existing KOMPASS_BEARER (leave blank to generate new)')
+    ).trim();
     secrets = {
       KOMPASS_BEARER: existingBearer || randomBytes(24).toString('hex'),
       CLOUDFLARE_API_TOKEN: process.env.CLOUDFLARE_API_TOKEN!,
     };
-    const bearerNote = existingBearer ? 'bearer token from existing installation' : 'bearer token auto-generated';
+    const bearerNote = existingBearer
+      ? 'bearer token from existing installation'
+      : 'bearer token auto-generated';
     const wanted: Array<[string, string, string]> = [
       ['OPENROUTER_API_KEY', 'OpenRouter key (sk-or-v1-…)', 'https://openrouter.ai/keys'],
       [
@@ -223,7 +227,9 @@ export async function init(): Promise<void> {
   console.log(`\n${bold('5/6 Deploy')}`);
   execSync('pnpm exec wrangler deploy', { stdio: 'inherit' });
   ok(`gateway live → ${url}`);
-  console.log(`  Dashboard: ${bold(url + '/status.html')}  (bookmark this — enter your bearer once)`);
+  console.log(
+    `  Dashboard: ${bold(url + '/status.html')}  (bookmark this — enter your bearer once)`,
+  );
   execSync(`pnpm exec wrangler secret bulk ${secretsPath}`, { stdio: 'inherit' });
   // Secrets need a moment to propagate to the live worker before config push
   // can authenticate. Retry up to 5 times with 4-second gaps (~20s total).
@@ -235,7 +241,10 @@ export async function init(): Promise<void> {
       ['--import', 'tsx', 'src/cli/index.ts', 'config', 'push', '--url', url],
       { stdio: attempt === 1 ? 'inherit' : 'pipe', env: process.env },
     );
-    if (push.status === 0) { pushOk = true; break; }
+    if (push.status === 0) {
+      pushOk = true;
+      break;
+    }
     if (attempt < 5) console.log(`  config push attempt ${attempt} failed — retrying in 4s…`);
   }
   if (!pushOk) die('config push failed after 5 attempts — run manually: pnpm kompass config push');
