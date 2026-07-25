@@ -100,6 +100,14 @@ providers:
     # requests, and nothing was accounting for it. Request-count limits alone
     # let LONGCTX offer Gemini rpm(10) × ~148k = ~1.5M tokens/minute. 250k is
     # the widely-reported free-tier flash figure; TODO(verify) in AI Studio.
+    #
+    # MEASURED 2026-07-25 (see the per-model block below). Google does not
+    # publish free-tier numbers any more — ai.google.dev now says only "view
+    # them in AI Studio" — so these come from the API's OWN quota errors, which
+    # name the violated quotaId and its value. That is authoritative for THIS
+    # key; asking a chatbot for them returns plausible fiction (the figures that
+    # prompted this check claimed gemini-3.6-flash allows 1,500 requests/day; it
+    # allows 20).
     limits: { rpm: 10, rpd: 500, tpm: 250000 }
     # M6 (2026-07-24): every current Gemini 3.x model shares a verified 1,048,576-token
     # context window / 65,536-token max output (ai.google.dev/gemini-api/docs/models/<model>).
@@ -112,7 +120,12 @@ providers:
       # Explicit entry added 2026-07-25 (the default_ctx comment above already
       # claimed one existed). Gets its own counter so LONGCTX's token spend on
       # flash stops sharing a TPM window with the classifier's flash-lite calls.
-      gemini-3.6-flash: { rpm: 10, rpd: 500, ctx: 1048576, max_out: 65536, tpm: 250000 }
+      # rpd CORRECTED 2026-07-25: 500 -> 20. Measured from the API's own quota
+      # failure — quotaId GenerateRequestsPerDayPerProjectPerModel-FreeTier,
+      # value 20, model gemini-3.6-flash. The old 500 was 25x too generous, so
+      # the router kept offering a model whose daily budget was already gone;
+      # this is a large part of why google entries turned up "cooling" so often.
+      gemini-3.6-flash: { rpm: 10, rpd: 20, ctx: 1048576, max_out: 65536, tpm: 250000 }
       # DISABLED 2026-07-25 (lanes.yaml disabled_models). These rpm/rpd numbers
       # were a guess and the guess was wrong in the worst direction: the API
       # reports `limit: 0` on every free-tier quota metric for this model
@@ -120,12 +133,22 @@ providers:
       # gemini-3.1-pro"). It is paid-only — there is no free allowance to tune,
       # so every call on this key is a guaranteed 429. Numbers left as-is
       # rather than invented; re-enable only with a billed key.
-      gemini-3.1-pro-preview: { rpm: 2, rpd: 50, ctx: 1048576, max_out: 65536, tpm: 250000 }
+      # CONFIRMED paid-only 2026-07-25: all four free-tier quotas report a null
+      # value with the request refused outright — requests/minute,
+      # requests/day, input-tokens/minute and input-tokens/day. The "2 rpm /
+      # 50 rpd" here was always a guess. Zeroed so nothing can read it as
+      # available; the entry stays disabled in lanes.yaml.
+      gemini-3.1-pro-preview: { rpm: 0, rpd: 0, ctx: 1048576, max_out: 65536, tpm: 250000 }
       # classifier: SPEC cites ~1,500/day free for flash-lite; TODO(verify) exact
       # current numbers in the AI Studio dashboard (not published in docs anymore).
-      gemini-3.5-flash-lite: { rpm: 15, rpd: 1000, ctx: 1048576, max_out: 65536 }
+      # rpm 15 MEASURED 2026-07-25 (quotaId
+      # GenerateRequestsPerMinutePerProjectPerModel-FreeTier = 15). rpd is still
+      # unverified: the daily budget was not exhausted during the probe, so the
+      # API never named it. Left at the conservative 1000.
+      gemini-3.5-flash-lite: { rpm: 15, rpd: 1000, ctx: 1048576, max_out: 65536 } # TODO(verify): rpd
       # dedicated dispatcher model — own counter, no coding lane uses it
-      gemini-3.1-flash-lite: { rpm: 15, rpd: 1000, ctx: 1048576, max_out: 65536 }
+      # rpm 15 MEASURED 2026-07-25, same quotaId as above. rpd unverified.
+      gemini-3.1-flash-lite: { rpm: 15, rpd: 1000, ctx: 1048576, max_out: 65536 } # TODO(verify): rpd
 
   # ── Get a free key: https://console.groq.com/keys ──────────────────────────
   # Create a Groq account → "Create API Key" → copy the gsk_… value into

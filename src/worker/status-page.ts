@@ -83,6 +83,8 @@ export const STATUS_HTML = `<!doctype html>
   .tile .d { font-size: 0.8rem; margin-top: 0.2rem; }
   .up { color: var(--good); } .down { color: var(--serious); }
   table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+    tr.sub td{opacity:.72;font-size:.86em;padding-top:2px;padding-bottom:2px}
+    td.sub-name{padding-left:14px}
   th, td { text-align: left; padding: 0.32rem 0.55rem; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { color: var(--muted); font-weight: 600; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.05em; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
@@ -398,6 +400,16 @@ function renderOverview() {
     var tok = p.tokens_today || { in: 0, out: 0 };
     h += '<tr><td class="mono">' + esc(name) + '</td><td>' + state + '</td><td>' + meter(p.rpd.used, p.rpd.limit) + '</td><td>' + meter(p.rpm.used, p.rpm.limit) + '</td>' +
       '<td class="num">' + fmt(tok.in) + '</td><td class="num">' + fmt(tok.out) + '</td></tr>';
+    // Per-model rows. The provider line is a sum and its limits are the
+    // provider-wide defaults; the ceiling that actually stops a request is the
+    // per-model one, which can be far tighter (gemini-3.6-flash: 20 per DAY).
+    var counters = p.counters || {};
+    Object.keys(counters).forEach(function (ckey) {
+      if (ckey === name) return;
+      var c = counters[ckey];
+      h += '<tr class="sub"><td class="mono sub-name">↳ ' + esc(ckey.slice(name.length + 1)) + '</td><td></td><td>' +
+        meter(c.rpd.used, c.rpd.limit) + '</td><td>' + meter(c.rpm.used, c.rpm.limit) + '</td><td class="num"></td><td class="num"></td></tr>';
+    });
   });
   h += '</table></div>';
 

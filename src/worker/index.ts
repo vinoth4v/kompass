@@ -695,7 +695,11 @@ app.get('/status', async (c) => {
       const rd = snap.rpd[key]?.day === day ? snap.rpd[key].count : 0;
       rpmUsed += rm;
       rpdUsed += rd;
-      if (rm === 0 && rd === 0) continue;
+      // Unused counters are included too (2026-07-25). They were skipped, so
+      // the dashboard could only ever show provider-wide limits — and those are
+      // not the limits that bind: google's per-model ceilings range from 15/min
+      // down to 20/DAY for gemini-3.6-flash. A model you have not called yet is
+      // exactly the one whose budget you want to see before relying on it.
       const lim = key === name ? p.limits : limitsFor(p, key.slice(name.length + 1));
       counters[key] = { rpm: { used: rm, limit: lim.rpm }, rpd: { used: rd, limit: lim.rpd } };
     }
