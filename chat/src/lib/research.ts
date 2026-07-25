@@ -10,37 +10,20 @@ import {
   type AnthropicTextBlockWire,
   type AnthropicToolResultBlockWire,
   type AnthropicToolUseBlockWire,
-  type AnthropicToolWire,
 } from './kompassClient';
 import type { KompassSettings } from './types';
+import { TOOLS, executeTool } from './tools';
 
 const RESEARCH_SYSTEM_PROMPT =
-  'You are a careful research assistant. Use the web_search tool to find relevant, ' +
+  'You are a careful research assistant. For exact current facts (weather, FX rates, stock and ' +
+  'crypto prices, live scores, World Bank indicators) call get_data; for recent events call ' +
+  'get_news — both return authoritative values rather than pages to interpret. ' +
+  'Otherwise use the web_search tool to find relevant, ' +
   'current sources, then web_fetch 2-4 of the most promising results to read their ' +
   'full content before answering. Synthesize a clear, well-organized answer in ' +
   'markdown. Be explicit about uncertainty if sources are thin or conflicting — ' +
   'never fabricate facts or sources.';
 
-const TOOLS: AnthropicToolWire[] = [
-  {
-    name: 'web_search',
-    description: 'Search the web. Returns a list of results with title, url and snippet.',
-    input_schema: {
-      type: 'object',
-      properties: { query: { type: 'string', description: 'Search query' } },
-      required: ['query'],
-    },
-  },
-  {
-    name: 'web_fetch',
-    description: 'Fetch a URL and return its main page text (scripts/styles stripped).',
-    input_schema: {
-      type: 'object',
-      properties: { url: { type: 'string', description: 'Absolute URL to fetch' } },
-      required: ['url'],
-    },
-  },
-];
 
 const MAX_ITERATIONS = 6;
 
@@ -59,87 +42,6 @@ interface SearchResultJson {
 interface FetchResultJson {
   text?: string;
   error?: string;
-}
-
-async function runTool(
-  call: AnthropicToolUseBlockWire,
-  sources: { title: string; url: string }[],
-  seenUrls: Set<string>,
-  signal?: AbortSignal,
-): Promise<AnthropicToolResultBlockWire> {
-  if (call.name === 'web_search') {
-    const query = String(call.input.query ?? '');
-    try {
-      const res = await fetch('/api/tools/web_search', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ query }),
-        signal,
-      });
-      const json = (await res.json()) as SearchResultJson;
-      if (!res.ok || !json.results) {
-        return {
-          type: 'tool_result',
-          tool_use_id: call.id,
-          content: `search failed: ${json.error ?? res.status}`,
-          is_error: true,
-        };
-      }
-      for (const r of json.results) {
-        if (!seenUrls.has(r.url)) {
-          seenUrls.add(r.url);
-          sources.push({ title: r.title, url: r.url });
-        }
-      }
-      const summary = json.results
-        .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`)
-        .join('\n\n');
-      return { type: 'tool_result', tool_use_id: call.id, content: summary || 'no results' };
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') throw e;
-      return {
-        type: 'tool_result',
-        tool_use_id: call.id,
-        content: `search failed: ${String(e)}`,
-        is_error: true,
-      };
-    }
-  }
-  if (call.name === 'web_fetch') {
-    const url = String(call.input.url ?? '');
-    try {
-      const res = await fetch('/api/tools/web_fetch', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ url }),
-        signal,
-      });
-      const json = (await res.json()) as FetchResultJson;
-      if (!res.ok) {
-        return {
-          type: 'tool_result',
-          tool_use_id: call.id,
-          content: `fetch failed: ${json.error ?? res.status}`,
-          is_error: true,
-        };
-      }
-      return { type: 'tool_result', tool_use_id: call.id, content: json.text ?? '' };
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') throw e;
-      return {
-        type: 'tool_result',
-        tool_use_id: call.id,
-        content: `fetch failed: ${String(e)}`,
-        is_error: true,
-      };
-    }
-  }
-  return {
-    type: 'tool_result',
-    tool_use_id: call.id,
-    content: `unknown tool "${call.name}"`,
-    is_error: true,
-  };
 }
 
 export async function runResearch(
@@ -187,7 +89,7 @@ export async function runResearch(
     history.push({ role: 'assistant', content: response.content });
     const toolResults: AnthropicToolResultBlockWire[] = [];
     for (const call of toolUses) {
-      toolResults.push(await runTool(call, sources, seenUrls, signal));
+      toolResults.push(await executeTool(call, sources, seenUrls, {}, signal));
     }
     history.push({ role: 'user', content: toolResults });
   }
@@ -204,6 +106,10 @@ export async function runResearch(
 
 const CHAT_SYSTEM_PROMPT =
   'You are Kompass AI, a helpful assistant with access to web search.\n\n' +
+  'For exact current facts — weather, currency rates, stock or crypto prices, live scores, ' +
+  'macro indicators — call get_data, and for anything recent call get_news. Those return the ' +
+  'fact itself rather than a page to interpret, so they are both faster and harder to get ' +
+  'wrong than searching.\n\n' +
   'Use web_search (and then web_fetch on the most promising results) whenever the answer ' +
   'depends on facts you cannot be confident about from memory: current events, releases, ' +
   'versions, prices, people, "latest"/"best" questions, anything dated, or anything where being ' +
@@ -276,7 +182,7 @@ export async function runChatWithTools(
     messages.push({ role: 'assistant', content: response.content });
     const toolResults: AnthropicToolResultBlockWire[] = [];
     for (const call of toolUses) {
-      toolResults.push(await runTool(call, sources, seenUrls, signal));
+      toolResults.push(await executeTool(call, sources, seenUrls, {}, signal));
     }
     messages.push({ role: 'user', content: toolResults });
   }

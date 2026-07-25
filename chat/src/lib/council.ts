@@ -19,14 +19,11 @@ import {
   type AnthropicTextBlockWire,
   type AnthropicToolResultBlockWire,
   type AnthropicToolUseBlockWire,
-  type AnthropicToolWire,
 } from './kompassClient';
 import type { KompassSettings } from './types';
+import { TOOLS, executeTool, type Source } from './tools';
 
-export interface Source {
-  title: string;
-  url: string;
-}
+export type { Source };
 
 export type ResearchDepth = 'fast' | 'deep';
 
@@ -80,26 +77,6 @@ export interface CouncilRun {
   judgeError?: string;
 }
 
-const TOOLS: AnthropicToolWire[] = [
-  {
-    name: 'web_search',
-    description: 'Search the web. Returns a list of results with title, url and snippet.',
-    input_schema: {
-      type: 'object',
-      properties: { query: { type: 'string', description: 'Search query' } },
-      required: ['query'],
-    },
-  },
-  {
-    name: 'web_fetch',
-    description: 'Fetch a URL and return its main page text (scripts/styles stripped).',
-    input_schema: {
-      type: 'object',
-      properties: { url: { type: 'string', description: 'Absolute URL to fetch' } },
-      required: ['url'],
-    },
-  },
-];
 
 const DEPTH: Record<ResearchDepth, { iterations: number; guidance: string }> = {
   fast: {
@@ -151,114 +128,12 @@ const JUDGE_SYSTEM_PROMPT =
   'as [n] matching the numbered source list you were given. The final answer must stand on its ' +
   'own for someone who never sees the individual analyses.';
 
-interface SearchResultJson {
-  results?: { title: string; url: string; snippet: string }[];
-  error?: string;
-}
-interface FetchResultJson {
-  text?: string;
-  error?: string;
-}
-
 /** Model id for the wire, plus the header that forces a concrete model. */
 function modelRequest(model: string): { model: string; extraHeaders?: Record<string, string> } {
   if (model.startsWith('kompass')) return { model };
   // A concrete provider/model entry: the gateway honours x-kompass-model and
   // skips lane selection entirely.
   return { model: 'kompass', extraHeaders: { 'x-kompass-model': model } };
-}
-
-async function runTool(
-  call: AnthropicToolUseBlockWire,
-  state: AgentState,
-  seenUrls: Set<string>,
-  emit: () => void,
-  signal?: AbortSignal,
-): Promise<AnthropicToolResultBlockWire> {
-  if (call.name === 'web_search') {
-    const query = String(call.input.query ?? '');
-    state.phase = 'searching';
-    state.detail = query;
-    state.searches++;
-    emit();
-    try {
-      const res = await fetch('/api/tools/web_search', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ query }),
-        signal,
-      });
-      const json = (await res.json()) as SearchResultJson;
-      if (!res.ok || !json.results) {
-        return {
-          type: 'tool_result',
-          tool_use_id: call.id,
-          content: `search failed: ${json.error ?? res.status}`,
-          is_error: true,
-        };
-      }
-      const summary = json.results
-        .map((r, i) => `${i + 1}. ${r.title}\n   ${r.url}\n   ${r.snippet}`)
-        .join('\n\n');
-      return { type: 'tool_result', tool_use_id: call.id, content: summary || 'no results' };
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') throw e;
-      return {
-        type: 'tool_result',
-        tool_use_id: call.id,
-        content: `search failed: ${String(e)}`,
-        is_error: true,
-      };
-    }
-  }
-
-  if (call.name === 'web_fetch') {
-    const url = String(call.input.url ?? '');
-    state.phase = 'reading';
-    state.detail = url;
-    emit();
-    try {
-      const res = await fetch('/api/tools/web_fetch', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ url }),
-        signal,
-      });
-      const json = (await res.json()) as FetchResultJson;
-      if (!res.ok) {
-        return {
-          type: 'tool_result',
-          tool_use_id: call.id,
-          content: `fetch failed: ${json.error ?? res.status}`,
-          is_error: true,
-        };
-      }
-      // Cited ONLY on a successful fetch: this is the moment the agent actually
-      // read the page, which is what makes the citation trustworthy.
-      if (!seenUrls.has(url)) {
-        seenUrls.add(url);
-        state.sources.push({ title: url.replace(/^https?:\/\//, '').slice(0, 80), url });
-        state.reads++;
-        emit();
-      }
-      return { type: 'tool_result', tool_use_id: call.id, content: json.text ?? '' };
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') throw e;
-      return {
-        type: 'tool_result',
-        tool_use_id: call.id,
-        content: `fetch failed: ${String(e)}`,
-        is_error: true,
-      };
-    }
-  }
-
-  return {
-    type: 'tool_result',
-    tool_use_id: call.id,
-    content: `unknown tool "${call.name}"`,
-    is_error: true,
-  };
 }
 
 async function runAgent(
@@ -367,7 +242,36 @@ async function runAgent(
     history.push({ role: 'assistant', content: response.content });
     const results: AnthropicToolResultBlockWire[] = [];
     for (const call of toolUses) {
-      results.push(await runTool(call, state, seenUrls, emit, signal));
+      results.push(
+        await executeTool(
+          call,
+          state.sources,
+          seenUrls,
+          {
+            onSearch: (q) => {
+              state.phase = 'searching';
+              state.detail = q;
+              state.searches++;
+              emit();
+            },
+            onFetch: (u) => {
+              state.phase = 'reading';
+              state.detail = u;
+              emit();
+            },
+            onData: (kind, q) => {
+              state.phase = 'reading';
+              state.detail = `${kind}: ${q}`;
+              emit();
+            },
+            onRead: () => {
+              state.reads++;
+              emit();
+            },
+          },
+          signal,
+        ),
+      );
     }
     history.push({ role: 'user', content: results });
 

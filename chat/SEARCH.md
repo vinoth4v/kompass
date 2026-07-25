@@ -67,3 +67,39 @@ narrow alone, and breadth is the whole point of the tier.
 
 Interleaving matters: without it one prolific source crowds the others out of
 the top results, which defeats the aggregation.
+
+---
+
+# Structured data tools
+
+Separate from search, and deliberately so. Search returns pages a model must
+read and interpret; these return the fact itself. For "EUR to USD" or "weather
+in Berlin", a scraped search result is strictly worse than the number: slower,
+longer, and an invitation to hallucinate.
+
+All are keyless and were probed live from the deployed function before wiring.
+Available in **Chat, Research and the AI Council** — they share one tool
+definition and one executor (`src/lib/tools.ts`).
+
+| Tool | Source | Returns |
+| --- | --- | --- |
+| `get_news` | Google News RSS | headlines with outlet and publication date |
+| `get_data kind=weather` | Open-Meteo | current conditions + 3-day forecast |
+| `get_data kind=fx` | Frankfurter (ECB) | official reference rate |
+| `get_data kind=stock` | Yahoo Finance | quote, previous close, % change |
+| `get_data kind=crypto` | CoinGecko | USD/EUR price, 24h change |
+| `get_data kind=sports` | ESPN / TheSportsDB | live scores, fixtures, team profiles |
+| `get_data kind=macro` | World Bank | indicator series, e.g. `DE NY.GDP.MKTP.CD` |
+
+Six sources sit behind one `get_data` tool with a `kind` argument rather than
+being exposed as six separate tools. These are free models with modest
+tool-calling ability, and every additional tool measurably degrades their choice
+of which to call.
+
+Rejected after probing: GDELT (HTTP 429 — one request per five seconds),
+Stooq (404 on the documented quote URL), NewsAPI (free tier is localhost-only,
+so it cannot work on Vercel).
+
+A successful structured lookup is recorded as a citable source, exactly like a
+fetched page — the same rule applies: only on success, never because a model
+said so.
