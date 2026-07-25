@@ -103,7 +103,7 @@ const TOOLS: AnthropicToolWire[] = [
 
 const DEPTH: Record<ResearchDepth, { iterations: number; guidance: string }> = {
   fast: {
-    iterations: 3,
+    iterations: 4,
     guidance:
       'Work quickly: one or two searches, then read at most two of the most promising pages ' +
       'before answering.',
@@ -135,7 +135,11 @@ const JUDGE_SYSTEM_PROMPT =
   'redo the research and NOT to average the answers. It is to weigh them.\n\n' +
   'Do all of the following:\n' +
   '1. Identify what the analysts agree on.\n' +
-  '2. Identify every material DISAGREEMENT, and for each say which position the evidence ' +
+  '2. Identify every material DISAGREEMENT ABOUT THE SUBJECT — differing conclusions, ' +
+  'conflicting facts, incompatible recommendations. Do NOT list process observations such as ' +
+  '"only one analyst finished" as disagreements; how many analysts reported is not a ' +
+  'disagreement and is already shown to the user separately. For each real one, say which ' +
+  'position the evidence ' +
   'better supports and why. Do not paper over conflicts — a real disagreement that you surface ' +
   'is more valuable than a smooth answer that hides it.\n' +
   '3. Prefer claims backed by sources that were actually fetched. Treat an unsourced confident ' +
@@ -274,6 +278,7 @@ async function runAgent(
   // council must not produce, so it gets pushed back once before being allowed
   // to conclude.
   let nudgedForSources = false;
+  let nudgedToFetch = false;
   const history: AnthropicMessageWire[] = [{ role: 'user', content: question }];
   const seenUrls = new Set<string>();
   let totalIn = 0;
@@ -283,14 +288,30 @@ async function runAgent(
   emit();
 
   for (let iter = 0; iter < DEPTH[depth].iterations; iter++) {
+    // On the final step the tools are withheld, which forces a conclusion. Two
+    // seats previously spent every step searching and returned only the stub
+    // "Reached the research step limit" — a wasted seat and nothing for the
+    // judge to weigh. A grounded-in-what-you-have answer is always better.
+    const lastStep = iter === DEPTH[depth].iterations - 1;
     const { response, servedBy, exhausted } = await sendMessage(
       settings,
       {
         model,
         max_tokens: 4096,
         system: agentSystemPrompt(depth),
-        messages: history,
-        tools: TOOLS,
+        messages: lastStep
+          ? [
+              ...history,
+              {
+                role: 'user' as const,
+                content:
+                  'Stop researching now and give your final answer, grounded in the sources you ' +
+                  'actually fetched. If you fetched none, say so explicitly and answer with ' +
+                  'clearly-flagged low confidence.',
+              },
+            ]
+          : history,
+        ...(lastStep ? {} : { tools: TOOLS }),
       },
       signal,
       extraHeaders,
@@ -349,6 +370,19 @@ async function runAgent(
       results.push(await runTool(call, state, seenUrls, emit, signal));
     }
     history.push({ role: 'user', content: results });
+
+    // Searching repeatedly without ever fetching is the observed failure mode:
+    // three searches, zero pages, no answer. The earlier nudge only fired when
+    // a model tried to CONCLUDE unsourced, which these never reached.
+    if (state.searches >= 2 && state.reads === 0 && !nudgedToFetch) {
+      nudgedToFetch = true;
+      history.push({
+        role: 'user',
+        content:
+          'You have searched more than once and fetched nothing. Stop searching. Call web_fetch ' +
+          'on the most promising URL you have already seen, and read it before answering.',
+      });
+    }
     state.phase = 'thinking';
     state.detail = undefined;
     emit();
