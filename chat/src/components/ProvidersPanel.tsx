@@ -16,6 +16,7 @@ import {
   listProviders,
   listVaultKeys,
   putVaultKey,
+  type ProviderInfo,
   type VaultStatus,
 } from '@/lib/kompassClient';
 import type { KompassSettings } from '@/lib/types';
@@ -36,7 +37,7 @@ const SIGNUP: Record<string, { url: string; note: string }> = {
 
 export function ProvidersPanel({ settings }: { settings: KompassSettings }) {
   const [status, setStatus] = useState<VaultStatus | null>(null);
-  const [providers, setProviders] = useState<{ name: string; hasEnvKey: boolean }[]>([]);
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [adding, setAdding] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -118,10 +119,21 @@ export function ProvidersPanel({ settings }: { settings: KompassSettings }) {
       )}
 
       {status && !status.vault_enabled && (
-        <div className="rounded-lg bg-warn-soft px-3 py-2 text-[0.78rem] text-warn">
-          Key storage is off on this gateway: <span className="font-mono">KOMPASS_MASTER_KEY</span>{' '}
-          is not set. Add it as a Worker secret in the Cloudflare dashboard, then reload — it is
-          what encrypts stored keys.
+        <div className="space-y-1.5 rounded-lg bg-warn-soft px-3 py-2.5 text-[0.78rem] text-warn">
+          <p className="font-medium">
+            Saving keys from this page is off: <span className="font-mono">KOMPASS_MASTER_KEY</span>{' '}
+            is not set on your Worker.
+          </p>
+          <p className="leading-relaxed">
+            You can still add providers — set each one directly as a Worker secret using the name
+            shown below. In the Cloudflare dashboard: <b>Workers &amp; Pages</b> → your worker →{' '}
+            <b>Settings</b> → <b>Variables and Secrets</b> → <b>Add</b> → type <b>Secret</b>. They
+            take effect immediately, no redeploy.
+          </p>
+          <p className="leading-relaxed">
+            To save keys from here instead, add a{' '}
+            <span className="font-mono">KOMPASS_MASTER_KEY</span> secret the same way and reload.
+          </p>
         </div>
       )}
 
@@ -129,7 +141,11 @@ export function ProvidersPanel({ settings }: { settings: KompassSettings }) {
         {providers.map((p) => {
           const stored = status?.keys[p.name];
           const signup = SIGNUP[p.name];
-          const configured = stored || p.hasEnvKey;
+          // The binding-backed provider authenticates as the account the Worker
+          // runs on, so it has no key to configure. Showing it as "not
+          // configured" was wrong — it is the one that already works.
+          const keyless = p.kind === 'workers-ai';
+          const configured = keyless || stored || p.hasEnvKey;
           return (
             <li key={p.name} className="px-3 py-2.5">
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -138,13 +154,26 @@ export function ProvidersPanel({ settings }: { settings: KompassSettings }) {
                 {configured ? (
                   <span className="flex items-center gap-1 text-[0.72rem] text-ok">
                     <Check className="h-3 w-3" />
-                    {p.hasEnvKey ? 'set as Worker secret' : stored!.masked}
+                    {keyless
+                      ? 'active — no key needed'
+                      : p.hasEnvKey
+                        ? 'set as Worker secret'
+                        : stored!.masked}
                   </span>
                 ) : (
                   <span className="text-[0.72rem] text-ink-faint">not configured</span>
                 )}
 
                 <span className="ml-auto flex items-center gap-2">
+                  {p.keyEnv && !configured && !status?.vault_enabled && (
+                    <button
+                      onClick={() => void navigator.clipboard.writeText(p.keyEnv!)}
+                      title="Copy the Worker secret name to set in the Cloudflare dashboard"
+                      className="rounded-md border border-line px-2 py-0.5 font-mono text-[0.68rem] text-ink-secondary transition hover:bg-surface-hover hover:text-ink"
+                    >
+                      {p.keyEnv}
+                    </button>
+                  )}
                   {signup && !configured && (
                     <a
                       href={signup.url}
@@ -185,6 +214,12 @@ export function ProvidersPanel({ settings }: { settings: KompassSettings }) {
 
               {signup && !configured && (
                 <p className="mt-0.5 text-[0.7rem] text-ink-faint">{signup.note}</p>
+              )}
+              {keyless && (
+                <p className="mt-0.5 text-[0.7rem] text-ink-faint">
+                  Cloudflare Workers AI, on your own account — this is what answers before you add
+                  anything.
+                </p>
               )}
 
               {adding === p.name && (

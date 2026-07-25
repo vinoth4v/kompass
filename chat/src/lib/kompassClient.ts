@@ -274,15 +274,30 @@ export async function deleteVaultKey(settings: KompassSettings, provider: string
 }
 
 /** Providers the gateway knows about, with signup links for the ones missing. */
-export async function listProviders(
-  settings: KompassSettings,
-): Promise<{ name: string; hasEnvKey: boolean }[]> {
+export interface ProviderInfo {
+  name: string;
+  hasEnvKey: boolean;
+  /** 'workers-ai' authenticates via the runtime binding — it needs no key. */
+  kind?: string;
+  /** Worker-secret name to set in the Cloudflare dashboard, e.g. OPENROUTER_API_KEY. */
+  keyEnv?: string;
+}
+
+export async function listProviders(settings: KompassSettings): Promise<ProviderInfo[]> {
   const res = await fetch(`${baseUrl(settings)}/status`, { headers: headers(settings) });
   if (!res.ok) throw new KompassApiError(res.status, await readErrorMessage(res));
   const body = (await res.json()) as {
-    providers?: Record<string, { has_key?: boolean; enabled?: boolean }>;
+    providers?: Record<
+      string,
+      { has_key?: boolean; enabled?: boolean; kind?: string; key_env?: string }
+    >;
   };
   return Object.entries(body.providers ?? {})
     .filter(([, p]) => p.enabled !== false)
-    .map(([name, p]) => ({ name, hasEnvKey: Boolean(p.has_key) }));
+    .map(([name, p]) => ({
+      name,
+      hasEnvKey: Boolean(p.has_key),
+      kind: p.kind,
+      keyEnv: p.key_env,
+    }));
 }

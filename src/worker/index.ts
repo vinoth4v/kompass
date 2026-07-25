@@ -773,6 +773,12 @@ app.get('/status', async (c) => {
       // can tell the difference — a vision model given a research brief
       // searched once and answered without reading anything.
       multimodal_models: p.multimodal_models ?? (p.multimodal === true ? ['*'] : []),
+      // Surfaced for the chat app's Providers panel: `kind` distinguishes the
+      // binding-backed provider (which needs no key at all) from HTTP ones, and
+      // `key_env` is the exact Worker-secret name to set in the Cloudflare
+      // dashboard — the path that works when the encrypted vault is disabled.
+      kind: p.kind,
+      key_env: p.key_env,
       has_key: Boolean((c.env as unknown as Record<string, string>)[p.key_env]),
       rpm: { used: rpmUsed, limit: p.limits.rpm },
       rpd: { used: rpdUsed, limit: p.limits.rpd },

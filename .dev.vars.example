@@ -1,0 +1,13 @@
+# Secrets the Deploy-to-Cloudflare flow prompts for.
+#
+# ONLY the two required ones are declared here on purpose. Provider API keys are
+# deliberately absent: asking for ten keys before the first response is the exact
+# wall this onboarding removes, and a fresh gateway already answers using
+# Cloudflare Workers AI on your own account. Add providers later, from the chat
+# app's Settings, when you actually want more capacity.
+
+# Signs you in — from the chat app, Claude Code, Cursor or any other client.
+KOMPASS_BEARER=""
+
+# Encrypts provider API keys you add later, stored in your own KV namespace.
+KOMPASS_MASTER_KEY=""

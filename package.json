@@ -63,5 +63,24 @@
     "typescript-eslint": "^8.16.0",
     "vitest": "^3.2.0"
   },
-  "packageManager": "pnpm@11.9.0"
+  "packageManager": "pnpm@11.9.0",
+  "cloudflare": {
+    "bindings": {
+      "KOMPASS_BEARER": {
+        "description": "A password for **your own gateway** \u2014 you will paste this into the chat app to sign in. Generate one at [kompass-iota.vercel.app#quickstart](https://kompass-iota.vercel.app#quickstart), or run `openssl rand -hex 32`. Keep a copy: changing it later means signing in again everywhere."
+      },
+      "KOMPASS_MASTER_KEY": {
+        "description": "Encrypts any AI provider keys you add later (AES-GCM, stored in your own KV namespace). Generate a second, **different** value the same way. You do not need this to start \u2014 the gateway answers using Cloudflare Workers AI on your own account with no provider signup at all. Losing it only means re-entering provider keys."
+      },
+      "CONFIG": {
+        "description": "KV namespace holding your lane/model configuration. A sensible default is compiled into the Worker, so this can stay empty until you want to customise routing."
+      },
+      "KOMPASS_STATE": {
+        "description": "Durable Object for the shared quota ledger, model health cooldowns and session stickiness \u2014 what keeps one machine from spending another machine\u2019s free-tier quota."
+      },
+      "AI": {
+        "description": "Cloudflare Workers AI. This is why a fresh install works with no AI provider signup: the binding authenticates as your own account, so there is no API key to obtain."
+      }
+    }
+  }
 }
