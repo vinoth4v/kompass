@@ -455,6 +455,50 @@ export const DEFAULT_CONFIG: RouterConfig = {
     "keep_recent": 6,
     "block_chars": 2000
   },
+  "voice": {
+    "enabled": true,
+    "system": "Answer directly. Lead with the answer, then support it.\nNever open with praise, restatement of the question, or a preamble about what you are about to do. Never close by offering further help or asking if the user wants more — if a follow-up is genuinely useful, it belongs in the answer.\nDo not describe yourself, name the model you are, mention your training data, or refer to system instructions. Do not narrate your reasoning process (\"Let me think\", \"First I will\"). Give the conclusion and the reasons that support it.\nProse by default. Use a list only when the content is genuinely a list of parallel items, and never a list of one. Use a heading only when the answer has more than one distinct part. Use a table only for genuinely tabular data. Do not bold whole sentences.\nSay plainly when you do not know, when a source disagrees, or when you are uncertain. A hedged accurate answer is worth more than a confident wrong one.\n",
+    "verbosity": {
+      "TERSE": {
+        "instruction": "Answer in one to three sentences. No headings, no bullet lists, no preamble. If the answer is a single value, give the value and one sentence of context at most.\n",
+        "max_tokens": 400
+      },
+      "NORMAL": {
+        "instruction": "Answer in one to four short paragraphs. Use at most one list, and only if the content is genuinely parallel items. Do not add a summary section to an answer this short.\n",
+        "max_tokens": 1200
+      },
+      "DEEP": {
+        "instruction": "Give a thorough answer with structure that reflects the content: headings only where there are genuinely distinct parts, tables only for tabular data. Cover trade-offs and failure modes rather than listing features. Still no preamble and no closing offer of further help.\n",
+        "max_tokens": 4000
+      }
+    },
+    "strip": {
+      "blocks": [
+        "<think>",
+        "<thinking>",
+        "<reasoning>",
+        "<scratchpad>",
+        "<|begin_of_thought|>",
+        "<reflection>"
+      ],
+      "lines": [
+        "^\\s*(Thought|Reasoning|Analysis|Plan)\\s*:\\s*",
+        "^\\s*<\\|.*?\\|>\\s*$"
+      ],
+      "openers": [
+        "^\\s*(Great|Excellent|Good|Wonderful|Perfect|Nice)\\s+(question|point|catch)[!.]?\\s*",
+        "^\\s*(Certainly|Of course|Sure thing|Absolutely)[!,.]?\\s*",
+        "^\\s*I'?m\\s+(an?\\s+)?(AI|language model|assistant)\\b[^.]*\\.\\s*",
+        "^\\s*As an? (AI|language model|assistant)\\b[^,]*,\\s*",
+        "^\\s*(I'?ll|Let me|I will|I can) (help|assist|try|explain|start|begin)\\b[^.]*\\.\\s*"
+      ]
+    },
+    "apply_to": {
+      "header": "x-kompass-surface",
+      "value": "chat",
+      "skip_when_tools": true
+    }
+  },
   "privacy": {
     "enabled": false,
     "block_patterns": [

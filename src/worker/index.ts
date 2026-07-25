@@ -48,6 +48,7 @@ import {
 } from './escalation';
 import { compactionConfig, compactRequest, type CompactionResult } from './compact';
 import { compilePrivacyGuard, privacyMatch } from './privacy';
+import { appliesToRequest, compileStrip, composeVoice, voiceConfig } from './voice';
 import {
   deleteProviderKey,
   listProviderKeys,
@@ -95,6 +96,7 @@ app.use(
       'x-kompass-trace-id',
       'x-kompass-compacted',
       'x-kompass-exhausted',
+      'x-kompass-voice',
     ],
     maxAge: 86400,
   }),
@@ -288,6 +290,29 @@ async function handleAnthropic(
     return {} as Record<string, string>;
   });
 
+  // ── House Voice ─────────────────────────────────────────────────────────
+  // Applied AFTER the lane verdict (which carries the verbosity tier) and
+  // BEFORE routing, so the composed system prompt and the max_tokens ceiling
+  // are what every adapter translates. Coding clients are excluded by surface
+  // and any tool-carrying turn is excluded outright — see appliesToRequest.
+  const vcfg = voiceConfig(cfg);
+  let voiceTier: string | undefined;
+  let voiceStrip: ReturnType<typeof compileStrip> | undefined;
+  if (
+    vcfg &&
+    appliesToRequest(vcfg, body, c.req.header(vcfg.apply_to?.header ?? 'x-kompass-surface'))
+  ) {
+    // A heuristic or forced lane produces no tier, so fall back to size: a
+    // short question gets a short answer even when the classifier never ran.
+    const tier =
+      verdict.verbosity ?? (estimateTokens(body, effectiveLength) < 200 ? 'TERSE' : 'NORMAL');
+    const composed = composeVoice(vcfg, body, tier);
+    body = composed.body;
+    voiceTier = composed.verbosity;
+    voiceStrip = compileStrip(cfg) ?? undefined;
+    console.log(JSON.stringify({ voice: { tier: voiceTier, max_tokens: composed.maxTokens } }));
+  }
+
   const forcedModel = c.req.header('x-kompass-model') ?? undefined;
   // Error 1102: one shared ceiling on real upstream attempts for this request,
   // across the initial lane, every escalation hop and the last-resort sweep.
@@ -311,6 +336,7 @@ async function handleAnthropic(
       chainOverride,
       budget,
       vaultKeys,
+      voiceStrip,
     });
 
   const allAttempts: RouteAttempt[] = [];
@@ -445,6 +471,9 @@ async function handleAnthropic(
     if (compaction) {
       headers.set('x-kompass-compacted', `${compaction.before}->${compaction.after} tokens`);
     }
+    // Visible so the shape of an answer is attributable — and so `kompass
+    // voice` can measure compliance per model from real traffic.
+    if (voiceTier) headers.set('x-kompass-voice', voiceTier);
     return finish(
       new Response(outcome.response.body, { status: outcome.response.status, headers }),
     );

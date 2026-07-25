@@ -5,6 +5,14 @@ import { parse } from 'yaml';
 import { applyDeprecations, validateConfig, type RouterConfig } from '../worker/config';
 
 export function compileConfig(configDir = 'config'): RouterConfig {
+  // voice.yaml is optional: a checkout without it compiles and runs with the
+  // house voice simply off, rather than failing to build.
+  let voiceDoc: { voice?: RouterConfig['voice'] } = {};
+  try {
+    voiceDoc = parse(readFileSync(join(configDir, 'voice.yaml'), 'utf8')) as typeof voiceDoc;
+  } catch {
+    /* no voice.yaml — feature disabled */
+  }
   const providersDoc = parse(readFileSync(join(configDir, 'providers.yaml'), 'utf8')) as {
     providers: RouterConfig['providers'];
   };
@@ -28,6 +36,7 @@ export function compileConfig(configDir = 'config'): RouterConfig {
     lanes: lanesDoc.lanes,
     dispatcher: lanesDoc.dispatcher,
     compaction: lanesDoc.compaction,
+    voice: voiceDoc.voice,
     privacy: lanesDoc.privacy,
     deprecated_models: lanesDoc.deprecated_models,
     images: lanesDoc.images,

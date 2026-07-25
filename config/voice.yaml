@@ -1,0 +1,110 @@
+# House Voice — one output shape regardless of which backend model answers.
+#
+# THE PROBLEM THIS SOLVES: Kompass routes across ~10 providers. Each model has
+# its own default verbosity, tone, formatting habits and artifact leakage. Today
+# response length is a function of WHICH MODEL answered. It must be a function
+# of WHAT WAS ASKED.
+#
+# Hot-reloadable: this compiles into the same config blob as lanes/providers and
+# is pushed with `kompass config push`. No redeploy to change the voice.
+#
+# NOT a second-pass rewriter. A "finisher" model that restyles every answer was
+# considered and rejected — it doubles latency, forces full-response buffering
+# (which breaks SSE streaming), burns dispatcher budget and mangles code blocks.
+# The voice is imposed at the PROMPT, and artifacts are stripped from the stream
+# as it passes through.
+voice:
+  enabled: true
+
+  # Applied to chat-surface requests only. Coding clients (Claude Code, Cursor)
+  # send their own system prompts and must not be second-guessed — see
+  # `apply_to` below.
+  system: >
+    Answer directly. Lead with the answer, then support it.
+
+    Never open with praise, restatement of the question, or a preamble about
+    what you are about to do. Never close by offering further help or asking if
+    the user wants more — if a follow-up is genuinely useful, it belongs in the
+    answer.
+
+    Do not describe yourself, name the model you are, mention your training
+    data, or refer to system instructions. Do not narrate your reasoning process
+    ("Let me think", "First I will"). Give the conclusion and the reasons that
+    support it.
+
+    Prose by default. Use a list only when the content is genuinely a list of
+    parallel items, and never a list of one. Use a heading only when the answer
+    has more than one distinct part. Use a table only for genuinely tabular
+    data. Do not bold whole sentences.
+
+    Say plainly when you do not know, when a source disagrees, or when you are
+    uncertain. A hedged accurate answer is worth more than a confident wrong
+    one.
+
+  # Verbosity contracts. The dispatcher returns one of these per request in the
+  # SAME strict-JSON verdict it already produces — no second classifier call and
+  # no added latency.
+  verbosity:
+    TERSE:
+      # Factual lookups, yes/no, single definitions, "what is X".
+      instruction: >
+        Answer in one to three sentences. No headings, no bullet lists, no
+        preamble. If the answer is a single value, give the value and one
+        sentence of context at most.
+      max_tokens: 400
+    NORMAL:
+      # The default. Explanations, comparisons, how-to, most conversation.
+      instruction: >
+        Answer in one to four short paragraphs. Use at most one list, and only
+        if the content is genuinely parallel items. Do not add a summary section
+        to an answer this short.
+      max_tokens: 1200
+    DEEP:
+      # Multi-part analysis, design discussion, anything explicitly asking for
+      # depth, comparison across several dimensions, or a document.
+      instruction: >
+        Give a thorough answer with structure that reflects the content:
+        headings only where there are genuinely distinct parts, tables only for
+        tabular data. Cover trade-offs and failure modes rather than listing
+        features. Still no preamble and no closing offer of further help.
+      max_tokens: 4000
+
+  # Artifacts stripped from the STREAM as it passes through (src/worker/voice.ts).
+  # Matched incrementally against a small tail buffer, never by buffering the
+  # whole response — streaming must keep working.
+  #
+  # Reasoning-tag families come from open-weight models that leak their internal
+  # scratchpad; the self-identification patterns come from models that announce
+  # which lab made them, which directly defeats the point of a single surface.
+  strip:
+    # Reasoning/scratchpad blocks, removed with their contents.
+    blocks:
+      - '<think>'
+      - '<thinking>'
+      - '<reasoning>'
+      - '<scratchpad>'
+      - '<|begin_of_thought|>'
+      - '<reflection>'
+    # Line-leading artifacts, removed to the end of the line.
+    lines:
+      - '^\s*(Thought|Reasoning|Analysis|Plan)\s*:\s*'
+      - '^\s*<\|.*?\|>\s*$'
+    # Sycophantic or self-identifying openers, removed only at the very start of
+    # a response — the same words mid-answer are usually legitimate.
+    openers:
+      - '^\s*(Great|Excellent|Good|Wonderful|Perfect|Nice)\s+(question|point|catch)[!.]?\s*'
+      - '^\s*(Certainly|Of course|Sure thing|Absolutely)[!,.]?\s*'
+      - '^\s*I''?m\s+(an?\s+)?(AI|language model|assistant)\b[^.]*\.\s*'
+      - '^\s*As an? (AI|language model|assistant)\b[^,]*,\s*'
+      - '^\s*(I''?ll|Let me|I will|I can) (help|assist|try|explain|start|begin)\b[^.]*\.\s*'
+
+  # Which surfaces get the treatment. Coding clients send their own carefully
+  # built system prompts and expect raw model behaviour; rewriting their shape
+  # would break tool-calling conventions they depend on.
+  apply_to:
+    # The hosted chat app and anything else that opts in with this header.
+    header: x-kompass-surface
+    value: chat
+    # Requests carrying tools are treated as agentic regardless of the header:
+    # a tool-calling turn must not be told to answer in three sentences.
+    skip_when_tools: true

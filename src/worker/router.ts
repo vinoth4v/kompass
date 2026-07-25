@@ -17,6 +17,7 @@ import type { AnthropicRequest, AnthropicResponse, OpenAIResponse } from '../ada
 import { hasMalformedToolCall, openAIToAnthropic } from '../adapters/openai';
 import { geminiToAnthropic, type GeminiResponse } from '../adapters/gemini';
 import { geminiBody, openAIBody, openAIPayload } from './payload';
+import { compileStrip, sanitizeText } from './voice';
 import type { KompassState, FailureKind, ReserveLimits } from '../do/state';
 import type { ProviderConfig, RouterConfig } from './config';
 import {
@@ -104,6 +105,8 @@ export interface RouteContext {
   /** Decrypted vault keys for this request (src/worker/vault.ts), consulted
    *  when a provider has no environment secret. */
   vaultKeys?: Record<string, string>;
+  /** Compiled House Voice strip rules, when the voice applies to this request. */
+  voiceStrip?: ReturnType<typeof compileStrip>;
 }
 
 /**
@@ -222,6 +225,22 @@ function callUpstream(
   });
 }
 
+/**
+ * Strip model artifacts from a completed message. The streaming path does this
+ * incrementally in live.ts; this is the buffered equivalent, applied to text
+ * blocks only so tool-call arguments are never touched.
+ */
+function applyVoice(ctx: RouteContext | undefined, msg: AnthropicResponse): AnthropicResponse {
+  const strip = ctx?.voiceStrip;
+  if (!strip) return msg;
+  return {
+    ...msg,
+    content: msg.content.map((b) =>
+      b.type === 'text' ? { ...b, text: sanitizeText(strip, b.text) } : b,
+    ),
+  };
+}
+
 function sseEvent(event: string, data: unknown): string {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
@@ -299,6 +318,7 @@ async function tryChainEntry(
   multimodal = false,
   live = false,
   vaultKeys?: Record<string, string>,
+  ctx?: RouteContext,
 ): Promise<EntrySuccess | null> {
   const { provider, model } = parseChainEntry(entry);
   const p = cfg.providers[provider];
@@ -359,7 +379,7 @@ async function tryChainEntry(
     // The binding has no SSE surface, so a workers-ai entry always takes the
     // buffered path; the client-facing stream is synthesized as usual.
     if (live && body.stream === true && p.kind !== 'workers-ai') {
-      const r = await tryLiveEntry(p, key, body, model);
+      const r = await tryLiveEntry(p, key, body, model, ctx?.voiceStrip ?? undefined);
       if (r.kind === 'live') {
         attempts.push({ entry, status: 200 });
         return { response: r.response, usageLater: r.done };
@@ -422,10 +442,12 @@ async function tryChainEntry(
 
     if (body.stream) {
       return {
-        response: new Response(messageToAnthropicSSE(translated), { headers: SSE_HEADERS }),
+        response: new Response(messageToAnthropicSSE(applyVoice(ctx, translated)), {
+          headers: SSE_HEADERS,
+        }),
       };
     }
-    return { response: Response.json(translated) };
+    return { response: Response.json(applyVoice(ctx, translated)) };
   } catch (e) {
     const timedOut = e instanceof DOMException && e.name === 'TimeoutError';
     attempts.push({
@@ -551,6 +573,7 @@ export async function routeRequest(
       multimodal,
       ctx.live === true,
       ctx.vaultKeys,
+      ctx,
     );
     const last = attempts[attempts.length - 1];
     // Charge the budget only when a provider was actually called. tryChainEntry

@@ -25,6 +25,7 @@ import type {
 } from '../adapters/types';
 import { mapFinishReason } from '../adapters/openai';
 import { geminiBody, openAIBody } from './payload';
+import { VoiceSanitizer, type CompiledStripRules } from './voice';
 import type { ProviderConfig } from './config';
 
 // Headers must arrive fast even on cold starts; the first content token gets
@@ -108,6 +109,14 @@ export async function tryLiveEntry(
   key: string,
   body: AnthropicRequest,
   model: string,
+  /**
+   * House Voice strip rules. Applied INCREMENTALLY as deltas arrive — the
+   * sanitizer holds back only a short tail, so artifacts spanning two chunks
+   * are still removed without ever buffering the whole response. Buffering was
+   * the reason the "finisher model" approach was rejected; doing it here would
+   * reintroduce exactly that problem.
+   */
+  voiceStrip?: CompiledStripRules,
 ): Promise<LiveResult> {
   const isGemini = p.kind === 'gemini';
   let url: string;
@@ -180,6 +189,7 @@ export async function tryLiveEntry(
   const decoder = new TextDecoder();
   let bufText = '';
 
+  const sanitizer = voiceStrip ? new VoiceSanitizer(voiceStrip) : null;
   let text = '';
   const tools: ToolAcc[] = [];
   let finish: string | undefined;
@@ -349,6 +359,21 @@ export async function tryLiveEntry(
         return;
       }
       const tb = finalTools();
+      // Whatever the sanitizer is still holding back must be emitted
+      // before the block closes, or the final characters of every
+      // sanitized answer are silently dropped.
+      if (sanitizer) {
+        const rest = sanitizer.flush();
+        if (rest)
+          write(
+            sse('content_block_delta', {
+              type: 'content_block_delta',
+              index: 0,
+              delta: { type: 'text_delta', text: rest },
+            }),
+          );
+      }
+
       write(sse('content_block_stop', { type: 'content_block_stop', index: 0 }));
       tb.forEach((b, i) => {
         const index = i + 1;
@@ -406,7 +431,8 @@ export async function tryLiveEntry(
             } catch {
               continue;
             }
-            const delta = handleChunk(obj);
+            let delta = handleChunk(obj);
+            if (delta && sanitizer) delta = sanitizer.push(delta);
             if (!delta) continue;
             if (!committed) commit(delta);
             else {

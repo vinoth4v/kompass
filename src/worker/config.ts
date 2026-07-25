@@ -70,6 +70,36 @@ export interface PrivacyConfig {
   block_globs?: string[]; // path globs
 }
 
+export type Verbosity = 'TERSE' | 'NORMAL' | 'DEEP';
+
+export interface VerbosityContract {
+  /** Appended to the house prompt for this request. */
+  instruction: string;
+  /** Ceiling applied to the request's max_tokens — a contract the model cannot
+   *  talk its way past. Never RAISES a caller's lower limit. */
+  max_tokens: number;
+}
+
+export interface VoiceConfig {
+  enabled?: boolean;
+  system: string;
+  verbosity: Record<Verbosity, VerbosityContract>;
+  strip?: {
+    /** Tag names whose content is removed entirely, e.g. `<think>`. */
+    blocks?: string[];
+    /** Line-leading artifacts, removed to end of line. */
+    lines?: string[];
+    /** Sycophantic/self-identifying openers, stripped only at response start. */
+    openers?: string[];
+  };
+  apply_to?: {
+    header?: string;
+    value?: string;
+    /** A tool-calling turn must not be told to answer in three sentences. */
+    skip_when_tools?: boolean;
+  };
+}
+
 export interface DeprecatedModelEntry {
   replaced_by: string; // chain-entry form, e.g. "openrouter/poolside/laguna-s-3.0:free"
   note?: string;
@@ -173,6 +203,12 @@ export interface RouterConfig {
     keep_recent?: number;
     block_chars?: number;
   };
+  /**
+   * House Voice (config/voice.yaml, src/worker/voice.ts) — one output shape
+   * regardless of which backend model answers. Optional and hot-reloadable;
+   * absent or `enabled: false` leaves every request untouched.
+   */
+  voice?: VoiceConfig;
   /** Image generation chain for POST /v1/images/generations (optional capability). */
   images?: CapabilityConfig;
   /** Embeddings chain for POST /v1/embeddings (optional capability). */

@@ -3,7 +3,7 @@
 // any classifier failure degrades to heuristics-only routing (SPEC §4).
 import type { AnthropicRequest } from '../adapters/types';
 import type { KompassState } from '../do/state';
-import type { RouterConfig } from './config';
+import type { RouterConfig, Verbosity } from './config';
 import { isModelDisabled, parseChainEntry, resolveLaneChain } from './config';
 import type { Env } from './env';
 import { smallestCtx } from './fit';
@@ -16,6 +16,13 @@ export interface DispatchResult {
   source: 'forced' | 'heuristic' | 'cache' | 'classifier' | 'fallback';
   ms: number;
   confidence?: number;
+  /**
+   * House Voice verbosity tier. Returned in the SAME strict-JSON verdict the
+   * classifier already produces — no second request, no added latency. Absent
+   * when the lane came from a heuristic or a forced header, in which case the
+   * caller falls back to a size-based guess.
+   */
+  verbosity?: Verbosity;
 }
 
 const FALLBACK_LANE: Lane = 'AGENTIC'; // safe middle (SPEC §4)
@@ -101,7 +108,12 @@ const CLASSIFIER_PROMPT = `You are a routing classifier for coding-agent request
 - HARD: deep debugging, architecture, tricky algorithms, large refactors needing max reasoning
 - LONGCTX: the context is huge (whole-repo dumps, very long documents)
 
-Reply with ONLY strict JSON: {"lane":"<FAST|SIMPLE|AGENTIC|HARD|LONGCTX>","confidence":<0..1>}`;
+Also judge how much ANSWER the request deserves — this is about the question, not the model:
+- TERSE: a fact, a definition, yes/no, a single value
+- NORMAL: an explanation, a comparison, how-to, ordinary conversation
+- DEEP: multi-part analysis, design discussion, an explicit request for depth or a document
+
+Reply with ONLY strict JSON: {"lane":"<FAST|SIMPLE|AGENTIC|HARD|LONGCTX>","confidence":<0..1>,"verbosity":"<TERSE|NORMAL|DEEP>"}`;
 
 interface ClassifierConfig {
   /** primary + fallback classifier entries, tried in order */
@@ -122,11 +134,20 @@ export function classifierConfig(cfg: RouterConfig): ClassifierConfig | null {
   };
 }
 
-function parseVerdict(text: string): { lane: Lane; confidence: number } | null {
+const VERBOSITIES: readonly Verbosity[] = ['TERSE', 'NORMAL', 'DEEP'];
+
+function parseVerdict(
+  text: string,
+): { lane: Lane; confidence: number; verbosity?: Verbosity } | null {
   try {
-    const verdict = JSON.parse(text) as { lane?: string; confidence?: number };
+    const verdict = JSON.parse(text) as { lane?: string; confidence?: number; verbosity?: string };
     if (verdict.lane && (LANES as readonly string[]).includes(verdict.lane)) {
-      return { lane: verdict.lane as Lane, confidence: verdict.confidence ?? 0 };
+      // A model that ignores the new field must not invalidate the verdict —
+      // the lane is what routing depends on; verbosity degrades to a default.
+      const verbosity = VERBOSITIES.includes(verdict.verbosity as Verbosity)
+        ? (verdict.verbosity as Verbosity)
+        : undefined;
+      return { lane: verdict.lane as Lane, confidence: verdict.confidence ?? 0, verbosity };
     }
   } catch {
     console.log(`classifier returned non-JSON: ${text.slice(0, 120)}`);
@@ -141,7 +162,7 @@ async function callClassifier(
   entry: string,
   timeoutMs: number,
   digest: string,
-): Promise<{ lane: Lane; confidence: number } | null> {
+): Promise<{ lane: Lane; confidence: number; verbosity?: Verbosity } | null> {
   const { provider, model } = parseChainEntry(entry);
   const p = cfg.providers[provider];
   if (!p || p.enabled === false || isModelDisabled(cfg, entry)) return null;
@@ -235,6 +256,11 @@ export async function dispatch(
           source: 'cache',
           ms: Date.now() - t0,
           confidence: cached.confidence,
+          // Cached verdicts are plain JSON from DO storage, so the tier is
+          // re-validated rather than trusted on the way back out.
+          verbosity: VERBOSITIES.includes(cached.verbosity as Verbosity)
+            ? (cached.verbosity as Verbosity)
+            : undefined,
         };
       }
     } catch (e) {
@@ -271,10 +297,20 @@ export async function dispatch(
           // Awaited: a dangling promise is cancelled when the Worker invocation ends,
           // which silently disabled the cache (observed live: 8/8 classifier calls).
           await stub
-            .putVerdict(key, { lane, confidence: verdict.confidence }, cc.cache_ttl_s)
+            .putVerdict(
+              key,
+              { lane, confidence: verdict.confidence, verbosity: verdict.verbosity },
+              cc.cache_ttl_s,
+            )
             .catch((e) => console.log(`verdict cache write failed: ${String(e)}`));
         }
-        return { lane, source: 'classifier', ms: Date.now() - t0, confidence: verdict.confidence };
+        return {
+          lane,
+          source: 'classifier',
+          ms: Date.now() - t0,
+          confidence: verdict.confidence,
+          verbosity: verdict.verbosity,
+        };
       }
     } catch (e) {
       console.log(`classifier ${entry} unavailable (${String(e).slice(0, 100)}) — trying next`);

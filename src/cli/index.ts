@@ -324,12 +324,14 @@ else if (cmd === 'models' && sub === 'enable')
   (await import('./models')).enableModel(arg3, configDir());
 else if (cmd === 'models' && (sub === 'list' || !sub))
   (await import('./models')).listModels(configDir());
+else if (cmd === 'voice')
+  await (await import('./voice')).voiceReport(baseUrl(), Number(flag('n')) || 200);
 else if (cmd === 'trace' && sub === 'list') await (await import('./trace')).traceList();
 else if (cmd === 'trace' && sub === 'replay') await (await import('./trace')).traceReplay(arg3);
 else if (cmd === 'trace') await (await import('./trace')).traceShow(sub);
 else {
   console.log(
-    'Usage: kompass <init|ui|deploy|status|logs|bench|discovery [--run]|deprecate <old> --replaced-by <new>|models <list|disable|enable> <entry>|trace <id>|trace list [--n N]|trace replay <id> [--lane L] [--model M]|config push> [--url <worker-url>]',
+    'Usage: kompass <init|ui|deploy|status|logs|bench|discovery [--run]|deprecate <old> --replaced-by <new>|models <list|disable|enable> <entry>|trace <id>|trace list [--n N]|trace replay <id> [--lane L] [--model M]|voice [--n N]|config push> [--url <worker-url>]',
   );
   process.exit(cmd ? 1 : 0);
 }

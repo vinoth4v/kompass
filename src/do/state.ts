@@ -493,7 +493,9 @@ export class KompassState extends DurableObject {
   }
 
   /** M3 verdict cache: classifier verdicts keyed by task-digest hash, TTL-bound. */
-  async getVerdict(key: string): Promise<{ lane: string; confidence: number } | null> {
+  async getVerdict(
+    key: string,
+  ): Promise<{ lane: string; confidence: number; verbosity?: string } | null> {
     const cell = await this.ctx.storage.get<{ lane: string; confidence: number; exp: number }>(
       `verdict:${key}`,
     );
@@ -503,7 +505,7 @@ export class KompassState extends DurableObject {
 
   async putVerdict(
     key: string,
-    verdict: { lane: string; confidence: number },
+    verdict: { lane: string; confidence: number; verbosity?: string },
     ttlSeconds: number,
   ): Promise<void> {
     await this.ctx.storage.put(`verdict:${key}`, {
