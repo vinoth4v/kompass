@@ -566,11 +566,31 @@ export async function runCouncil({
   try {
     run.verdict = await runJudge(settings, judgeModel, question, usable, signal);
     run.judgePhase = 'done';
-  } catch (e) {
-    run.judgePhase = 'failed';
-    run.judgeError = e instanceof Error ? e.message : String(e);
-    // A dead judge must not throw away the research: the UI still shows every
-    // agent's answer and sources, which is most of the value.
+  } catch (first) {
+    if (first instanceof DOMException && first.name === 'AbortError') throw first;
+    // Same pinning trap the seats hit: a judge pinned to one model has a chain
+    // of one, so a cooldown on it ends the whole council with the research
+    // already done. Retry once on lane routing before giving up.
+    try {
+      if (judgeModel.startsWith('kompass')) throw first;
+      run.verdict = await runJudge(settings, 'kompass-agentic', question, usable, signal);
+      run.judgePhase = 'done';
+      run.judgeError = undefined;
+      emit();
+      return run;
+    } catch {
+      /* fall through to the original failure below */
+    }
+  }
+  if (run.judgePhase !== 'done') {
+    try {
+      throw new Error(run.judgeError ?? 'judge failed');
+    } catch (e) {
+      run.judgePhase = 'failed';
+      run.judgeError = e instanceof Error ? e.message : String(e);
+      // A dead judge must not throw away the research: the UI still shows every
+      // agent's answer and sources, which is most of the value.
+    }
   }
   emit();
   return run;
