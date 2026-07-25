@@ -252,7 +252,12 @@ export async function dispatch(
         const limits = p?.model_limits?.[model] ?? p?.limits;
         if (p && limits) {
           const counter = p.model_limits?.[model] ? `${provider}:${model}` : provider;
-          const r = await stub.reserve(counter, limits);
+          // estTokens matters once a classifier entry shares a TPM-limited counter
+          // with a lane (groq/openai/gpt-oss-20b is both a dispatcher fallback and
+          // a FAST entry, on an 8k TPM ceiling): reserving 0 would spend that
+          // window invisibly and let FAST believe it had more room than it does.
+          const estTokens = Math.ceil((CLASSIFIER_PROMPT.length + digest.length) / 4);
+          const r = await stub.reserve(counter, limits, estTokens);
           if (!r.ok) continue;
         }
       }

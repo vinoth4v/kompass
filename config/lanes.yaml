@@ -16,12 +16,26 @@ allow_paid: false
 # traffic can never starve the classifier's budget. Probed live: strict-JSON ✓.
 dispatcher:
   model: google/gemini-3.1-flash-lite
-  # Fallback classifiers released to lane work 2026-07-24 (user request): groq
-  # llama-3.1-8b-instant (already FAST) and mistral-small-latest (now FAST) no
-  # longer classify — their budgets serve real work instead. If the primary is
-  # exhausted/down, routing falls back to heuristics (never blocks, defaults to
-  # AGENTIC). Restore a `fallbacks:` list here if classifier coverage matters
-  # more than those budgets.
+  # Fallback classifiers were released to lane work 2026-07-24 (user request):
+  # groq llama-3.1-8b-instant and mistral-small-latest stopped classifying so
+  # their budgets could serve real work. That left google as a classifier SPOF —
+  # any flash-lite outage or quota-out dropped every non-heuristic request to
+  # the AGENTIC default, i.e. lane selection stopped happening at all.
+  #
+  # One backup restored 2026-07-25, chosen to cost as close to nothing as
+  # possible. gpt-oss-20b sits at position 3 of FAST behind a spread_top:1 lead,
+  # so it is reached by lane traffic only when gpt-oss-120b is out — its 1000 rpd
+  # is effectively idle, which is exactly the budget the 2026-07-24 change was
+  # protecting. Different provider from the primary (the whole point), and groq
+  # is the fastest here: probed with the real classifier request shape
+  # (response_format json_object, temperature 0) on three digests — 240/240/303ms,
+  # strict JSON ✓, correct lane on all three including the HARD case.
+  # Rejected: cfai llama-3.3-70b-fp8-fast — right answers but a 14.1s outlier on
+  # one of the three probes, ~10x this lane's timeout. mistral-small-latest also
+  # passed clean (317-363ms) and is the natural second backup if a groq outage
+  # dropping us to heuristics ever proves to matter.
+  fallbacks:
+    - groq/openai/gpt-oss-20b
   timeout_ms: 1500
   cache_ttl_s: 300
   confidence_floor: 0.6
