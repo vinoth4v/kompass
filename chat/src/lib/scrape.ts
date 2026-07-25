@@ -196,7 +196,11 @@ async function tavily(query: string): Promise<SearchResult[]> {
   };
   return (json.results ?? [])
     .filter((r) => r.url)
-    .map((r) => ({ title: r.title ?? r.url!, url: r.url!, snippet: (r.content ?? '').slice(0, 300) }));
+    .map((r) => ({
+      title: r.title ?? r.url!,
+      url: r.url!,
+      snippet: (r.content ?? '').slice(0, 300),
+    }));
 }
 
 async function serper(query: string): Promise<SearchResult[]> {
@@ -274,7 +278,12 @@ async function github(query: string): Promise<SearchResult[]> {
   );
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = (await res.json()) as {
-    items?: { full_name?: string; html_url?: string; description?: string; stargazers_count?: number }[];
+    items?: {
+      full_name?: string;
+      html_url?: string;
+      description?: string;
+      stargazers_count?: number;
+    }[];
   };
   return (json.items ?? [])
     .filter((r) => r.html_url)
@@ -323,12 +332,13 @@ async function arxiv(query: string): Promise<SearchResult[]> {
     out.push({
       title: stripTags(title).replace(/\s+/g, ' '),
       url: id.trim(),
-      snippet: stripTags(summary ?? '').replace(/\s+/g, ' ').slice(0, 300),
+      snippet: stripTags(summary ?? '')
+        .replace(/\s+/g, ' ')
+        .slice(0, 300),
     });
   }
   return out;
 }
-
 
 /**
  * Marginalia — an independent, non-commercial index with a genuinely keyless
@@ -337,10 +347,10 @@ async function arxiv(query: string): Promise<SearchResult[]> {
  * strength for research and a real weakness for mainstream/news queries.
  */
 async function marginalia(query: string): Promise<SearchResult[]> {
-  const res = await fetch(
-    `https://api.marginalia.nu/public/search/${encodeURIComponent(query)}`,
-    { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(12_000) },
-  );
+  const res = await fetch(`https://api.marginalia.nu/public/search/${encodeURIComponent(query)}`, {
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(12_000),
+  });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = (await res.json()) as {
     results?: { url?: string; title?: string; description?: string }[];
@@ -460,7 +470,9 @@ export async function webSearchDetailed(query: string): Promise<SearchOutcome> {
       used.push(name);
       merged.push(...r.value);
     } else {
-      tried.push(`${name}: ${r.status === 'rejected' ? String(r.reason).slice(0, 60) : '0 results'}`);
+      tried.push(
+        `${name}: ${r.status === 'rejected' ? String(r.reason).slice(0, 60) : '0 results'}`,
+      );
     }
   });
 
@@ -468,7 +480,8 @@ export async function webSearchDetailed(query: string): Promise<SearchOutcome> {
     // Interleave so one prolific source cannot crowd the others out of the top.
     const bySource = new Map<string, SearchResult[]>();
     settled.forEach((r, i) => {
-      if (r.status === 'fulfilled' && r.value.length > 0) bySource.set(SPECIALIST[i]!.name, r.value);
+      if (r.status === 'fulfilled' && r.value.length > 0)
+        bySource.set(SPECIALIST[i]!.name, r.value);
     });
     const interleaved: SearchResult[] = [];
     for (let i = 0; i < 6; i++) {

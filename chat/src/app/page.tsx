@@ -155,7 +155,12 @@ export default function Page() {
     updateConversation(conversationId, (c) => ({ ...c, messages: [...c.messages, message] }));
   }
 
-  async function runTurn(conversationId: string, mode: ConversationMode, lane: LaneChoice, messages: ChatMessage[]) {
+  async function runTurn(
+    conversationId: string,
+    mode: ConversationMode,
+    lane: LaneChoice,
+    messages: ChatMessage[],
+  ) {
     if (!settings) return;
     setBusy(true);
     const controller = new AbortController();
@@ -261,11 +266,14 @@ export default function Page() {
 
   function handleDeleteMessage(id: string) {
     if (!active) return;
-    updateConversation(active.id, (c) => ({ ...c, messages: c.messages.filter((m) => m.id !== id) }));
+    updateConversation(active.id, (c) => ({
+      ...c,
+      messages: c.messages.filter((m) => m.id !== id),
+    }));
   }
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-[#0a0d14] text-[#e8eaf0] light:bg-[#f9f9f7] light:text-[#0b0b0b]">
+    <div className="flex h-dvh overflow-hidden bg-bg text-ink">
       <Sidebar
         conversations={conversations}
         activeId={activeId}
@@ -289,7 +297,9 @@ export default function Page() {
           onModeChange={(mode) => active && updateConversation(active.id, (c) => ({ ...c, mode }))}
           onLaneChange={(lane) => active && updateConversation(active.id, (c) => ({ ...c, lane }))}
           onToggleTheme={() =>
-            setSettingsState((s) => (s ? { ...s, theme: s.theme === 'dark' ? 'light' : 'dark' } : s))
+            setSettingsState((s) =>
+              s ? { ...s, theme: s.theme === 'dark' ? 'light' : 'dark' } : s,
+            )
           }
         />
 
@@ -311,14 +321,19 @@ export default function Page() {
               onDelete={handleDeleteMessage}
               onExample={(text) => handleSend(text, [])}
             />
-            <Composer mode={active.mode} busy={busy} onSend={handleSend} onStop={() => abortRef.current?.abort()} />
+            <Composer
+              mode={active.mode}
+              busy={busy}
+              onSend={handleSend}
+              onStop={() => abortRef.current?.abort()}
+            />
           </>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
-            <p className="text-sm text-white/40">No conversation selected.</p>
+            <p className="text-sm text-ink-muted">No conversation selected.</p>
             <button
               onClick={() => createConversation('chat')}
-              className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-black/90 hover:bg-brand-400"
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-contrast hover:bg-accent-hover"
             >
               Start a new chat
             </button>

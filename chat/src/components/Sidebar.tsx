@@ -1,5 +1,16 @@
 'use client';
-import { Check, Image as ImageIcon, MessageSquare, Plus, Search, Settings, Telescope, Trash2, Users, X } from 'lucide-react';
+import {
+  Check,
+  Image as ImageIcon,
+  MessageSquare,
+  Plus,
+  Search,
+  Settings,
+  Telescope,
+  Trash2,
+  Users,
+  X,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { Conversation, ConversationMode } from '@/lib/types';
 
@@ -56,40 +67,40 @@ export function Sidebar({
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-white/10 bg-[#0e1320] transition-transform lg:static lg:z-auto lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-line bg-elevated transition-transform lg:static lg:z-auto lg:translate-x-0 ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         <div className="flex items-center gap-2 p-3">
           <button
             onClick={onNew}
-            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-brand-500 py-2 text-sm font-semibold text-black/90 transition hover:bg-brand-400"
+            className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-accent py-2 text-sm font-semibold text-accent-contrast transition hover:bg-accent-hover"
           >
             <Plus size={16} /> New chat
           </button>
           <button
             onClick={onClose}
-            className="rounded-lg p-2 text-white/50 hover:bg-white/10 lg:hidden"
+            className="rounded-lg p-2 text-ink-muted hover:bg-surface-hover lg:hidden"
           >
             <X size={18} />
           </button>
         </div>
 
         <div className="px-3 pb-2">
-          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-2.5 py-1.5">
-            <Search size={14} className="text-white/30" />
+          <div className="flex items-center gap-2 rounded-lg border border-line bg-black/20 px-2.5 py-1.5">
+            <Search size={14} className="text-ink-faint" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search conversations"
-              className="w-full bg-transparent text-sm outline-none placeholder:text-white/30"
+              className="w-full bg-transparent text-sm outline-none placeholder:text-ink-faint"
             />
           </div>
         </div>
 
         <div className="flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
           {sorted.length === 0 && (
-            <p className="px-2 py-6 text-center text-xs text-white/30">
+            <p className="px-2 py-6 text-center text-xs text-ink-faint">
               {conversations.length === 0 ? 'No conversations yet.' : 'No matches.'}
             </p>
           )}
@@ -103,13 +114,13 @@ export function Sidebar({
                 onClick={() => (confirming ? undefined : onSelect(c.id))}
                 onMouseLeave={() => confirming && setConfirmingId(null)}
                 className={`group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition ${
-                  active ? 'bg-white/10' : 'hover:bg-white/5'
+                  active ? 'bg-surface-hover' : 'hover:bg-surface'
                 }`}
               >
-                <Icon size={15} className="shrink-0 text-white/40" />
+                <Icon size={15} className="shrink-0 text-ink-muted" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate">{c.title || 'New conversation'}</div>
-                  <div className="text-[0.72em] text-white/30">{relTime(c.updatedAt)}</div>
+                  <div className="text-[0.72em] text-ink-faint">{relTime(c.updatedAt)}</div>
                 </div>
                 {confirming ? (
                   <div className="flex shrink-0 items-center gap-1">
@@ -119,7 +130,7 @@ export function Sidebar({
                         setConfirmingId(null);
                       }}
                       title="Cancel"
-                      className="rounded p-1 text-white/50 hover:bg-white/10 hover:text-white"
+                      className="rounded p-1 text-ink-muted hover:bg-surface-hover hover:text-ink"
                     >
                       <X size={13} />
                     </button>
@@ -130,7 +141,7 @@ export function Sidebar({
                         setConfirmingId(null);
                       }}
                       title="Confirm delete"
-                      className="rounded bg-red-500/20 p-1 text-red-400 hover:bg-red-500/30"
+                      className="rounded bg-danger-soft p-1 text-danger hover:bg-danger-soft"
                     >
                       <Check size={13} />
                     </button>
@@ -141,7 +152,7 @@ export function Sidebar({
                       e.stopPropagation();
                       setConfirmingId(c.id);
                     }}
-                    className="shrink-0 rounded p-1 text-white/0 transition hover:bg-white/10 hover:text-white/70 group-hover:text-white/40"
+                    className="shrink-0 rounded p-1 text-white/0 transition hover:bg-surface-hover hover:text-ink-secondary group-hover:text-ink-muted"
                     title="Delete"
                   >
                     <Trash2 size={13} />
@@ -152,10 +163,10 @@ export function Sidebar({
           })}
         </div>
 
-        <div className="border-t border-white/10 p-2">
+        <div className="border-t border-line p-2">
           <button
             onClick={onOpenSettings}
-            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-white/60 transition hover:bg-white/5 hover:text-white"
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-ink-secondary transition hover:bg-surface hover:text-ink"
           >
             <Settings size={15} /> Settings
           </button>

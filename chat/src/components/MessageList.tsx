@@ -60,17 +60,20 @@ export function MessageList({
   if (messages.length === 0) {
     const Icon = emptyIcon[mode];
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 text-center">
-        <div className="rounded-2xl bg-white/5 p-4">
-          <Icon size={28} className="text-white/30" />
+      <div className="flex flex-1 flex-col items-center justify-center gap-6 px-6 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-soft text-accent">
+          <Icon size={26} strokeWidth={1.75} />
         </div>
-        <p className="text-sm text-white/40">Try one of these, or write your own:</p>
-        <div className="flex max-w-lg flex-wrap justify-center gap-2">
+        <div className="space-y-1.5">
+          <h2 className="text-xl font-medium tracking-tight text-ink">What can I help you with?</h2>
+          <p className="text-sm text-ink-muted">Pick a starting point, or just start typing.</p>
+        </div>
+        <div className="flex max-w-xl flex-wrap justify-center gap-2">
           {EXAMPLES[mode].map((ex) => (
             <button
               key={ex}
               onClick={() => onExample(ex)}
-              className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/60 transition hover:bg-white/10 hover:text-white"
+              className="rounded-full border border-line bg-surface px-3.5 py-2 text-[0.8rem] text-ink-secondary transition duration-200 hover:border-line-strong hover:bg-surface-hover hover:text-ink"
             >
               {ex}
             </button>
@@ -85,25 +88,27 @@ export function MessageList({
     lastAssistantIdx >= 0 ? messages[messages.length - 1 - lastAssistantIdx]!.id : null;
 
   return (
-    <div className="min-w-0 flex-1 space-y-4 overflow-y-auto px-3 py-4 sm:px-6">
-      {messages.map((m) => (
-        <MessageBubble
-          key={m.id}
-          message={m}
-          isLast={m.id === lastAssistantId}
-          onRegenerate={m.id === lastAssistantId ? onRegenerate : undefined}
-          onEdit={m.role === 'user' ? (t) => onEdit(m.id, t) : undefined}
-          onDelete={() => onDelete(m.id)}
-        />
-      ))}
-      {busy && (
-        <div className="flex items-center gap-1.5 px-1 text-white/30">
-          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/40 [animation-delay:-0.3s]" />
-          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/40 [animation-delay:-0.15s]" />
-          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/40" />
-        </div>
-      )}
-      <div ref={bottomRef} />
+    <div className="min-w-0 flex-1 overflow-y-auto px-4 py-6 sm:px-6">
+      <div className="mx-auto flex w-full max-w-thread flex-col gap-7">
+        {messages.map((m) => (
+          <MessageBubble
+            key={m.id}
+            message={m}
+            isLast={m.id === lastAssistantId}
+            onRegenerate={m.id === lastAssistantId ? onRegenerate : undefined}
+            onEdit={m.role === 'user' ? (t) => onEdit(m.id, t) : undefined}
+            onDelete={() => onDelete(m.id)}
+          />
+        ))}
+        {busy && (
+          <div className="kompass-thinking flex items-center text-ink-muted" aria-label="Thinking">
+            <span />
+            <span />
+            <span />
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
     </div>
   );
 }

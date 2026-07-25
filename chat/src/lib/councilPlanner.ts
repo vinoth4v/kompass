@@ -30,6 +30,8 @@ export interface StatusSnapshot {
       has_key: boolean;
       rpm: { used: number; limit: number };
       rpd: { used: number; limit: number };
+      /** Entries this provider serves as vision fallbacks. '*' = provider-wide. */
+      multimodal_models?: string[];
     }
   >;
 }
@@ -44,6 +46,13 @@ export interface PlannedSeat {
 export interface CouncilPlan {
   seats: PlannedSeat[];
   judge: PlannedSeat;
+  /**
+   * Ranked spares, best first, none of them seated. A seat whose pinned model
+   * turns out to be unavailable claims one of these instead of falling back to
+   * lane routing, which could silently hand it a model another seat is already
+   * running — two "independent" analysts on the same model is not a council.
+   */
+  alternates: string[];
   /** Caveats worth showing — degraded pools, thin evidence, etc. */
   notes: string[];
 }
@@ -120,6 +129,7 @@ export function planCouncil(status: StatusSnapshot, desiredSeats = 3): CouncilPl
 
   let skippedCooling = 0;
   let skippedQuota = 0;
+  let skippedVision = 0;
   const candidates: Candidate[] = [];
 
   for (const entry of pool) {
@@ -131,6 +141,17 @@ export function planCouncil(status: StatusSnapshot, desiredSeats = 3): CouncilPl
     const provider = providerOf(entry);
     const p = status.providers?.[provider];
     if (!p || !p.enabled || !p.has_key) continue;
+    // Vision fallbacks are in HARD/SIMPLE to read images, not to research.
+    // llama-3.2-90b-vision-instruct was seated this way and did one search,
+    // ignored the instruction to fetch, and answered from memory — the same
+    // failure shape as a FAST model reaching the council through LONGCTX.
+    // Provider-wide multimodal (google) is NOT excluded: those are general
+    // models that happen to accept images.
+    const model = entry.slice(provider.length + 1);
+    if ((p.multimodal_models ?? []).includes(model)) {
+      skippedVision++;
+      continue;
+    }
     // Availability: a provider already at its daily or minute ceiling cannot
     // seat anyone, no matter how good its models are.
     if (p.rpd.limit > 0 && p.rpd.used >= p.rpd.limit) {
@@ -190,6 +211,7 @@ export function planCouncil(status: StatusSnapshot, desiredSeats = 3): CouncilPl
     return {
       seats: [{ model: 'kompass-agentic', label: 'Analyst A', why: 'fallback: lane routing' }],
       judge: { model: 'kompass-hard', label: 'Judge', why: 'fallback: lane routing' },
+      alternates: [],
       notes,
     };
   }
@@ -206,6 +228,9 @@ export function planCouncil(status: StatusSnapshot, desiredSeats = 3): CouncilPl
   }
   if (skippedQuota > 0) {
     notes.push(`${skippedQuota} skipped — provider quota spent for now.`);
+  }
+  if (skippedVision > 0) {
+    notes.push(`${skippedVision} skipped — vision-fallback models, which research poorly.`);
   }
 
   // Judge: the strongest remaining model, ideally NOT one of the seats so it
@@ -225,5 +250,8 @@ export function planCouncil(status: StatusSnapshot, desiredSeats = 3): CouncilPl
       }
     : { model: 'kompass-hard', label: 'Judge', why: 'fallback: lane routing' };
 
-  return { seats, judge, notes };
+  const claimed = new Set([...seats.map((x) => x.model), judge.model]);
+  const alternates = candidates.map((c) => c.entry).filter((e) => !claimed.has(e));
+
+  return { seats, judge, alternates, notes };
 }

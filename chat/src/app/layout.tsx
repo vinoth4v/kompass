@@ -1,15 +1,32 @@
 import type { Metadata } from 'next';
+import { Inter, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
-import 'highlight.js/styles/github-dark.css';
+
+// Self-hosted at build time by next/font — no CDN request, no layout shift, and
+// no dependency on a third party staying up. The default system stack was the
+// single biggest reason the UI read as unfinished.
+const sans = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-sans',
+  axes: ['opsz'],
+});
+const mono = JetBrains_Mono({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-mono',
+});
 
 export const metadata: Metadata = {
   title: 'Kompass AI',
-  description: 'Chat, vision, image generation and web research — routed through your free-model Kompass gateway.',
+  description:
+    'Chat, vision, image generation and web research — routed through your free-model Kompass gateway.',
   icons: {
     icon: [
       {
-        url:
-          "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='kg' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2338bdf8'/%3E%3Cstop offset='1' stop-color='%236366f1'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='32' cy='32' r='30' fill='url(%23kg)'/%3E%3Ccircle cx='32' cy='32' r='24' fill='%230f172a'/%3E%3Cg stroke='%237dd3fc' stroke-width='2.5' stroke-linecap='round'%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(45 32 32)'/%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(135 32 32)'/%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(225 32 32)'/%3E%3Cline x1='32' y1='11' x2='32' y2='15' transform='rotate(315 32 32)'/%3E%3C/g%3E%3Cpolygon points='32,12 39,32 25,32' fill='%23f43f5e'/%3E%3Cpolygon points='32,52 25,32 39,32' fill='%23e2e8f0'/%3E%3Ccircle cx='32' cy='32' r='3.5' fill='%230f172a' stroke='%23e2e8f0' stroke-width='1.5'/%3E%3C/svg%3E",
+        // Same compass mark as components/Logo.tsx, flattened to fixed colours
+        // for the tab (a favicon cannot read CSS variables).
+        url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13.25' stroke='%23a0a0aa' stroke-width='1.5' fill='none'/%3E%3Cpath d='M16 7.2 20.1 17 16 15.1Z' fill='%234f5bd5'/%3E%3Cpath d='M16 7.2 11.9 17 16 15.1Z' fill='%236d7cff'/%3E%3Cpath d='M16 24.8 11.9 17 16 18.9Z' fill='%2374747e'/%3E%3Cpath d='M16 24.8 20.1 17 16 18.9Z' fill='%23a0a0aa'/%3E%3C/svg%3E",
         type: 'image/svg+xml',
       },
     ],
@@ -22,18 +39,19 @@ export const metadata: Metadata = {
 const themeInitScript = `
 try {
   var s = JSON.parse(localStorage.getItem('kompass_chat_settings_v1') || 'null');
-  var theme = s && s.theme === 'light' ? 'light' : 'dark';
+  // Light is the default; only an explicit stored preference selects dark.
+  var theme = s && s.theme === 'dark' ? 'dark' : 'light';
   document.documentElement.classList.toggle('light', theme === 'light');
 } catch (e) {}
 `;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${sans.variable} ${mono.variable} light`}>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body className="antialiased">{children}</body>
+      <body className="font-sans antialiased">{children}</body>
     </html>
   );
 }

@@ -50,8 +50,10 @@ export interface AgentState {
   servedBy?: string | null;
   usage?: { input: number; output: number };
   elapsedMs?: number;
-  /** The seat's preferred model was unavailable and it ran on lane routing. */
+  /** The seat's preferred model was unavailable. */
   fellBack?: boolean;
+  /** The distinct replacement model it ran on, when one was free. */
+  replacedWith?: string;
 }
 
 export interface Disagreement {
@@ -76,7 +78,6 @@ export interface CouncilRun {
   judgePhase: 'waiting' | 'deliberating' | 'done' | 'failed';
   judgeError?: string;
 }
-
 
 const DEPTH: Record<ResearchDepth, { iterations: number; guidance: string }> = {
   fast: {
@@ -320,7 +321,9 @@ function parseJudge(text: string): {
         : [];
       const disagreements = Array.isArray(parsed.disagreements)
         ? parsed.disagreements
-            .filter((d): d is { point: unknown; positions: unknown } => !!d && typeof d === 'object')
+            .filter(
+              (d): d is { point: unknown; positions: unknown } => !!d && typeof d === 'object',
+            )
             .map((d) => ({
               point: typeof d.point === 'string' ? d.point : '',
               positions: Array.isArray(d.positions)
@@ -410,6 +413,8 @@ export interface CouncilOptions {
   question: string;
   agents: AgentSpec[];
   judgeModel: string;
+  /** Ranked spare models (councilPlanner), used when a seat's model is down. */
+  alternates?: string[];
   depth: ResearchDepth;
   onUpdate: (run: CouncilRun) => void;
   signal?: AbortSignal;
@@ -420,10 +425,25 @@ export async function runCouncil({
   question,
   agents,
   judgeModel,
+  alternates = [],
   depth,
   onUpdate,
   signal,
 }: CouncilOptions): Promise<CouncilRun> {
+  // Every model currently spoken for. A replacement must come from outside it,
+  // or the council quietly ends up with duplicate opinions.
+  const inUse = new Set<string>([...agents.map((a) => a.model), judgeModel]);
+  const spares = [...alternates];
+  const claimSpare = (): string | undefined => {
+    while (spares.length > 0) {
+      const next = spares.shift()!;
+      if (!inUse.has(next)) {
+        inUse.add(next);
+        return next;
+      }
+    }
+    return undefined;
+  };
   const run: CouncilRun = {
     agents: agents.map((spec) => ({ spec, phase: 'queued', searches: 0, reads: 0, sources: [] })),
     judgePhase: 'waiting',
@@ -471,9 +491,22 @@ export async function runCouncil({
           state.sources = [];
           state.searches = 0;
           state.reads = 0;
+          // A distinct unused model if one is available; lane routing only as a
+          // last resort, since the gateway could otherwise pick a model another
+          // seat is already running.
+          const replacement = claimSpare();
+          state.replacedWith = replacement;
           emit();
           try {
-            await runAgent(settings, state, question, depth, emit, signal, 'kompass-agentic');
+            await runAgent(
+              settings,
+              state,
+              question,
+              depth,
+              emit,
+              signal,
+              replacement ?? 'kompass-agentic',
+            );
             return;
           } catch (e2) {
             if (e2 instanceof DOMException && e2.name === 'AbortError') throw e2;
@@ -511,7 +544,13 @@ export async function runCouncil({
     // already done. Retry once on lane routing before giving up.
     try {
       if (judgeModel.startsWith('kompass')) throw first;
-      run.verdict = await runJudge(settings, 'kompass-agentic', question, usable, signal);
+      run.verdict = await runJudge(
+        settings,
+        claimSpare() ?? 'kompass-agentic',
+        question,
+        usable,
+        signal,
+      );
       run.judgePhase = 'done';
       run.judgeError = undefined;
       emit();

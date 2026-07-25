@@ -1,6 +1,21 @@
 'use client';
-import { Image as ImageIcon, Menu, MessageSquare, Moon, Sun, Telescope, Users } from 'lucide-react';
-import { LANE_CHOICES, type Conversation, type ConversationMode, type LaneChoice } from '@/lib/types';
+import {
+  ChevronDown,
+  Image as ImageIcon,
+  Menu,
+  MessageSquare,
+  Moon,
+  Sun,
+  Telescope,
+  Users,
+} from 'lucide-react';
+import { Wordmark } from './Logo';
+import {
+  LANE_CHOICES,
+  type Conversation,
+  type ConversationMode,
+  type LaneChoice,
+} from '@/lib/types';
 
 const modes: { value: ConversationMode; label: string; icon: typeof MessageSquare }[] = [
   { value: 'chat', label: 'Chat', icon: MessageSquare },
@@ -27,29 +42,37 @@ export function TopBar({
   onToggleTheme: () => void;
 }) {
   return (
-    <header className="flex items-center gap-2 border-b border-white/10 px-3 py-2.5">
+    <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-line bg-bg/80 px-3 py-2.5 backdrop-blur-xl supports-[backdrop-filter]:bg-bg/60">
       <button
         onClick={onToggleSidebar}
-        className="rounded-lg p-2 text-white/60 hover:bg-white/10 lg:hidden"
+        className="rounded-lg p-2 text-ink-secondary hover:bg-surface-hover lg:hidden"
       >
         <Menu size={18} />
       </button>
 
-      <div className="min-w-0 flex-1 truncate text-sm font-medium text-white/80">
-        {conversation?.title || 'Kompass AI'}
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <Wordmark className="shrink-0" />
+        {conversation?.title && (
+          <>
+            <span className="text-line-strong">/</span>
+            <span className="min-w-0 truncate text-sm text-ink-secondary">
+              {conversation.title}
+            </span>
+          </>
+        )}
       </div>
 
       {conversation && (
-        <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 p-0.5">
+        <div className="flex items-center gap-0.5 rounded-full border border-line bg-surface p-1">
           {modes.map(({ value, label, icon: Icon }) => (
             <button
               key={value}
               onClick={() => onModeChange(value)}
               title={label}
-              className={`flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition ${
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition duration-200 ${
                 conversation.mode === value
-                  ? 'bg-brand-500 text-black/90'
-                  : 'text-white/50 hover:text-white'
+                  ? 'bg-elevated text-ink shadow-sm ring-1 ring-line'
+                  : 'text-ink-muted hover:text-ink'
               }`}
             >
               <Icon size={13} />
@@ -60,30 +83,44 @@ export function TopBar({
       )}
 
       {conversation && conversation.mode !== 'image' && (
-        <select
-          value={conversation.lane}
-          onChange={(e) => onLaneChange(e.target.value as LaneChoice)}
-          title="Routing lane"
-          className="hidden rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs outline-none sm:block"
-        >
-          {LANE_CHOICES.map((l) => (
-            <option key={l.value} value={l.value} className="bg-[#0e1320]">
-              {l.label}
-            </option>
-          ))}
-        </select>
+        // A native select renders with the OS widget and is the loudest
+        // unstyled element on the page. appearance-none plus an inline chevron
+        // keeps it a real <select> (keyboard, mobile pickers, a11y all intact)
+        // while matching the rest of the chrome.
+        <div className="relative hidden sm:block">
+          <select
+            value={conversation.lane}
+            onChange={(e) => onLaneChange(e.target.value as LaneChoice)}
+            title="Routing lane"
+            className="cursor-pointer appearance-none rounded-full border border-line bg-surface py-1.5 pl-3 pr-7 text-xs font-medium text-ink-secondary outline-none transition hover:border-line-strong hover:text-ink"
+          >
+            {LANE_CHOICES.map((l) => (
+              <option key={l.value} value={l.value} className="bg-elevated text-ink">
+                {l.label}
+              </option>
+            ))}
+          </select>
+          <ChevronDown
+            size={13}
+            className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-muted"
+          />
+        </div>
       )}
 
       <span
         className={`h-2 w-2 shrink-0 rounded-full ${
-          connectionOk === false ? 'bg-red-500' : connectionOk === null ? 'bg-white/20' : 'bg-emerald-400 kompass-pulse'
+          connectionOk === false
+            ? 'bg-danger'
+            : connectionOk === null
+              ? 'bg-line-strong'
+              : 'bg-ok kompass-pulse'
         }`}
         title={connectionOk === false ? 'Disconnected' : 'Connected'}
       />
 
       <button
         onClick={onToggleTheme}
-        className="rounded-lg p-2 text-white/60 hover:bg-white/10"
+        className="rounded-lg p-2 text-ink-secondary hover:bg-surface-hover"
         title="Toggle theme"
       >
         {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}

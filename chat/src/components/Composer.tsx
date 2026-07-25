@@ -64,95 +64,97 @@ export function Composer({
 
   return (
     <div
-      className="min-w-0 border-t border-white/10 p-3 sm:p-4"
+      className="min-w-0 bg-gradient-to-t from-bg via-bg to-transparent px-3 pb-4 pt-6 sm:px-4"
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
         if (mode === 'chat') void handleFiles(e.dataTransfer.files);
       }}
     >
-      {images.length > 0 && (
-        <div className="mb-2 flex flex-wrap gap-2">
-          {images.map((img, i) => (
-            <div key={i} className="group relative">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`data:${img.mediaType};base64,${img.data}`}
-                alt={img.name}
-                className="h-16 w-16 rounded-lg border border-white/10 object-cover"
+      <div className="mx-auto w-full max-w-thread">
+        {images.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {images.map((img, i) => (
+              <div key={i} className="group relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`data:${img.mediaType};base64,${img.data}`}
+                  alt={img.name}
+                  className="h-16 w-16 rounded-xl border border-line object-cover"
+                />
+                <button
+                  onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
+                  className="absolute -right-1.5 -top-1.5 rounded-full bg-elevated p-1 text-ink shadow-md ring-1 ring-line-strong transition hover:bg-surface-hover"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-end gap-1.5 rounded-[1.6rem] border border-line bg-elevated p-2 shadow-md transition-colors duration-200 focus-within:border-line-strong">
+          {mode === 'chat' && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,application/pdf"
+                multiple
+                hidden
+                onChange={(e) => void handleFiles(e.target.files)}
               />
               <button
-                onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
-                className="absolute -right-1.5 -top-1.5 rounded-full bg-black/80 p-0.5 text-white/80 opacity-0 transition group-hover:opacity-100"
+                onClick={() => fileInputRef.current?.click()}
+                className="shrink-0 rounded-full p-2.5 text-ink-muted transition hover:bg-surface-hover hover:text-ink"
+                title="Attach image"
               >
-                <X size={12} />
+                <ImagePlus size={18} />
               </button>
-            </div>
-          ))}
-        </div>
-      )}
+            </>
+          )}
 
-      <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-white/[0.04] p-2 focus-within:border-brand-500/60">
-        {mode === 'chat' && (
-          <>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*,application/pdf"
-              multiple
-              hidden
-              onChange={(e) => void handleFiles(e.target.files)}
-            />
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              resize();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                submit();
+              }
+            }}
+            placeholder={PLACEHOLDERS[mode]}
+            rows={1}
+            className="max-h-[220px] flex-1 resize-none bg-transparent px-1.5 py-2 text-[0.95rem] leading-relaxed outline-none placeholder:text-ink-faint"
+          />
+
+          {busy ? (
             <button
-              onClick={() => fileInputRef.current?.click()}
-              className="shrink-0 rounded-lg p-2 text-white/40 hover:bg-white/10 hover:text-white"
-              title="Attach image"
+              onClick={onStop}
+              className="shrink-0 rounded-full bg-surface-strong p-2.5 text-ink transition hover:bg-surface-hover"
+              title="Stop"
             >
-              <ImagePlus size={18} />
+              <Square size={16} />
             </button>
-          </>
-        )}
-
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            resize();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          placeholder={PLACEHOLDERS[mode]}
-          rows={1}
-          className="max-h-[200px] flex-1 resize-none bg-transparent py-1.5 text-sm outline-none placeholder:text-white/30"
-        />
-
-        {busy ? (
-          <button
-            onClick={onStop}
-            className="shrink-0 rounded-xl bg-white/15 p-2.5 text-white transition hover:bg-white/25"
-            title="Stop"
-          >
-            <Square size={16} />
-          </button>
-        ) : (
-          <button
-            onClick={submit}
-            disabled={!text.trim() && images.length === 0}
-            className="shrink-0 rounded-xl bg-brand-500 p-2.5 text-black/90 transition hover:bg-brand-400 disabled:cursor-not-allowed disabled:opacity-30"
-            title="Send (Enter)"
-          >
-            <Send size={16} />
-          </button>
-        )}
+          ) : (
+            <button
+              onClick={submit}
+              disabled={!text.trim() && images.length === 0}
+              className="shrink-0 rounded-full bg-accent p-2.5 text-accent-contrast shadow-sm transition duration-200 hover:bg-accent-hover disabled:cursor-not-allowed disabled:bg-surface-strong disabled:text-ink-faint disabled:shadow-none"
+              title="Send (Enter)"
+            >
+              <Send size={16} />
+            </button>
+          )}
+        </div>
+        <p className="mt-2 text-center text-[0.72rem] text-ink-faint">
+          Enter to send · Shift+Enter for a new line
+        </p>
       </div>
-      <p className="mt-1.5 px-1 text-[0.72em] text-white/25">
-        Enter to send · Shift+Enter for a new line
-      </p>
     </div>
   );
 }

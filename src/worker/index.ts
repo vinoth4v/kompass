@@ -706,6 +706,11 @@ app.get('/status', async (c) => {
     const tok = snap.tokens[name]?.day === day ? snap.tokens[name] : undefined;
     providers[name] = {
       enabled: p.enabled !== false,
+      // Vision-capable entries are seated in lanes as image/PDF fallbacks, not
+      // for tool-heavy research. Exposed so clients (the AI Council planner)
+      // can tell the difference — a vision model given a research brief
+      // searched once and answered without reading anything.
+      multimodal_models: p.multimodal_models ?? (p.multimodal === true ? ['*'] : []),
       has_key: Boolean((c.env as unknown as Record<string, string>)[p.key_env]),
       rpm: { used: rpmUsed, limit: p.limits.rpm },
       rpd: { used: rpdUsed, limit: p.limits.rpd },

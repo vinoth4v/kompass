@@ -54,7 +54,9 @@ export const TOOLS: AnthropicToolWire[] = [
       'than recalling events from memory.',
     input_schema: {
       type: 'object',
-      properties: { query: { type: 'string', description: 'News topic, person, company or event' } },
+      properties: {
+        query: { type: 'string', description: 'News topic, person, company or event' },
+      },
       required: ['query'],
     },
   },
@@ -75,7 +77,46 @@ export const TOOLS: AnthropicToolWire[] = [
           enum: ['weather', 'sports', 'fx', 'crypto', 'stock', 'macro'],
           description: 'Which structured source to query',
         },
-        query: { type: 'string', description: 'Place, league, team, currency pair, coin or ticker' },
+        query: {
+          type: 'string',
+          description: 'Place, league, team, currency pair, coin or ticker',
+        },
+      },
+      required: ['kind', 'query'],
+    },
+  },
+  {
+    name: 'get_reference',
+    description:
+      'Look something up in an authoritative register. Use instead of web_search when the ' +
+      'question is about a known entity, record or publication. ' +
+      'kind=pubmed (biomedical papers), drug (US FDA drug label: indications, dosage, warnings), ' +
+      'trials (ClinicalTrials.gov studies), quakes (recent earthquakes, query = minimum ' +
+      'magnitude), book (Open Library), country (population/capital/currency/languages), ' +
+      'package (npm by name, or "py <name>" for PyPI: version, license, description), ' +
+      'cve (published security vulnerabilities by keyword), food (product nutrition), ' +
+      'entity (Wikidata facts about a person/place/thing), music (MusicBrainz artists).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        kind: {
+          type: 'string',
+          enum: [
+            'pubmed',
+            'drug',
+            'trials',
+            'quakes',
+            'book',
+            'country',
+            'package',
+            'cve',
+            'food',
+            'entity',
+            'music',
+          ],
+          description: 'Which register to query',
+        },
+        query: { type: 'string', description: 'Search term for that register' },
       },
       required: ['kind', 'query'],
     },
@@ -161,7 +202,7 @@ export async function executeTool(
       return { type: 'tool_result', tool_use_id: call.id, content: json.text ?? '' };
     }
 
-    if (call.name === 'get_news' || call.name === 'get_data') {
+    if (call.name === 'get_news' || call.name === 'get_data' || call.name === 'get_reference') {
       const kind = call.name === 'get_news' ? 'news' : String(call.input.kind ?? '');
       const query = String(call.input.query ?? '');
       hooks.onData?.(kind, query);
@@ -172,7 +213,8 @@ export async function executeTool(
         signal,
       });
       const json = (await res.json()) as DataResultJson;
-      if (!res.ok || !json.text) return err(call, `${kind} lookup failed: ${json.error ?? res.status}`);
+      if (!res.ok || !json.text)
+        return err(call, `${kind} lookup failed: ${json.error ?? res.status}`);
       // A successful structured lookup is a real, citable source — the same
       // standard applied to a fetched page.
       const url = `kompass:${kind}/${encodeURIComponent(query)}`;

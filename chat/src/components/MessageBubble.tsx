@@ -33,7 +33,7 @@ function IconButton({
     <button
       onClick={onClick}
       title={title}
-      className="rounded-md p-1.5 text-white/40 transition hover:bg-white/10 hover:text-white/90"
+      className="rounded-lg p-1.5 text-ink-muted transition hover:bg-surface-hover hover:text-ink"
     >
       {children}
     </button>
@@ -65,9 +65,18 @@ export function MessageBubble({
   };
 
   return (
-    <div className={`kompass-fade-in group flex w-full min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}>
+    <div
+      className={`kompass-fade-in group flex w-full min-w-0 ${isUser ? 'justify-end' : 'justify-start'}`}
+    >
       <div
-        className={`flex min-w-0 max-w-[85%] flex-col gap-1.5 sm:max-w-[75%] ${isUser ? 'items-end' : 'items-start'}`}
+        className={
+          // Bubbles for the user, full measure for the assistant. Wrapping long
+          // model replies in a 75%-wide tinted box is the single strongest
+          // "amateur chat app" signal; every serious assistant UI lets the
+          // answer occupy the reading column and distinguishes speakers by
+          // spacing and weight instead.
+          `flex min-w-0 flex-col gap-2 ${isUser ? 'max-w-[85%] items-end sm:max-w-[78%]' : 'w-full items-start'}`
+        }
       >
         {message.images && message.images.length > 0 && (
           <div className="flex flex-wrap gap-2">
@@ -77,25 +86,25 @@ export function MessageBubble({
                 key={i}
                 src={`data:${img.mediaType};base64,${img.data}`}
                 alt={img.name}
-                className="max-h-48 rounded-lg border border-white/10 object-cover"
+                className="max-h-52 rounded-xl border border-line object-cover"
               />
             ))}
           </div>
         )}
 
         {editing ? (
-          <div className="w-full min-w-[240px] rounded-2xl border border-brand-500/50 bg-white/5 p-2">
+          <div className="w-full min-w-[260px] rounded-[1.25rem] border border-accent/50 bg-surface p-2.5">
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               rows={Math.min(10, draft.split('\n').length + 1)}
-              className="w-full resize-none bg-transparent text-[0.95em] text-inherit outline-none"
+              className="w-full resize-none bg-transparent text-[0.95em] text-inherit outline-none placeholder:text-ink-faint"
               autoFocus
             />
             <div className="mt-1 flex justify-end gap-2 text-xs">
               <button
                 onClick={() => setEditing(false)}
-                className="rounded-md px-2 py-1 text-white/50 hover:bg-white/10"
+                className="rounded-lg px-2.5 py-1 text-ink-muted transition hover:bg-surface-hover hover:text-ink"
               >
                 Cancel
               </button>
@@ -104,7 +113,7 @@ export function MessageBubble({
                   setEditing(false);
                   onEdit?.(draft);
                 }}
-                className="rounded-md bg-brand-500 px-2 py-1 font-medium text-black/90 hover:bg-brand-400"
+                className="rounded-lg bg-accent px-2.5 py-1 font-medium text-accent-contrast transition hover:bg-accent-hover"
               >
                 Save &amp; resend
               </button>
@@ -120,21 +129,21 @@ export function MessageBubble({
               // instead of wrapping. min-w-0 alone (the usual flex-overflow fix)
               // does not touch this; only max-width does.
               (isUser
-                ? 'rounded-2xl rounded-br-md bg-brand-600/90 px-4 py-2.5 text-white'
+                ? 'rounded-[1.25rem] rounded-br-md bg-surface-strong px-4 py-2.5 text-ink'
                 : message.error
-                  ? 'rounded-2xl rounded-bl-md border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-red-200'
-                  : 'rounded-2xl rounded-bl-md bg-white/[0.06] px-4 py-2.5') + ' max-w-full'
+                  ? 'w-full rounded-xl border border-danger/40 bg-danger-soft px-4 py-3 text-danger'
+                  : 'w-full') + ' max-w-full'
             }
           >
             {message.generatedImage ? (
               <div className="flex flex-col gap-2">
-                {message.text && <p className="text-sm text-white/70">{message.text}</p>}
+                {message.text && <p className="text-sm text-ink-secondary">{message.text}</p>}
                 <div className="group/img relative">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={`data:${message.generatedImage.mime};base64,${message.generatedImage.b64}`}
                     alt="Generated"
-                    className="max-w-full rounded-lg border border-white/10 sm:max-w-sm"
+                    className="max-w-full rounded-xl border border-line sm:max-w-md"
                   />
                   <a
                     href={`data:${message.generatedImage.mime};base64,${message.generatedImage.b64}`}
@@ -161,8 +170,8 @@ export function MessageBubble({
             )}
 
             {message.sources && message.sources.length > 0 && (
-              <div className="mt-2 border-t border-white/10 pt-2">
-                <div className="mb-1 text-[0.72em] font-medium uppercase tracking-wide text-white/40">
+              <div className="mt-3 border-t border-line pt-3">
+                <div className="mb-1.5 text-[0.7em] font-semibold uppercase tracking-[0.08em] text-ink-muted">
                   Sources
                 </div>
                 <div className="flex flex-wrap gap-1.5">
@@ -172,7 +181,7 @@ export function MessageBubble({
                       href={s.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="max-w-[220px] truncate rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[0.78em] text-white/60 hover:bg-white/10 hover:text-white"
+                      className="max-w-[240px] truncate rounded-full border border-line bg-surface px-2.5 py-1 text-[0.78em] text-ink-secondary transition hover:border-line-strong hover:bg-surface-hover hover:text-ink"
                       title={s.title}
                     >
                       {i + 1}. {s.title}
@@ -184,7 +193,7 @@ export function MessageBubble({
           </div>
         )}
 
-        <div className="flex items-center gap-0.5 px-1 opacity-0 transition group-hover:opacity-100">
+        <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
           {!isUser && !!message.text && (
             <IconButton onClick={copy} title="Copy">
               {copied ? <Check size={14} /> : <Copy size={14} />}
@@ -204,9 +213,9 @@ export function MessageBubble({
             <Trash2 size={14} />
           </IconButton>
           {!isUser && (message.servedBy || message.usage) && (
-            <span className="ml-1 flex items-center gap-1.5 text-[0.72em] text-white/30">
+            <span className="ml-1 flex items-center gap-1.5 text-[0.72em] text-ink-faint">
               {message.lane && (
-                <span className="rounded-full border border-white/10 px-1.5 py-0.5">
+                <span className="rounded-full border border-line px-1.5 py-0.5">
                   {message.lane}
                 </span>
               )}

@@ -24,7 +24,6 @@ const RESEARCH_SYSTEM_PROMPT =
   'markdown. Be explicit about uncertainty if sources are thin or conflicting — ' +
   'never fabricate facts or sources.';
 
-
 const MAX_ITERATIONS = 6;
 
 export interface ResearchResult {
@@ -59,9 +58,19 @@ export async function runResearch(
   let servedLane: string | null = null;
 
   for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-    const { response, servedBy: sb, lane: ln } = await sendMessage(
+    const {
+      response,
+      servedBy: sb,
+      lane: ln,
+    } = await sendMessage(
       settings,
-      { model: lane, max_tokens: 4096, system: RESEARCH_SYSTEM_PROMPT, messages: history, tools: TOOLS },
+      {
+        model: lane,
+        max_tokens: 4096,
+        system: RESEARCH_SYSTEM_PROMPT,
+        messages: history,
+        tools: TOOLS,
+      },
       signal,
     );
     servedBy = sb;
@@ -103,7 +112,6 @@ export async function runResearch(
   };
 }
 
-
 const CHAT_SYSTEM_PROMPT =
   'You are Kompass AI, a helpful assistant with access to web search.\n\n' +
   'For exact current facts — weather, currency rates, stock or crypto prices, live scores, ' +
@@ -116,7 +124,7 @@ const CHAT_SYSTEM_PROMPT =
   'out of date would mislead. When you do, cite what you read.\n\n' +
   'Do NOT search for things you already know or that do not depend on current facts — writing ' +
   'code, explaining a concept, editing text, reasoning about something the user gave you. ' +
-  'Searching those wastes the user\'s time.\n\n' +
+  "Searching those wastes the user's time.\n\n" +
   'If a search returns nothing useful, say so rather than filling the gap from memory and ' +
   'presenting it as current.';
 
@@ -144,7 +152,11 @@ export async function runChatWithTools(
 
   for (let iter = 0; iter < CHAT_MAX_ITERATIONS; iter++) {
     const lastStep = iter === CHAT_MAX_ITERATIONS - 1;
-    const { response, servedBy: sb, lane: ln } = await sendMessage(
+    const {
+      response,
+      servedBy: sb,
+      lane: ln,
+    } = await sendMessage(
       settings,
       {
         model: lane,

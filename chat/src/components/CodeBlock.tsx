@@ -22,7 +22,7 @@ export function CodeBlock({
 
   if (!isBlock) {
     return (
-      <code className="rounded bg-white/10 px-1.5 py-0.5 text-[0.88em]" {...props}>
+      <code className="rounded bg-surface-hover px-1.5 py-0.5 text-[0.88em]" {...props}>
         {children}
       </code>
     );
@@ -36,12 +36,12 @@ export function CodeBlock({
   };
 
   return (
-    <div className="my-3 overflow-hidden rounded-xl border border-white/10 bg-black/40">
-      <div className="flex items-center justify-between border-b border-white/10 px-3 py-1.5 text-xs text-white/50">
+    <div className="my-4 overflow-hidden rounded-xl border border-line bg-elevated">
+      <div className="flex items-center justify-between border-b border-line px-3 py-1.5 text-xs text-ink-muted">
         <span className="font-mono">{lang}</span>
         <button
           onClick={copy}
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-white/60 transition hover:bg-white/10 hover:text-white"
+          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-ink-secondary transition hover:bg-surface-hover hover:text-ink"
         >
           {copied ? <Check size={13} /> : <Copy size={13} />}
           {copied ? 'Copied' : 'Copy'}

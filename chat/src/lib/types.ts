@@ -63,6 +63,6 @@ export interface KompassSettings {
 }
 
 export const DEFAULT_SETTINGS: Omit<KompassSettings, 'workerUrl' | 'bearer'> = {
-  theme: 'dark',
+  theme: 'light',
   defaultLane: 'kompass',
 };
