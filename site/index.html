@@ -1767,36 +1767,58 @@
         </div>
 
         <div class="secret-gen">
-          <b>During the deploy, Cloudflare asks for two secrets.</b>
+          <b>Step 1 — generate your two secrets.</b>
           <span class="muted"
-            >Generate them here — they are produced in your browser with
-            <span class="mono">crypto.getRandomValues</span> and never sent anywhere.</span
+            >Created in this browser with <span class="mono">crypto.getRandomValues</span> and never
+            sent anywhere. Cloudflare cannot accept them through the deploy link — a secret in a URL
+            ends up in browser history, referrer headers and server logs — so you paste them into
+            Cloudflare's own prompt in step 2.</span
           >
 
           <div class="secret-field">
             <label for="gen-bearer">KOMPASS_BEARER<span class="muted"> — signs you in</span></label>
             <div class="secret-row">
-              <input id="gen-bearer" class="mono" readonly placeholder="click generate" />
-              <button class="btn ghost" data-gen="gen-bearer">Generate</button>
+              <input id="gen-bearer" class="mono" readonly placeholder="click Generate both" />
               <button class="btn ghost" data-copy="gen-bearer">Copy</button>
             </div>
           </div>
 
           <div class="secret-field">
             <label for="gen-master"
-              >KOMPASS_MASTER_KEY<span class="muted"> — encrypts stored provider keys</span></label
+              >KOMPASS_MASTER_KEY<span class="muted">
+                — encrypts provider keys you add later</span
+              ></label
             >
             <div class="secret-row">
-              <input id="gen-master" class="mono" readonly placeholder="click generate" />
-              <button class="btn ghost" data-gen="gen-master">Generate</button>
+              <input id="gen-master" class="mono" readonly placeholder="click Generate both" />
               <button class="btn ghost" data-copy="gen-master">Copy</button>
             </div>
           </div>
 
-          <p class="muted" style="font-size: 0.82rem; margin-top: 0.6rem">
-            Save both somewhere safe. Losing the bearer means redeploying; losing the master key
-            only means re-entering your provider keys, since it is what decrypts them.
-          </p>
+          <div class="deploy-row" style="margin-top: 1rem">
+            <button class="btn primary" id="gen-both">Generate both</button>
+            <span class="muted" style="font-size: 0.85rem"
+              >Save them somewhere before you deploy. Losing the bearer means redeploying; losing
+              the master key only means re-entering provider keys.</span
+            >
+          </div>
+
+          <div id="gen-done" style="display: none; margin-top: 1rem">
+            <b>Step 2 — deploy, and paste each one when Cloudflare asks.</b>
+            <span class="muted"
+              >The deploy flow prompts for both by name, with the same descriptions shown
+              above.</span
+            >
+            <div class="deploy-row" style="margin-top: 0.7rem">
+              <a
+                class="btn primary"
+                href="https://deploy.workers.cloudflare.com/?url=https://github.com/vinoth4v/kompass"
+                target="_blank"
+                rel="noopener"
+                >Open the Cloudflare deploy flow</a
+              >
+            </div>
+          </div>
         </div>
       </div>
 
@@ -2355,11 +2377,17 @@ pnpm smoke -- --url ${url}`;
             })
             .join('');
         }
-        document.querySelectorAll('[data-gen]').forEach(function (btn) {
-          btn.addEventListener('click', function () {
-            document.getElementById(btn.dataset.gen).value = generate();
+        var both = document.getElementById('gen-both');
+        if (both) {
+          both.addEventListener('click', function () {
+            document.getElementById('gen-bearer').value = generate();
+            document.getElementById('gen-master').value = generate();
+            // The deploy step is revealed only once secrets exist, so nobody
+            // reaches Cloudflare's prompt with nothing to paste.
+            document.getElementById('gen-done').style.display = 'block';
+            both.textContent = 'Regenerate';
           });
-        });
+        }
         document.querySelectorAll('[data-copy]').forEach(function (btn) {
           btn.addEventListener('click', function () {
             var el = document.getElementById(btn.dataset.copy);
