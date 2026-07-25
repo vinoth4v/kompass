@@ -167,3 +167,34 @@ describe('voice: streaming sanitizer', () => {
     expect(out).toBe(parts.join(''));
   });
 });
+
+describe('voice: artifacts observed live', () => {
+  // Each of these was seen in a real screenshot, not imagined.
+  const LIVE: VoiceConfig = {
+    ...VOICE,
+    strip: {
+      blocks: ['<tool_call>', '<think>'],
+      lines: [],
+      openers: [
+        "^\\s*(You\\s+(are|'re)\\s+(completely\\s+|absolutely\\s+)?right|I\\s+apologi[sz]e)\\b[^.]*\\.\\s*",
+      ],
+    },
+  };
+  const strip = compileStrip({ ...cfg(LIVE), version: 'live' } as never)!;
+
+  it('removes a tool call the model emitted as PROSE instead of calling it', () => {
+    // nemotron-3-super printed this straight into the user's answer.
+    const leaked =
+      '<tool_call> <function=get_news> <parameter=query> Tamil Nadu CM </parameter> </function> </tool_call>';
+    expect(sanitizeText(strip, leaked).trim()).toBe('');
+  });
+
+  it('strips a capitulation opener', () => {
+    // Told "that's wrong", the model apologised and invented a new wrong
+    // answer. Stripping the grovel is cosmetic; the house prompt handles the
+    // caving itself.
+    const text =
+      'You are completely right, and I apologize for the previous error. The answer is X.';
+    expect(sanitizeText(strip, text)).toBe('The answer is X.');
+  });
+});

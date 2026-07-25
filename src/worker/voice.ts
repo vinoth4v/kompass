@@ -43,7 +43,25 @@ export function appliesToRequest(
   body: AnthropicRequest,
   surfaceHeader: string | undefined,
 ): boolean {
+  // A tool-calling turn must not be told to answer in three sentences.
   if (v.apply_to?.skip_when_tools !== false && body.tools?.length) return false;
+  return onChatSurface(v, surfaceHeader);
+}
+
+/**
+ * Artifact stripping applies to the chat surface even on tool turns.
+ *
+ * Conflating this with prompt composition was a bug: a model that emits a tool
+ * call as PROSE ("<tool_call> <function=get_news> …") leaked that markup
+ * straight to the user, because the whole voice layer had been skipped for
+ * carrying tools. The verbosity contract must skip those turns; removing
+ * garbage from the output must not.
+ */
+export function appliesToStrip(v: VoiceConfig, surfaceHeader: string | undefined): boolean {
+  return onChatSurface(v, surfaceHeader);
+}
+
+function onChatSurface(v: VoiceConfig, surfaceHeader: string | undefined): boolean {
   const want = v.apply_to?.value;
   if (!want) return true;
   return surfaceHeader?.trim().toLowerCase() === want.toLowerCase();

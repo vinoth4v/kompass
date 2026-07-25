@@ -249,10 +249,14 @@ providers:
       '@cf/qwen/qwen2.5-coder-32b-instruct': { rpm: 30, rpd: 300, ctx: 32768 } # TODO(verify): ctx
 
   # ── Get a token: https://dash.cloudflare.com/profile/api-tokens (Workers AI) ─
-  # NOTE: this is the REST path, kept for image generation and embeddings, which
-  # the chat binding above does not cover. The account id in base_url is the
-  # repo owner's — harmless for other deployments because a provider with no key
-  # is skipped entirely, but it must be changed if you set CF_WORKERS_AI_KEY.
+  # NOTE: REST path, kept for image generation and embeddings, which the chat
+  # binding above does not cover.
+  #
+  # ⚠ THE ACCOUNT ID IN base_url IS THE REPO OWNER'S. With no key set this
+  # provider is skipped entirely, so a fresh install is unaffected. But if you
+  # add CF_WORKERS_AI_KEY without changing the id, your key will be sent at
+  # someone else's account and every call will fail. Replace the id with your
+  # own (dash.cloudflare.com → Workers & Pages → Account ID) first.
   cfai:
     kind: openai
     base_url: https://api.cloudflare.com/client/v4/accounts/fa8b047b0bd7d52b47a415ee6dbf3fda/ai/v1

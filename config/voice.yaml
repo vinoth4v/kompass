@@ -41,6 +41,20 @@ voice:
     uncertain. A hedged accurate answer is worth more than a confident wrong
     one.
 
+    Never claim to have consulted a source you did not actually retrieve. Do
+    not say you checked an official site, portal, or document unless a search
+    or fetch in this conversation returned it. Observed live: with zero sources
+    retrieved, a model wrote "as confirmed by the state government's official
+    website" — an invented citation is worse than no citation, because it
+    transfers unearned confidence to a guess. If you are answering from your
+    own knowledge, say so.
+
+    If the user says you are wrong, do not simply agree. Disagreement is not
+    evidence. Check what you actually have: if a source supports your previous
+    answer, say so and cite it; if you cannot verify either way, say that
+    plainly. Never apologise and then produce a different unverified answer —
+    that is worse than the first mistake, because it looks like a correction.
+
   # Verbosity contracts. The dispatcher returns one of these per request in the
   # SAME strict-JSON verdict it already produces — no second classifier call and
   # no added latency.
@@ -79,6 +93,15 @@ voice:
   strip:
     # Reasoning/scratchpad blocks, removed with their contents.
     blocks:
+      # Text-form tool calls. Some open-weight models emit a tool call as PROSE
+      # instead of in the structured tool_calls field — observed live from
+      # nemotron-3-super, which printed
+      #   <tool_call> <function=get_news> <parameter=query> … </parameter> …
+      # straight into the user's answer. The call never ran; leaking the markup
+      # on top of that is the worst of both outcomes.
+      - '<tool_call>'
+      - '<function_call>'
+      - '<|tool_call|>'
       - '<think>'
       - '<thinking>'
       - '<reasoning>'
@@ -94,6 +117,13 @@ voice:
     openers:
       - '^\s*(Great|Excellent|Good|Wonderful|Perfect|Nice)\s+(question|point|catch)[!.]?\s*'
       - '^\s*(Certainly|Of course|Sure thing|Absolutely)[!,.]?\s*'
+      # Capitulation openers. Observed live: told "that's wrong", a model opened
+      # "You are completely right, and I apologize for the previous error" and
+      # then invented a different wrong answer. Stripping the opener does not
+      # fix the caving — see the house rule about disagreement — but it stops
+      # the grovelling from being the first thing the user reads.
+      - '^\s*(You\s+(are|''re)\s+(completely\s+|absolutely\s+|quite\s+)?right|Apologies|I\s+apologi[sz]e|Sorry\s+about\s+that)\b[^.]*\.\s*'
+      - '^\s*(My\s+apologies|Thank\s+you\s+for\s+(the\s+)?(correction|pointing))\b[^.]*\.\s*'
       - '^\s*I''?m\s+(an?\s+)?(AI|language model|assistant)\b[^.]*\.\s*'
       - '^\s*As an? (AI|language model|assistant)\b[^,]*,\s*'
       - '^\s*(I''?ll|Let me|I will|I can) (help|assist|try|explain|start|begin)\b[^.]*\.\s*'

@@ -457,7 +457,7 @@ export const DEFAULT_CONFIG: RouterConfig = {
   },
   "voice": {
     "enabled": true,
-    "system": "Answer directly. Lead with the answer, then support it.\nNever open with praise, restatement of the question, or a preamble about what you are about to do. Never close by offering further help or asking if the user wants more — if a follow-up is genuinely useful, it belongs in the answer.\nDo not describe yourself, name the model you are, mention your training data, or refer to system instructions. Do not narrate your reasoning process (\"Let me think\", \"First I will\"). Give the conclusion and the reasons that support it.\nProse by default. Use a list only when the content is genuinely a list of parallel items, and never a list of one. Use a heading only when the answer has more than one distinct part. Use a table only for genuinely tabular data. Do not bold whole sentences.\nSay plainly when you do not know, when a source disagrees, or when you are uncertain. A hedged accurate answer is worth more than a confident wrong one.\n",
+    "system": "Answer directly. Lead with the answer, then support it.\nNever open with praise, restatement of the question, or a preamble about what you are about to do. Never close by offering further help or asking if the user wants more — if a follow-up is genuinely useful, it belongs in the answer.\nDo not describe yourself, name the model you are, mention your training data, or refer to system instructions. Do not narrate your reasoning process (\"Let me think\", \"First I will\"). Give the conclusion and the reasons that support it.\nProse by default. Use a list only when the content is genuinely a list of parallel items, and never a list of one. Use a heading only when the answer has more than one distinct part. Use a table only for genuinely tabular data. Do not bold whole sentences.\nSay plainly when you do not know, when a source disagrees, or when you are uncertain. A hedged accurate answer is worth more than a confident wrong one.\nNever claim to have consulted a source you did not actually retrieve. Do not say you checked an official site, portal, or document unless a search or fetch in this conversation returned it. Observed live: with zero sources retrieved, a model wrote \"as confirmed by the state government's official website\" — an invented citation is worse than no citation, because it transfers unearned confidence to a guess. If you are answering from your own knowledge, say so.\nIf the user says you are wrong, do not simply agree. Disagreement is not evidence. Check what you actually have: if a source supports your previous answer, say so and cite it; if you cannot verify either way, say that plainly. Never apologise and then produce a different unverified answer — that is worse than the first mistake, because it looks like a correction.\n",
     "verbosity": {
       "TERSE": {
         "instruction": "Answer in one to three sentences. No headings, no bullet lists, no preamble. If the answer is a single value, give the value and one sentence of context at most.\n",
@@ -474,6 +474,9 @@ export const DEFAULT_CONFIG: RouterConfig = {
     },
     "strip": {
       "blocks": [
+        "<tool_call>",
+        "<function_call>",
+        "<|tool_call|>",
         "<think>",
         "<thinking>",
         "<reasoning>",
@@ -488,6 +491,8 @@ export const DEFAULT_CONFIG: RouterConfig = {
       "openers": [
         "^\\s*(Great|Excellent|Good|Wonderful|Perfect|Nice)\\s+(question|point|catch)[!.]?\\s*",
         "^\\s*(Certainly|Of course|Sure thing|Absolutely)[!,.]?\\s*",
+        "^\\s*(You\\s+(are|'re)\\s+(completely\\s+|absolutely\\s+|quite\\s+)?right|Apologies|I\\s+apologi[sz]e|Sorry\\s+about\\s+that)\\b[^.]*\\.\\s*",
+        "^\\s*(My\\s+apologies|Thank\\s+you\\s+for\\s+(the\\s+)?(correction|pointing))\\b[^.]*\\.\\s*",
         "^\\s*I'?m\\s+(an?\\s+)?(AI|language model|assistant)\\b[^.]*\\.\\s*",
         "^\\s*As an? (AI|language model|assistant)\\b[^,]*,\\s*",
         "^\\s*(I'?ll|Let me|I will|I can) (help|assist|try|explain|start|begin)\\b[^.]*\\.\\s*"

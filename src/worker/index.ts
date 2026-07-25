@@ -48,7 +48,7 @@ import {
 } from './escalation';
 import { compactionConfig, compactRequest, type CompactionResult } from './compact';
 import { compilePrivacyGuard, privacyMatch } from './privacy';
-import { appliesToRequest, compileStrip, composeVoice, voiceConfig } from './voice';
+import { appliesToRequest, appliesToStrip, compileStrip, composeVoice, voiceConfig } from './voice';
 import {
   deleteProviderKey,
   listProviderKeys,
@@ -309,7 +309,6 @@ async function handleAnthropic(
     const composed = composeVoice(vcfg, body, tier);
     body = composed.body;
     voiceTier = composed.verbosity;
-    voiceStrip = compileStrip(cfg) ?? undefined;
     console.log(JSON.stringify({ voice: { tier: voiceTier, max_tokens: composed.maxTokens } }));
   }
 

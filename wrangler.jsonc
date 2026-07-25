@@ -7,10 +7,20 @@
     "enabled": true,
   },
   "vars": {
-    // Not secret (account IDs/namespace IDs aren't sensitive) — power the
-    // /status Cloudflare-utilization panel (src/worker/cf-usage.ts).
-    "CLOUDFLARE_ACCOUNT_ID": "fa8b047b0bd7d52b47a415ee6dbf3fda",
-    "CLOUDFLARE_KV_NAMESPACE_ID": "ac8f63619364493897213cd0d58feefd",
+    // Deliberately EMPTY in the repo.
+    //
+    // These power the optional Cloudflare-utilisation panel on /status
+    // (src/worker/cf-usage.ts), which is best-effort and returns null without
+    // them. Unlike bindings, plain vars are NOT rewritten by the
+    // Deploy-to-Cloudflare provisioning step — so a real value here would ship
+    // the repo owner's account id to every install and point their usage panel
+    // at someone else's account.
+    //
+    // To enable the panel on your own deployment, set them as Worker secrets
+    // (Settings → Variables and Secrets), which override these at runtime:
+    //   CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_KV_NAMESPACE_ID, CLOUDFLARE_API_TOKEN
+    "CLOUDFLARE_ACCOUNT_ID": "",
+    "CLOUDFLARE_KV_NAMESPACE_ID": "",
   },
   // Workers AI binding. A binding needs NO API key: it authenticates as the
   // account the Worker is deployed to (verified live 2026-07-25 —
@@ -27,6 +37,10 @@
   "kv_namespaces": [
     {
       "binding": "CONFIG",
+      // Placeholder. Cloudflare provisions a fresh namespace during a
+      // Deploy-to-Cloudflare install and rewrites this id, per
+      // developers.cloudflare.com/workers/platform/deploy-buttons/. A local
+      // `wrangler deploy` needs a real id here — `kompass init` writes one.
       "id": "ac8f63619364493897213cd0d58feefd",
     },
   ],
