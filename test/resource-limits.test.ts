@@ -240,3 +240,60 @@ describe('all-models-cooling recovery', () => {
     expect(body.content[0]!.text).toBe('healthy');
   });
 });
+
+/**
+ * The synthetic notices return 200 on purpose so Claude Code sees a completed
+ * turn. That makes them indistinguishable from a real answer to every other
+ * client — the AI Council rendered "Free lanes are exhausted" as five agents'
+ * research findings. x-kompass-exhausted is the machine-readable signal.
+ */
+describe('exhaustion is signalled to non-Claude-Code clients', () => {
+  it('marks the synthetic notice with x-kompass-exhausted', async () => {
+    fetchMock
+      .get('https://rl.test')
+      .intercept({ path: '/v1/chat/completions', method: 'POST' })
+      .reply(500, { error: 'upstream down' })
+      .times(MAX_UPSTREAM_ATTEMPTS);
+
+    const res = await SELF.fetch('https://kompass.test/v1/messages', {
+      method: 'POST',
+      headers: AUTH,
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 32,
+        tools: [{ name: 'Read', description: 'read', input_schema: { type: 'object' } }],
+        messages: [{ role: 'user', content: 'everything will fail' }],
+      }),
+    });
+
+    expect(res.status).toBe(200); // still a completed turn for Claude Code
+    expect(res.headers.get('x-kompass-exhausted')).toBe('true');
+    expect(res.headers.get('x-kompass-served-by')).toBeNull();
+  });
+
+  it('does NOT mark a real answer', async () => {
+    fetchMock
+      .get('https://rl.test')
+      .intercept({ path: '/v1/chat/completions', method: 'POST' })
+      .reply(200, {
+        choices: [
+          { message: { role: 'assistant', content: 'real answer' }, finish_reason: 'stop' },
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 1 },
+      });
+
+    const res = await SELF.fetch('https://kompass.test/v1/messages', {
+      method: 'POST',
+      headers: AUTH,
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5',
+        max_tokens: 32,
+        tools: [{ name: 'Read', description: 'read', input_schema: { type: 'object' } }],
+        messages: [{ role: 'user', content: 'this one works' }],
+      }),
+    });
+
+    expect(res.headers.get('x-kompass-exhausted')).toBeNull();
+    expect(res.headers.get('x-kompass-served-by')).toBe('rl/m0');
+  });
+});

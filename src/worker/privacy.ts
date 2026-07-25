@@ -40,6 +40,13 @@ let cachedGuard: PrivacyGuard | null = null;
 export function compilePrivacyGuard(cfg: RouterConfig): PrivacyGuard | null {
   if (cfg.version !== undefined && cfg.version === cachedVersion) return cachedGuard;
   const p = cfg.privacy;
+  // Explicitly disabled: no guard, so nothing is ever withheld from a
+  // trains_on_data provider. Cached like any other outcome.
+  if (p?.enabled === false) {
+    cachedVersion = cfg.version;
+    cachedGuard = null;
+    return null;
+  }
   const sources: string[] = [];
   for (const re of p?.block_patterns ?? []) {
     try {

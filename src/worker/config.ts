@@ -52,6 +52,13 @@ export interface DispatcherConfig {
 }
 
 export interface PrivacyConfig {
+  /**
+   * Master switch. When false the guard never runs and trains_on_data providers
+   * stay available for every request — including ones whose content matches a
+   * block pattern. Defaults to true (guard active) so an existing config, and
+   * anyone deploying this project fresh, keeps the protective behaviour.
+   */
+  enabled?: boolean;
   block_patterns?: string[]; // regexes
   block_globs?: string[]; // path globs
 }

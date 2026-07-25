@@ -120,6 +120,12 @@ export interface SendMessageResult {
   response: AnthropicResponseWire;
   servedBy: string | null;
   lane: string | null;
+  /**
+   * The gateway answered 200 with its synthetic "no model could serve this"
+   * notice rather than a real completion. It is 200 by design so Claude Code
+   * treats it as a completed turn; every other client has to check this.
+   */
+  exhausted: boolean;
 }
 
 export async function sendMessage(
@@ -142,6 +148,7 @@ export async function sendMessage(
     response,
     servedBy: res.headers.get('x-kompass-served-by'),
     lane: res.headers.get('x-kompass-lane'),
+    exhausted: res.headers.get('x-kompass-exhausted') === 'true',
   };
 }
 

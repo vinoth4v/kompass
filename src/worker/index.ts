@@ -84,6 +84,7 @@ app.use(
       'x-kompass-lane',
       'x-kompass-trace-id',
       'x-kompass-compacted',
+      'x-kompass-exhausted',
     ],
     maxAge: 86400,
   }),
@@ -131,6 +132,14 @@ function attemptBudgetFor(estTokens: number): number {
   if (estTokens > 40_000) return 5;
   return 8;
 }
+
+/**
+ * Marks the synthetic notices. They are 200 on purpose — Claude Code must see a
+ * completed turn, not a protocol error — but that makes them indistinguishable
+ * from a real answer to any other client. The AI Council was showing "Free lanes
+ * are exhausted" as five agents' research findings because of exactly this.
+ */
+const EXHAUSTED_HEADER = { 'x-kompass-exhausted': 'true' };
 
 function stateStub(env: Env) {
   return env.KOMPASS_STATE.get(env.KOMPASS_STATE.idFromName('global'));
@@ -433,11 +442,11 @@ async function handleAnthropic(
     if (body.stream) {
       return finish(
         new Response(noFitNoticeStream(body.model, maxCtxSeen), {
-          headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+          headers: { 'content-type': 'text/event-stream; charset=utf-8', ...EXHAUSTED_HEADER },
         }),
       );
     }
-    return finish(c.json(noFitNotice(body.model, maxCtxSeen)));
+    return finish(c.json(noFitNotice(body.model, maxCtxSeen), 200, EXHAUSTED_HEADER));
   }
 
   // Every lane's entire chain failed. Always a friendly in-chat notice, never a
@@ -446,11 +455,11 @@ async function handleAnthropic(
   if (body.stream) {
     return finish(
       new Response(syntheticNoticeStream(body.model), {
-        headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+        headers: { 'content-type': 'text/event-stream; charset=utf-8', ...EXHAUSTED_HEADER },
       }),
     );
   }
-  return finish(c.json(syntheticNotice(body.model)));
+  return finish(c.json(syntheticNotice(body.model), 200, EXHAUSTED_HEADER));
 }
 
 app.post('/v1/messages', async (c) => {

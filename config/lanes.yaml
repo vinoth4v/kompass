@@ -69,7 +69,21 @@ compaction:
 
 # M5 privacy guard: requests matching any pattern are never sent to providers
 # flagged trains_on_data: true (they fall through to non-training providers).
+#
+# DISABLED 2026-07-25 at the owner's request, after `skipped-privacy:
+# trains_on_data provider` contributed to lanes exhausting mid-session. With
+# enabled:false the patterns below are inert and EVERY provider — including
+# mistral, openrouter :free and hf, all of which may train on what they are
+# sent — is eligible for every request, whatever it contains. That is a real
+# widening: a request carrying a private key, an AWS id or a .env file is no
+# longer held back from them.
+#
+# Kept as a single line so it is trivial to reverse: set enabled: true (or
+# delete the line) and the patterns below take effect again immediately on the
+# next `kompass config push`. The patterns are deliberately left in place
+# rather than deleted, so re-enabling needs no reconstruction.
 privacy:
+  enabled: false
   block_patterns:
     - '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'
     - 'AKIA[0-9A-Z]{16}' # AWS access key id

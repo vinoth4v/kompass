@@ -274,7 +274,7 @@ async function runAgent(
   emit();
 
   for (let iter = 0; iter < DEPTH[depth].iterations; iter++) {
-    const { response, servedBy } = await sendMessage(
+    const { response, servedBy, exhausted } = await sendMessage(
       settings,
       {
         model,
@@ -286,6 +286,15 @@ async function runAgent(
       signal,
       extraHeaders,
     );
+    // No model served this turn. The gateway says so with a 200 and a notice,
+    // which is right for Claude Code and wrong for a council: rendering that
+    // notice as an agent's "finding" is worse than showing no agent at all.
+    if (exhausted) {
+      throw new Error(
+        'No free model could serve this agent (gateway lanes exhausted). ' +
+          'Fewer agents, fast mode, or a different model per seat usually clears it.',
+      );
+    }
     state.servedBy = servedBy;
     totalIn += response.usage.input_tokens;
     totalOut += response.usage.output_tokens;
@@ -394,7 +403,7 @@ async function runJudge(
 
   const sourceList = sources.map((s, i) => `[${i + 1}] ${s.url}`).join('\n') || '(none)';
   const { model, extraHeaders } = modelRequest(judgeModel);
-  const { response, servedBy } = await sendMessage(
+  const { response, servedBy, exhausted } = await sendMessage(
     settings,
     {
       model,
@@ -411,6 +420,12 @@ async function runJudge(
     extraHeaders,
   );
 
+  if (exhausted) {
+    throw new Error(
+      'No free model could serve the judge (gateway lanes exhausted). ' +
+        'The individual agent findings below are unaffected.',
+    );
+  }
   const text = response.content
     .filter((b): b is AnthropicTextBlockWire => b.type === 'text')
     .map((b) => b.text)
@@ -452,10 +467,26 @@ export async function runCouncil({
   const emit = () => onUpdate({ ...run, agents: run.agents.map((a) => ({ ...a })) });
   emit();
 
+  // Staggered start. The seats still run concurrently, but launching five
+  // research loops in the same instant collides with free-tier RPM ceilings
+  // (OpenRouter is 20/min across ALL :free models) and the whole council can
+  // come back exhausted. A short offset costs nothing perceptible and lets the
+  // gateway's ledger pace them.
+  const STAGGER_MS = 700;
+
   // allSettled, not all: a rejected agent must not take down the council.
   await Promise.allSettled(
-    run.agents.map(async (state) => {
+    run.agents.map(async (state, i) => {
       try {
+        if (i > 0) {
+          await new Promise<void>((resolve, reject) => {
+            const t = setTimeout(resolve, i * STAGGER_MS);
+            signal?.addEventListener('abort', () => {
+              clearTimeout(t);
+              reject(new DOMException('aborted', 'AbortError'));
+            });
+          });
+        }
         await runAgent(settings, state, question, depth, emit, signal);
       } catch (e) {
         if (e instanceof DOMException && e.name === 'AbortError') {
