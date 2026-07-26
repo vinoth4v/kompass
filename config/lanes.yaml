@@ -117,6 +117,23 @@ privacy:
 #     per-model `multimodal_models` in providers.yaml 2026-07-24 and wired both
 #     as SIMPLE/HARD vision tails (google is no longer a multimodal SPOF).
 #
+# New-model sweep 2026-07-26 (user request: "even better free models?"). Re-pulled
+# the live OpenRouter :free roster and NVIDIA/Cohere direct catalogs and diffed
+# against what's already wired here — 4 untested candidates found, tool-calling
+# probed (get_weather round trip, 3 attempts each):
+#   PASSED → added: openrouter/inclusionai/ling-3.0-flash:free (SIMPLE tail,
+#     262k ctx, 1.0-1.9s, 3/3 clean); cohere/north-mini-code-1-0 direct +
+#     openrouter/cohere/north-mini-code:free (SIMPLE tail, code-specialized,
+#     2.4-4.5s, 3/3 clean — direct route added for quota diversity per the
+#     nemotron-3-ultra pattern above, even though Cohere's trial rpd is tiny).
+#   EXCLUDED: nvidia/nemotron-3-nano-30b-a3b and nvidia/nvidia-nemotron-nano-9b-v2
+#     (NVIDIA direct) — both intermittently emit an unescaped control character
+#     inside `reasoning_content`, breaking strict JSON.parse: 2 of 3 probes
+#     failed this way (router.ts:418 `upstream.json()` throws, caught, counted
+#     as a failed attempt — not a crash, but a ~2/3 live failure rate is worse
+#     than every other entry in this file). Same defect on both, so it's a
+#     family-level bug in this NIM deployment, not one bad model.
+#
 # spread_top (2026-07-23): a lane's first pick is drawn by weighted-random from the
 # top `spread_top` entries (weighted by each model's recent live success rate),
 # not always chain[0]. Spreads load across comparable models under bursty/parallel
@@ -181,6 +198,12 @@ lanes:
       # non-google vision fallback (multimodal_models in providers.yaml) so a
       # google outage/quota-out no longer exhausts SIMPLE for image/PDF requests.
       - openrouter/nvidia/nemotron-nano-12b-v2-vl:free
+      # New-model sweep 2026-07-26 (see comment above lanes:) — all three probed
+      # ✓ but untested in real sessions, so placed as depth below the proven
+      # entries rather than promoted, same convention as laguna-m.1 in AGENTIC.
+      - openrouter/inclusionai/ling-3.0-flash:free # 262k ctx, 1.0-1.9s, 3/3
+      - cohere/north-mini-code-1-0 # code-specialized, 2.4-4.5s, 3/3, 30 rpd trial
+      - openrouter/cohere/north-mini-code:free # same model, shared-pool route
       - workersai/@cf/meta/llama-3.3-70b-instruct-fp8-fast # zero-key floor
 
   # laguna-xs (nvidia) demoted below minimax 2026-07-23: repeatedly returned

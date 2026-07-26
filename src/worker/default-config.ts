@@ -56,6 +56,16 @@ export const DEFAULT_CONFIG: RouterConfig = {
           "rpd": 1000,
           "ctx": 1000000,
           "max_out": 65536
+        },
+        "inclusionai/ling-3.0-flash:free": {
+          "rpm": 20,
+          "rpd": 1000,
+          "ctx": 262144
+        },
+        "cohere/north-mini-code:free": {
+          "rpm": 20,
+          "rpd": 1000,
+          "ctx": 256000
         }
       }
     },
@@ -327,6 +337,13 @@ export const DEFAULT_CONFIG: RouterConfig = {
       "limits": {
         "rpm": 10,
         "rpd": 30
+      },
+      "model_limits": {
+        "north-mini-code-1-0": {
+          "rpm": 10,
+          "rpd": 30,
+          "ctx": 256000
+        }
       }
     },
     "cerebras": {
@@ -390,6 +407,9 @@ export const DEFAULT_CONFIG: RouterConfig = {
         "google/gemini-3.5-flash-lite",
         "google/gemini-3.6-flash",
         "openrouter/nvidia/nemotron-nano-12b-v2-vl:free",
+        "openrouter/inclusionai/ling-3.0-flash:free",
+        "cohere/north-mini-code-1-0",
+        "openrouter/cohere/north-mini-code:free",
         "workersai/@cf/meta/llama-3.3-70b-instruct-fp8-fast"
       ]
     },

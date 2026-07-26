@@ -41,6 +41,10 @@ providers:
       nvidia/nemotron-nano-12b-v2-vl:free: { rpm: 20, rpd: 1000, ctx: 128000 } # max_out TODO(verify)
       nvidia/nemotron-3-super-120b-a12b:free: { rpm: 20, rpd: 1000, ctx: 262144 } # max_out TODO(verify)
       nvidia/nemotron-3-ultra-550b-a55b:free: { rpm: 20, rpd: 1000, ctx: 1000000, max_out: 65536 }
+      # Both added 2026-07-26 — live roster diff + tool-calling probe (get_weather
+      # round trip, 3 attempts). See docs/DECISIONS.md and lanes.yaml SIMPLE.
+      inclusionai/ling-3.0-flash:free: { rpm: 20, rpd: 1000, ctx: 262144 } # max_out TODO(verify)
+      cohere/north-mini-code:free: { rpm: 20, rpd: 1000, ctx: 256000 } # max_out TODO(verify)
 
   # ── Get a free key: https://build.nvidia.com ────────────────────────────────
   # Create an NVIDIA account → open any model page → "Get API Key" → copy the
@@ -298,6 +302,13 @@ providers:
     key_env: COHERE_API_KEY
     trains_on_data: true
     limits: { rpm: 10, rpd: 30 }
+    # First model wired to this provider (2026-07-26). Tool-calling probed ✓
+    # 3/3 (get_weather round trip), 2.4-4.5s — slow, and the 30 rpd trial
+    # ceiling is tiny, so it sits as SIMPLE-lane depth, not a lead. ctx is
+    # carried over from the OpenRouter listing of the same model (256000);
+    # Cohere's own compatibility API doesn't publish it — TODO(verify).
+    model_limits:
+      north-mini-code-1-0: { rpm: 10, rpd: 30, ctx: 256000 } # ctx TODO(verify): inferred from OpenRouter listing
 
   # ── https://cloud.cerebras.ai — key valid but API says "payment required":
   # activate the free plan in their Billing tab, then set enabled: true.
